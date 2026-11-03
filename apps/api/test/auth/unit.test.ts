@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
 import { assertDevSeedAllowed } from '../../scripts/seed-dev-users.js';
+import { buildApp } from '../../src/app.js';
+import { createDatabase } from '../../src/db/client.js';
 import { hashPassword, verifyPassword } from '../../src/auth/password.js';
 import {
   deriveCsrfToken,
@@ -84,10 +86,51 @@ describe('configuration', () => {
     assert.deepEqual(config.allowedOrigins, ['https://lms.example.edu', 'https://admin.example.edu']);
   });
 
+  it('accepts only explicit trusted-proxy settings, never "trust all"', () => {
+    assert.equal(loadConfig({ TRUST_PROXY: 'false' }).trustProxy, false);
+    assert.equal(loadConfig({ TRUST_PROXY: '10.0.0.0/8, 192.168.1.10' }).trustProxy, '10.0.0.0/8,192.168.1.10');
+    assert.equal(loadConfig({ TRUST_PROXY: '2001:db8::/32' }).trustProxy, '2001:db8::/32');
+    assert.throws(() => loadConfig({ TRUST_PROXY: 'true' }), /TRUST_PROXY=true/);
+    assert.throws(() => loadConfig({ TRUST_PROXY: '1' }), /hop counts are not supported/);
+    assert.throws(() => loadConfig({ TRUST_PROXY: 'proxy.internal' }), /invalid IP/);
+    assert.throws(() => loadConfig({ TRUST_PROXY: '10.0.0.0/33' }), /invalid IP/);
+  });
+
   it('fails fast on invalid settings', () => {
     assert.throws(() => loadConfig({ SESSION_TTL_HOURS: '0' }), /SESSION_TTL_HOURS/);
     assert.throws(() => loadConfig({ LOGIN_RATE_LIMIT_MAX: 'many' }), /LOGIN_RATE_LIMIT_MAX/);
     assert.throws(() => loadConfig({ APP_ORIGINS: 'not a url' }), /APP_ORIGINS/);
+  });
+});
+
+describe('error handling without a database', () => {
+  it('returns RFC 9457 problem details and fails closed when the session store is unavailable', async () => {
+    const { db, pool } = createDatabase('postgresql://postgres@127.0.0.1:1/unreachable');
+    const app = buildApp({ config: loadConfig({}), database: db });
+    try {
+      const me = await app.inject({ method: 'GET', url: '/api/v1/me', cookies: { ap_session: generateSessionToken() } });
+      assert.equal(me.statusCode, 500);
+      assert.match(String(me.headers['content-type']), /^application\/problem\+json/);
+      assert.deepEqual(me.json(), {
+        type: 'about:blank',
+        title: 'Internal Server Error',
+        status: 500,
+        detail: 'An unexpected error occurred.',
+        code: 'INTERNAL_ERROR',
+      });
+
+      const missing = await app.inject({ method: 'GET', url: '/api/v1/does-not-exist' });
+      assert.deepEqual(missing.json(), {
+        type: 'about:blank',
+        title: 'Not Found',
+        status: 404,
+        detail: 'Route not found.',
+        code: 'NOT_FOUND',
+      });
+    } finally {
+      await app.close();
+      await pool.end();
+    }
   });
 });
 

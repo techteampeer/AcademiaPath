@@ -12,6 +12,9 @@ info:
     State-changing requests made with the session cookie must also send the session's CSRF token in
     the `X-CSRF-Token` header. Browser requests to state-changing endpoints must come from an allowed
     `Origin`.
+
+    Errors are RFC 9457 Problem Details (`application/problem+json`) with an application-specific
+    `code` member.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -161,53 +164,61 @@ components:
         const: no-store
   responses:
     ValidationError:
-      description: The request body is missing or invalid.
+      description: "The request body is missing or invalid (`code`: `VALIDATION_ERROR`)."
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: "#/components/schemas/ProblemDetails"
           example:
-            error:
-              code: VALIDATION_ERROR
-              message: Request validation failed.
+            type: about:blank
+            title: Bad Request
+            status: 400
+            detail: Request validation failed.
+            code: VALIDATION_ERROR
     Unauthorized:
       description: |
-        `INVALID_CREDENTIALS` for failed sign-in (generic; does not reveal whether the email exists),
-        or `UNAUTHENTICATED` when the session cookie is missing, invalid, expired or revoked.
+        `code` is `INVALID_CREDENTIALS` for failed sign-in (generic; does not reveal whether the email
+        exists), or `UNAUTHENTICATED` when the session cookie is missing, invalid, expired or revoked.
         An invalid session cookie is cleared.
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: "#/components/schemas/ProblemDetails"
           example:
-            error:
-              code: INVALID_CREDENTIALS
-              message: Invalid email or password.
+            type: about:blank
+            title: Unauthorized
+            status: 401
+            detail: Invalid email or password.
+            code: INVALID_CREDENTIALS
     Forbidden:
-      description: "`CSRF_TOKEN_INVALID` or `ORIGIN_NOT_ALLOWED`."
+      description: "`code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED` or `FORBIDDEN`."
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: "#/components/schemas/ProblemDetails"
           example:
-            error:
-              code: CSRF_TOKEN_INVALID
-              message: Missing or invalid CSRF token.
+            type: about:blank
+            title: Forbidden
+            status: 403
+            detail: Missing or invalid CSRF token.
+            code: CSRF_TOKEN_INVALID
     RateLimited:
-      description: Too many sign-in attempts.
+      description: "Too many sign-in attempts (`code`: `RATE_LIMITED`)."
       headers:
         Retry-After:
           description: Seconds until another attempt is allowed.
           schema:
             type: integer
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: "#/components/schemas/ProblemDetails"
           example:
-            error:
-              code: RATE_LIMITED
-              message: Too many attempts. Try again later.
+            type: about:blank
+            title: Too Many Requests
+            status: 429
+            detail: Too many attempts. Try again later.
+            code: RATE_LIMITED
   schemas:
     HealthResponse:
       type: object
@@ -308,20 +319,49 @@ components:
       properties:
         csrfToken:
           type: string
-    ErrorResponse:
+    ProblemDetails:
       type: object
+      description: |
+        RFC 9457 Problem Details, served as `application/problem+json`. `type` is `about:blank`, so
+        `title` is the HTTP status phrase. `code` is an application-specific extension member for
+        programmatic handling. Clients must ignore unknown members.
       required:
-        - error
-      additionalProperties: false
+        - type
+        - title
+        - status
+        - detail
+        - code
       properties:
-        error:
-          type: object
-          required:
-            - code
-            - message
-          additionalProperties: false
-          properties:
-            code:
-              type: string
-            message:
-              type: string
+        type:
+          type: string
+          format: uri-reference
+          default: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+          description: Human-readable explanation. Never contains credentials or internal details.
+        instance:
+          type: string
+          format: uri-reference
+        code:
+          type: string
+          description: Application-specific error code.
+          enum:
+            - VALIDATION_ERROR
+            - INVALID_CREDENTIALS
+            - UNAUTHENTICATED
+            - CSRF_TOKEN_INVALID
+            - ORIGIN_NOT_ALLOWED
+            - FORBIDDEN
+            - RATE_LIMITED
+            - BAD_REQUEST
+            - NOT_FOUND
+            - PAYLOAD_TOO_LARGE
+            - UNSUPPORTED_MEDIA_TYPE
+            - REQUEST_ERROR
+            - INTERNAL_ERROR

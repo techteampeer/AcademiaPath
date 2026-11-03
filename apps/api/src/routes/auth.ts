@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import type { FastifyPluginAsync } from 'fastify';
 import { clearSessionCookie, setSessionCookie } from '../auth/cookies.js';
 import { getAuth } from '../auth/hooks.js';
@@ -11,6 +12,9 @@ import { csrfTokenResponseSchema, loginBodySchema, loginResponseSchema } from '.
 type LoginBody = { email: string; password: string };
 
 const normalizeEmail = (email: unknown) => String(email ?? '').trim().toLowerCase();
+
+/** Only valid IPs are audited; a malformed forwarded address must not break login or logout. */
+const auditIp = (ip: string) => (isIP(ip) ? ip : null);
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
   const { db, config } = app;
@@ -57,7 +61,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           entityType: 'user',
           entityId: account.user.id,
           metadata: { sessionId: created.sessionId },
-          ipAddress: request.ip,
+          ipAddress: auditIp(request.ip),
         });
         return created;
       });
@@ -81,7 +85,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         entityType: 'user',
         entityId: auth.user.id,
         metadata: { sessionId: auth.sessionId },
-        ipAddress: request.ip,
+        ipAddress: auditIp(request.ip),
       });
     });
     clearSessionCookie(reply, config);

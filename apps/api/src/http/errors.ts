@@ -1,10 +1,29 @@
+import { STATUS_CODES } from 'node:http';
 import type { FastifyError, FastifyInstance, FastifyReply } from 'fastify';
 
-export type ErrorBody = { error: { code: string; message: string } };
+export const PROBLEM_CONTENT_TYPE = 'application/problem+json';
 
-export function sendError(reply: FastifyReply, statusCode: number, code: string, message: string): FastifyReply {
-  const body: ErrorBody = { error: { code, message } };
-  return reply.code(statusCode).send(body);
+/**
+ * RFC 9457 Problem Details. `type` is "about:blank" (the HTTP status code is the problem type),
+ * so `title` is the standard status phrase. `code` is an application-specific extension member.
+ */
+export type ProblemDetails = {
+  type: 'about:blank';
+  title: string;
+  status: number;
+  detail: string;
+  code: string;
+};
+
+export function sendError(reply: FastifyReply, status: number, code: string, detail: string): FastifyReply {
+  const problem: ProblemDetails = {
+    type: 'about:blank',
+    title: STATUS_CODES[status] ?? 'Error',
+    status,
+    detail,
+    code,
+  };
+  return reply.code(status).type(PROBLEM_CONTENT_TYPE).send(problem);
 }
 
 const CLIENT_ERROR_CODES: Record<number, string> = {
@@ -14,7 +33,7 @@ const CLIENT_ERROR_CODES: Record<number, string> = {
   415: 'UNSUPPORTED_MEDIA_TYPE',
 };
 
-/** Consistent `{ error: { code, message } }` responses. Internal error details are never returned. */
+/** All errors become RFC 9457 problem details. Internal error details are never returned. */
 export function registerErrorHandling(app: FastifyInstance): void {
   app.setErrorHandler((error: FastifyError, request, reply) => {
     if (error.validation) {

@@ -4,6 +4,7 @@
  */
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
+import { STATUS_CODES } from 'node:http';
 import { after, before, describe, it } from 'node:test';
 import { and, eq } from 'drizzle-orm';
 import type { LightMyRequestResponse } from 'fastify';
@@ -40,9 +41,16 @@ type Cookie = LightMyRequestResponse['cookies'][number];
 
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 
+/** Asserts an RFC 9457 problem details response with the given application error code. */
 function expectError(res: LightMyRequestResponse, statusCode: number, code: string) {
   assert.equal(res.statusCode, statusCode, res.body);
-  assert.equal(res.json().error.code, code);
+  assert.match(String(res.headers['content-type']), /^application\/problem\+json/);
+  const problem = res.json();
+  assert.equal(problem.type, 'about:blank');
+  assert.equal(problem.title, STATUS_CODES[statusCode]);
+  assert.equal(problem.status, statusCode);
+  assert.equal(typeof problem.detail, 'string');
+  assert.equal(problem.code, code);
 }
 
 function isCleared(cookie: Cookie | undefined): boolean {
@@ -187,7 +195,7 @@ describe('authentication API (PostgreSQL)', { skip: testServerUrl ? false : 'TES
     const { email } = await createAccount();
     const res = await login(app, email, `${PASSWORD}x`);
     expectError(res, 401, 'INVALID_CREDENTIALS');
-    assert.equal(res.json().error.message, 'Invalid email or password.');
+    assert.equal(res.json().detail, 'Invalid email or password.');
     assert.equal(sessionCookie(res), undefined);
   });
 
@@ -220,7 +228,7 @@ describe('authentication API (PostgreSQL)', { skip: testServerUrl ? false : 'TES
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       payload: 'email=a&password=b',
     });
-    assert.equal(form.statusCode, 415);
+    expectError(form, 415, 'UNSUPPORTED_MEDIA_TYPE');
   });
 
   // 5. Authenticated /me
@@ -380,6 +388,52 @@ describe('authentication API (PostgreSQL)', { skip: testServerUrl ? false : 'TES
       assert.equal((await login(limited, other.email)).statusCode, 200, 'other accounts are unaffected');
     } finally {
       await limited.close();
+    }
+  });
+
+  it('honors X-Forwarded-For only from trusted proxies', async () => {
+    // Injected requests come from 127.0.0.1, which plays the trusted proxy here.
+    const proxied = makeApp({ TRUST_PROXY: '127.0.0.1', LOGIN_RATE_LIMIT_MAX: '3' });
+    const auditedIpsOf = (userId: string) =>
+      database.db
+        .select({ ip: auditLog.ipAddress })
+        .from(auditLog)
+        .where(and(eq(auditLog.action, 'auth.login'), eq(auditLog.actorUserId, userId)));
+    try {
+      const { email } = await createAccount();
+      // Rotating a spoofed left-most X-Forwarded-For entry does not change the rate-limit key.
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const headers = { 'x-forwarded-for': `203.0.113.${attempt}, 198.51.100.7` };
+        expectError(await login(proxied, email, 'wrong-password', { headers }), 401, 'INVALID_CREDENTIALS');
+      }
+      const headers = { 'x-forwarded-for': '203.0.113.99, 198.51.100.7' };
+      expectError(await login(proxied, email, 'wrong-password', { headers }), 429, 'RATE_LIMITED');
+
+      // The audited IP is the one added by the trusted proxy, not the client-supplied one.
+      const audited = await createAccount();
+      const ok = await login(proxied, audited.email, PASSWORD, { headers: { 'x-forwarded-for': '203.0.113.5, 198.51.100.8' } });
+      assert.equal(ok.statusCode, 200, ok.body);
+      assert.deepEqual(await auditedIpsOf(audited.user.id), [{ ip: '198.51.100.8' }]);
+
+      // A client connecting directly (not via a trusted proxy) cannot spoof its address.
+      const direct = await createAccount();
+      const spoofed = await proxied.inject({
+        method: 'POST',
+        url: URLS.login,
+        payload: { email: direct.email, password: PASSWORD },
+        headers: { 'x-forwarded-for': '198.51.100.9' },
+        remoteAddress: '192.0.2.10',
+      });
+      assert.equal(spoofed.statusCode, 200, spoofed.body);
+      assert.deepEqual(await auditedIpsOf(direct.user.id), [{ ip: '192.0.2.10' }]);
+
+      // A malformed forwarded address does not break login; it is simply not audited.
+      const malformed = await createAccount();
+      const res = await login(proxied, malformed.email, PASSWORD, { headers: { 'x-forwarded-for': 'not-an-ip' } });
+      assert.equal(res.statusCode, 200, res.body);
+      assert.deepEqual(await auditedIpsOf(malformed.user.id), [{ ip: null }]);
+    } finally {
+      await proxied.close();
     }
   });
 

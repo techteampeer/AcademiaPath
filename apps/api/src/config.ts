@@ -1,3 +1,5 @@
+import { isIP } from 'node:net';
+
 export type AppConfig = {
   isProduction: boolean;
   /** Browser origins allowed to make state-changing requests (e.g. the web app). */
@@ -12,8 +14,12 @@ export type AppConfig = {
     max: number;
     windowMs: number;
   };
-  /** Trust X-Forwarded-* headers. Enable only behind a trusted proxy/load balancer. */
-  trustProxy: boolean;
+  /**
+   * Fastify `trustProxy`: false, or a comma-separated list of trusted proxy IPs/CIDRs, so
+   * X-Forwarded-For is honored only when the connecting peer is a trusted proxy. Never `true`
+   * (trusts client-supplied headers) and never a hop count (cannot verify the peer).
+   */
+  trustProxy: false | string;
 };
 
 export const SESSION_COOKIE_NAMES = {
@@ -48,6 +54,28 @@ function parseOrigins(raw: string): string[] {
     });
 }
 
+function parseTrustProxy(raw: string | undefined): false | string {
+  const value = raw?.trim();
+  if (!value || value === 'false') return false;
+  if (value === 'true') {
+    throw new Error(
+      'TRUST_PROXY=true would trust client-supplied X-Forwarded-For headers; list the trusted proxy IPs/CIDRs instead',
+    );
+  }
+  if (/^\d+$/.test(value)) {
+    throw new Error('TRUST_PROXY hop counts are not supported (the connecting peer cannot be verified); list the trusted proxy IPs/CIDRs instead');
+  }
+  const entries = value.split(',').map((entry) => entry.trim()).filter(Boolean);
+  for (const entry of entries) {
+    const [address = '', prefix] = entry.split('/');
+    const maxPrefix = isIP(address) === 6 ? 128 : 32;
+    if (!isIP(address) || (prefix !== undefined && !(/^\d{1,3}$/.test(prefix) && Number(prefix) <= maxPrefix))) {
+      throw new Error(`TRUST_PROXY contains an invalid IP or CIDR: ${entry}`);
+    }
+  }
+  return entries.join(',');
+}
+
 /** Builds the application configuration from environment variables. Fails fast on invalid values. */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const isProduction = env.NODE_ENV === 'production';
@@ -70,6 +98,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       max: readPositiveInt(env, 'LOGIN_RATE_LIMIT_MAX', 5, 1000),
       windowMs: readPositiveInt(env, 'LOGIN_RATE_LIMIT_WINDOW_MINUTES', 15, 24 * 60) * 60_000,
     },
-    trustProxy: env.TRUST_PROXY === 'true',
+    trustProxy: parseTrustProxy(env.TRUST_PROXY),
   };
 }
