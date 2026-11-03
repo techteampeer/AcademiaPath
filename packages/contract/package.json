@@ -5,12 +5,17 @@
   "description": "AcademiaPath OpenAPI 3.1 API contract",
   "type": "module",
   "exports": {
-    "./openapi.yaml": "./openapi.yaml"
+    "./openapi.yaml": "./openapi.yaml",
+    "./types": {
+      "types": "./generated/api.d.ts"
+    }
   },
   "scripts": {
-    "validate": "node scripts/validate.mjs"
+    "validate": "node scripts/validate.mjs",
+    "generate:types": "openapi-typescript openapi.yaml -o generated/api.d.ts"
   },
   "devDependencies": {
-    "@apidevtools/swagger-parser": "^13.1.0"
+    "@apidevtools/swagger-parser": "^13.1.0",
+    "openapi-typescript": "7.13.0"
   }
 }

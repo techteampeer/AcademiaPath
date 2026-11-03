@@ -60,6 +60,14 @@ Email/password sign-in with server-side sessions stored in PostgreSQL (`POST /ap
 
 For local testing, `pnpm db:seed:dev` creates synthetic users (`admin@`, `instructor@` and `student@academiapath.example`) with the password from `DEV_SEED_PASSWORD`. It refuses to run in production or against a non-local database.
 
+## Frontend and API integration
+
+The browser only calls `/api/*` on the web origin; Next.js forwards it to the API (`apps/web/next.config.ts`, target `API_ORIGIN`, default `http://127.0.0.1:4000`). The session stays in the HttpOnly cookie, and the web app keeps the CSRF token in memory only.
+
+API types for the web app are generated from the contract: after changing `packages/contract/openapi.yaml`, run `pnpm contract:types` and commit `packages/contract/generated/api.d.ts`.
+
+Local demo: start PostgreSQL, run `pnpm db:migrate` and `pnpm db:seed:dev`, then `pnpm dev` and open http://localhost:3000/login. Administrators get **Academic setup** (`/admin/setup`); everyone gets **Dashboard** (`/dashboard`).
+
 `pnpm test` always runs the static schema checks. To also run the migration and constraint tests, set `TEST_DATABASE_URL` to a local server whose role can create databases (e.g. `postgresql://postgres@127.0.0.1:5432/postgres`); the tests create and drop a temporary database.
 
 ## Structure
