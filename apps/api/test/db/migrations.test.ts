@@ -7,11 +7,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
-import { fileURLToPath } from 'node:url';
 import { count, eq } from 'drizzle-orm';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import pg from 'pg';
-import { createDatabase } from '../../src/db/client.js';
 import {
   activities,
   auditLog,
@@ -21,9 +17,7 @@ import {
   terms,
   users,
 } from '../../src/db/schema/index.js';
-
-const serverUrl = process.env.TEST_DATABASE_URL;
-const migrationsFolder = fileURLToPath(new URL('../../drizzle', import.meta.url));
+import { createTestDatabase, testServerUrl } from '../helpers/database.js';
 
 const PG = {
   invalidEnum: '22P02',
@@ -55,19 +49,8 @@ function first<T>(rows: T[]): T {
   return row;
 }
 
-async function withServer(sql: string) {
-  const client = new pg.Client({ connectionString: serverUrl });
-  await client.connect();
-  try {
-    await client.query(sql);
-  } finally {
-    await client.end();
-  }
-}
-
-describe('database migrations (PostgreSQL)', { skip: serverUrl ? false : 'TEST_DATABASE_URL not set' }, () => {
-  const dbName = `academiapath_test_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
-  let database: ReturnType<typeof createDatabase>;
+describe('database migrations (PostgreSQL)', { skip: testServerUrl ? false : 'TEST_DATABASE_URL not set' }, () => {
+  let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let seq = 0;
 
   const db = () => database.db;
@@ -91,25 +74,32 @@ describe('database migrations (PostgreSQL)', { skip: serverUrl ? false : 'TEST_D
     first(await db().insert(courses).values({ termId, code, title: 'Matemática I' }).returning());
 
   before(async () => {
-    await withServer(`CREATE DATABASE "${dbName}"`);
-    const url = new URL(serverUrl as string);
-    url.pathname = `/${dbName}`;
-    database = createDatabase(url.toString());
-    await migrate(database.db, { migrationsFolder });
+    database = await createTestDatabase();
   });
 
   after(async () => {
-    await database?.pool.end();
-    await withServer(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
+    await database?.drop();
   });
 
-  it('creates the nine foundational tables', async () => {
+  it('creates the foundational and authentication tables', async () => {
     const { rows } = await raw(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name`,
     );
     assert.deepEqual(
       rows.map((r) => r.table_name),
-      ['activities', 'audit_log', 'course_templates', 'courses', 'enrollments', 'programs', 'sections', 'terms', 'users'],
+      [
+        'activities',
+        'audit_log',
+        'course_templates',
+        'courses',
+        'enrollments',
+        'programs',
+        'sections',
+        'sessions',
+        'terms',
+        'user_credentials',
+        'users',
+      ],
     );
   });
 
