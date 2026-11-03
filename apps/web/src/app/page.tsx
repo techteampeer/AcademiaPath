@@ -1,91 +1,60 @@
-const features = [
+import { Badge } from '@/components/ui/Badge';
+import { Card } from '@/components/ui/Card';
+
+const capabilities = [
   {
-    es: 'Cursos',
-    en: 'Courses',
-    description: 'Contenidos, módulos y materiales organizados por curso.',
-    descriptionEn: 'Content, modules and materials organized by course.',
+    title: 'Courses',
+    description: 'Course content, sections and learning activities organized by academic term.',
   },
   {
-    es: 'Evaluaciones',
-    en: 'Quizzes & assignments',
-    description: 'Cuestionarios y tareas con entregas en línea.',
-    descriptionEn: 'Quizzes and assignments with online submission.',
+    title: 'Assessments',
+    description: 'Quizzes and assignments with online submission.',
   },
   {
-    es: 'Calificaciones',
-    en: 'Grading',
-    description: 'Seguimiento del progreso académico de cada estudiante.',
-    descriptionEn: "Track each student's academic progress.",
+    title: 'Grading',
+    description: 'Grading and academic progress tracking for every student.',
   },
   {
-    es: 'Tutor con IA',
-    en: 'AI tutoring',
-    description: 'Apoyo personalizado para el aprendizaje.',
-    descriptionEn: 'Personalized learning support.',
+    title: 'AI tutoring',
+    description: 'Personalized learning support for students.',
   },
 ];
 
 export default function HomePage() {
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="border-b border-slate-200">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <span className="text-lg font-semibold tracking-tight text-brand-900">
-            Academia<span className="text-brand-600">Path</span>
-          </span>
-          <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600">
-            ES · EN
-          </span>
-        </div>
-      </header>
+    <div className="space-y-10">
+      <section aria-labelledby="intro-heading">
+        <Card padding="lg" className="bg-linear-to-br from-brand-50 to-white">
+          <p className="text-sm font-semibold tracking-wider text-brand-600 uppercase">
+            Institutional learning platform
+          </p>
+          <h1 id="intro-heading" className="mt-3 max-w-3xl text-3xl font-bold tracking-tight text-brand-900 sm:text-4xl">
+            Welcome to AcademiaPath
+          </h1>
+          <p className="mt-4 max-w-2xl text-base text-slate-600 sm:text-lg">
+            One place for universities to deliver courses, assess learning and support every student.
+            This is an early development preview of the platform.
+          </p>
+        </Card>
+      </section>
 
-      <main className="flex-1">
-        <section className="bg-brand-50">
-          <div className="mx-auto max-w-5xl px-6 py-20 sm:py-28">
-            <p className="text-sm font-semibold uppercase tracking-wider text-brand-600">
-              Plataforma institucional de aprendizaje
-            </p>
-            <h1 className="mt-3 max-w-3xl text-4xl font-bold tracking-tight text-brand-900 sm:text-5xl">
-              Aprender, enseñar y evaluar en un solo lugar.
-            </h1>
-            <p className="mt-4 max-w-2xl text-lg text-slate-600">
-              Learn, teach and assess in one place — an institutional learning
-              platform for universities.
-            </p>
-          </div>
-        </section>
-
-        <section className="mx-auto max-w-5xl px-6 py-16">
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-900">
-            Funcionalidades <span className="text-slate-400">· Features</span>
-          </h2>
-          <ul className="mt-8 grid gap-6 sm:grid-cols-2">
-            {features.map((feature) => (
-              <li
-                key={feature.en}
-                className="rounded-xl border border-slate-200 p-6 shadow-sm"
-              >
-                <h3 className="font-semibold text-brand-700">
-                  {feature.es}{' '}
-                  <span className="font-normal text-slate-400">
-                    · {feature.en}
-                  </span>
-                </h3>
-                <p className="mt-2 text-slate-700">{feature.description}</p>
-                <p className="mt-1 text-sm text-slate-500">
-                  {feature.descriptionEn}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </section>
-      </main>
-
-      <footer className="border-t border-slate-200">
-        <div className="mx-auto max-w-5xl px-6 py-6 text-sm text-slate-500">
-          © {new Date().getFullYear()} AcademiaPath
-        </div>
-      </footer>
+      <section aria-labelledby="capabilities-heading">
+        <h2 id="capabilities-heading" className="text-xl font-semibold tracking-tight text-slate-900">
+          Platform capabilities
+        </h2>
+        <p className="mt-1 text-sm text-slate-600">Planned capabilities, currently in development.</p>
+        <ul className="mt-6 grid gap-4 sm:grid-cols-2">
+          {capabilities.map((capability) => (
+            <Card as="li" key={capability.title}>
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="font-semibold text-slate-900">{capability.title}</h3>
+                <Badge>In development</Badge>
+              </div>
+              <p className="mt-2 text-sm text-slate-600">{capability.description}</p>
+            </Card>
+          ))}
+        </ul>
+      </section>
     </div>
   );
 }
