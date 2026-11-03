@@ -42,6 +42,7 @@ Health check: `curl http://localhost:4000/api/v1/health`
 | `pnpm db:generate`      | Generate a SQL migration from the schema |
 | `pnpm db:check`         | Validate the migration history           |
 | `pnpm db:migrate`       | Apply migrations to `DATABASE_URL`       |
+| `pnpm db:seed:dev`      | Create synthetic local users (dev only)  |
 
 ## Database
 
@@ -52,6 +53,12 @@ The schema lives in `apps/api/src/db/schema/`; versioned SQL migrations live in 
 3. Apply migrations: `pnpm db:migrate`.
 
 After changing the schema, run `pnpm db:generate`, review the generated SQL and commit it together with the schema change.
+
+## Authentication
+
+Email/password sign-in with server-side sessions stored in PostgreSQL (`POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/csrf`, `GET /api/v1/me`; see `packages/contract/openapi.yaml`). The session token lives only in an HttpOnly cookie; state-changing requests must send the `X-CSRF-Token` returned at sign-in. Authentication settings are listed in `.env.example`.
+
+For local testing, `pnpm db:seed:dev` creates synthetic users (`admin@`, `instructor@` and `student@academiapath.example`) with the password from `DEV_SEED_PASSWORD`. It refuses to run in production or against a non-local database.
 
 `pnpm test` always runs the static schema checks. To also run the migration and constraint tests, set `TEST_DATABASE_URL` to a local server whose role can create databases (e.g. `postgresql://postgres@127.0.0.1:5432/postgres`); the tests create and drop a temporary database.
 

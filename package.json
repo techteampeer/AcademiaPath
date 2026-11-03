@@ -17,6 +17,7 @@
     "test": "pnpm -r run test",
     "db:generate": "pnpm --filter @academiapath/api run db:generate",
     "db:check": "pnpm --filter @academiapath/api run db:check",
-    "db:migrate": "pnpm --filter @academiapath/api run db:migrate"
+    "db:migrate": "pnpm --filter @academiapath/api run db:migrate",
+    "db:seed:dev": "pnpm --filter @academiapath/api run db:seed:dev"
   }
 }

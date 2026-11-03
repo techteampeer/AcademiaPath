@@ -1,14 +1,27 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.1.0
-  description: Backend API contract for the AcademiaPath learning management system.
+  version: 0.2.0
+  description: |
+    Backend API contract for the AcademiaPath learning management system.
+
+    Authentication uses server-side sessions. The session token is only ever sent in an HttpOnly
+    cookie (`ap_session` in development, `__Host-ap_session` in production; `SameSite=Lax`, `Path=/`,
+    `Secure` in production). It never appears in a response body.
+
+    State-changing requests made with the session cookie must also send the session's CSRF token in
+    the `X-CSRF-Token` header. Browser requests to state-changing endpoints must come from an allowed
+    `Origin`.
 servers:
   - url: http://localhost:4000
     description: Local development
 tags:
   - name: System
     description: Operational endpoints
+  - name: Authentication
+    description: Sign-in, sign-out and CSRF bootstrap
+  - name: Account
+    description: The signed-in user
 paths:
   /api/v1/health:
     get:
@@ -23,7 +36,178 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      summary: Sign in with email and password
+      description: |
+        Verifies the credentials and starts a server-side session, set as an HttpOnly cookie.
+        Unknown emails, wrong passwords and inactive accounts all receive the same `401` response.
+        Rate limited per client IP address and email. Any session cookie already presented is revoked.
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Signed in.
+          headers:
+            Set-Cookie:
+              description: HttpOnly session cookie.
+              schema:
+                type: string
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/auth/logout:
+    post:
+      operationId: logout
+      summary: Sign out and revoke the current session
+      description: Revokes the current session and clears the session cookie. Send no request body.
+      tags:
+        - Authentication
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204":
+          description: Session revoked and cookie cleared.
+          headers:
+            Set-Cookie:
+              description: Expires the session cookie.
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/auth/csrf:
+    get:
+      operationId: getCsrfToken
+      summary: Get the CSRF token for the current session
+      description: Returns the same CSRF token issued at sign-in, e.g. after a page reload.
+      tags:
+        - Authentication
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: CSRF token for the current session.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CsrfTokenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/me:
+    get:
+      operationId: getCurrentUser
+      summary: Get the signed-in user's profile
+      description: |
+        Returns safe profile fields only. `systemRole` is the platform-wide role; course-level roles
+        come from course enrollments and are not part of this response.
+      tags:
+        - Account
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The signed-in user.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: ap_session
+      description: HttpOnly session cookie. Named `__Host-ap_session` in production.
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: CSRF token from the login response or `GET /api/v1/auth/csrf`.
+  headers:
+    NoStore:
+      description: Authenticated responses must not be cached.
+      schema:
+        type: string
+        const: no-store
+  responses:
+    ValidationError:
+      description: The request body is missing or invalid.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Request validation failed.
+    Unauthorized:
+      description: |
+        `INVALID_CREDENTIALS` for failed sign-in (generic; does not reveal whether the email exists),
+        or `UNAUTHENTICATED` when the session cookie is missing, invalid, expired or revoked.
+        An invalid session cookie is cleared.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: INVALID_CREDENTIALS
+              message: Invalid email or password.
+    Forbidden:
+      description: "`CSRF_TOKEN_INVALID` or `ORIGIN_NOT_ALLOWED`."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: CSRF_TOKEN_INVALID
+              message: Missing or invalid CSRF token.
+    RateLimited:
+      description: Too many sign-in attempts.
+      headers:
+        Retry-After:
+          description: Seconds until another attempt is allowed.
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: RATE_LIMITED
+              message: Too many attempts. Try again later.
   schemas:
     HealthResponse:
       type: object
@@ -44,3 +228,100 @@ components:
         timestamp:
           type: string
           format: date-time
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          minLength: 1
+          maxLength: 254
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 1
+          maxLength: 1024
+    CurrentUser:
+      type: object
+      required:
+        - id
+        - email
+        - givenName
+        - familyName
+        - systemRole
+        - preferredLocale
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        givenName:
+          type: string
+        familyName:
+          type: string
+        systemRole:
+          type: string
+          description: Platform-wide role. Only `administrator` grants system-level permissions.
+          enum:
+            - administrator
+            - user
+        preferredLocale:
+          type: string
+          enum:
+            - es
+            - en
+    LoginResponse:
+      type: object
+      required:
+        - user
+        - csrfToken
+        - expiresAt
+      additionalProperties: false
+      properties:
+        user:
+          $ref: "#/components/schemas/CurrentUser"
+        csrfToken:
+          type: string
+          description: Send as `X-CSRF-Token` on state-changing requests.
+        expiresAt:
+          type: string
+          format: date-time
+    MeResponse:
+      type: object
+      required:
+        - user
+      additionalProperties: false
+      properties:
+        user:
+          $ref: "#/components/schemas/CurrentUser"
+    CsrfTokenResponse:
+      type: object
+      required:
+        - csrfToken
+      additionalProperties: false
+      properties:
+        csrfToken:
+          type: string
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          additionalProperties: false
+          properties:
+            code:
+              type: string
+            message:
+              type: string
