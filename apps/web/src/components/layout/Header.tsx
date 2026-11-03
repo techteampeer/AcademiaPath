@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SessionControls } from '@/components/session/SessionControls';
 import { Badge } from '@/components/ui/Badge';
 import { MobileNav } from './MobileNav';
 
@@ -22,9 +23,10 @@ export function Header() {
           </span>
         </Link>
         <div className="flex items-center gap-3">
-          <span className="hidden sm:block">
+          <span className="hidden lg:block">
             <Badge tone="brand">Development preview</Badge>
           </span>
+          <SessionControls />
           <MobileNav />
         </div>
       </div>

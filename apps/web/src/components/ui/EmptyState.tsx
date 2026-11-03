@@ -9,7 +9,7 @@ export type EmptyStateProps = {
   /** Optional custom icon; a neutral default is shown otherwise. */
   icon?: ReactNode;
   /** Heading element for the title, to fit the surrounding outline. Defaults to `h3`. */
-  titleAs?: 'h2' | 'h3' | 'h4';
+  titleAs?: 'h1' | 'h2' | 'h3' | 'h4';
   className?: string;
 };
 

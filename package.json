@@ -18,6 +18,7 @@
     "db:generate": "pnpm --filter @academiapath/api run db:generate",
     "db:check": "pnpm --filter @academiapath/api run db:check",
     "db:migrate": "pnpm --filter @academiapath/api run db:migrate",
-    "db:seed:dev": "pnpm --filter @academiapath/api run db:seed:dev"
+    "db:seed:dev": "pnpm --filter @academiapath/api run db:seed:dev",
+    "contract:types": "pnpm --filter @academiapath/contract run generate:types"
   }
 }

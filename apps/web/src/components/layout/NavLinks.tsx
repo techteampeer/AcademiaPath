@@ -2,15 +2,22 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useSession } from '@/components/session/SessionProvider';
 import { cn } from '@/lib/cn';
-import { isActivePath, navSections } from './navigation';
+import { isActivePath, isNavItemVisible, navSections } from './navigation';
 
 export function NavLinks({ idPrefix, onNavigate }: { idPrefix: string; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { session } = useSession();
+  const user = session.status === 'authenticated' ? session.user : null;
+
+  const sections = navSections
+    .map((section) => ({ ...section, items: section.items.filter((item) => isNavItemVisible(item, user)) }))
+    .filter((section) => section.items.length > 0);
 
   return (
     <div className="space-y-6">
-      {navSections.map((section) => {
+      {sections.map((section) => {
         const headingId = `${idPrefix}-${section.title.toLowerCase().replace(/\s+/g, '-')}`;
         return (
           <div key={section.title}>
@@ -19,7 +26,7 @@ export function NavLinks({ idPrefix, onNavigate }: { idPrefix: string; onNavigat
             </p>
             <ul aria-labelledby={headingId} className="mt-2 space-y-1">
               {section.items.map((item) => {
-                const active = isActivePath(pathname, item.href);
+                const active = isActivePath(pathname, item);
                 return (
                   <li key={item.href}>
                     <Link

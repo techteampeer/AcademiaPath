@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { SessionSummary } from '@/components/session/SessionControls';
 import { NavLinks } from './NavLinks';
 
 const PANEL_ID = 'mobile-navigation';
@@ -48,6 +49,7 @@ export function MobileNav() {
           aria-label="Main"
           className="absolute inset-x-0 top-full border-b border-slate-200 bg-white px-4 py-4 shadow-lg sm:px-6"
         >
+          <SessionSummary />
           <NavLinks idPrefix="mobile-nav" onNavigate={() => setOpen(false)} />
         </nav>
       ) : null}

@@ -37,9 +37,14 @@ export default function HomePage() {
             One place for universities to deliver courses, assess learning and support every student.
             This is an early development preview of the platform.
           </p>
-          <Link href="/preview/courses" className={buttonClasses({ className: 'mt-6' })}>
-            Preview course components
-          </Link>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link href="/login" className={buttonClasses()}>
+              Sign in
+            </Link>
+            <Link href="/preview/courses" className={buttonClasses({ variant: 'secondary' })}>
+              Preview course components
+            </Link>
+          </div>
         </Card>
       </section>
 

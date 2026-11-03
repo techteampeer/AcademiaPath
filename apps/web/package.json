@@ -14,6 +14,7 @@
     "react-dom": "19.3.1"
   },
   "devDependencies": {
+    "@academiapath/contract": "workspace:*",
     "@tailwindcss/postcss": "^4.3.4",
     "@types/node": "^22.20.5",
     "@types/react": "^19.3.0",
