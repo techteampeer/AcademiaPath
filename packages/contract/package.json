@@ -1,0 +1,16 @@
+{
+  "name": "@academiapath/contract",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AcademiaPath OpenAPI 3.1 API contract",
+  "type": "module",
+  "exports": {
+    "./openapi.yaml": "./openapi.yaml"
+  },
+  "scripts": {
+    "validate": "node scripts/validate.mjs"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-parser": "^13.1.0"
+  }
+}

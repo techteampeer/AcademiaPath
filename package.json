@@ -1,0 +1,18 @@
+{
+  "name": "academiapath",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AcademiaPath — bilingual institutional learning management system",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/*\" run dev",
+    "dev:web": "pnpm --filter @academiapath/web run dev",
+    "dev:api": "pnpm --filter @academiapath/api run dev",
+    "typecheck": "pnpm -r run typecheck",
+    "build": "pnpm -r run build",
+    "validate:openapi": "pnpm --filter @academiapath/contract run validate"
+  }
+}
