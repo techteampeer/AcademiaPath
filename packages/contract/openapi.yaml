@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -15,6 +15,14 @@ info:
 
     Errors are RFC 9457 Problem Details (`application/problem+json`) with an application-specific
     `code` member.
+
+    List endpoints are paginated: `limit` (1–100, default 20) and an opaque `cursor` taken from the
+    previous page's `nextCursor` (`null` on the last page).
+
+    Authorization is enforced server-side and denies by default. `administrator` is the only
+    system-level role. Course access comes from the caller's active enrollment in that course:
+    staff roles (`design_team`, `instructor`, `non_editing_instructor`) see their assigned courses,
+    and students see only their published courses. Courses the caller cannot access respond `404`.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -25,6 +33,10 @@ tags:
     description: Sign-in, sign-out and CSRF bootstrap
   - name: Account
     description: The signed-in user
+  - name: Academic structure
+    description: Programs, terms and versioned course templates (administrators only)
+  - name: Courses
+    description: Courses, their sections and enrollments
 paths:
   /api/v1/health:
     get:
@@ -144,7 +156,380 @@ paths:
                 $ref: "#/components/schemas/MeResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /api/v1/programs:
+    get:
+      operationId: listPrograms
+      summary: List academic programs
+      description: Administrators only. Ordered by `code`.
+      tags:
+        - Academic structure
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of programs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgramPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createProgram
+      summary: Create an academic program
+      description: Administrators only. Audited as `program.created`.
+      tags:
+        - Academic structure
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProgramCreate"
+      responses:
+        "201":
+          description: Program created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Program"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/terms:
+    get:
+      operationId: listTerms
+      summary: List academic terms
+      description: Administrators only. Ordered by `code`.
+      tags:
+        - Academic structure
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of terms.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TermPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createTerm
+      summary: Create an academic term
+      description: Administrators only. `endsOn` must not be before `startsOn`. Audited as `term.created`.
+      tags:
+        - Academic structure
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TermCreate"
+      responses:
+        "201":
+          description: Term created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Term"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/course-templates:
+    get:
+      operationId: listCourseTemplates
+      summary: List course templates with their latest version
+      description: Administrators only. Ordered by `code`.
+      tags:
+        - Academic structure
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of course templates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseTemplatePage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createCourseTemplateVersion
+      summary: Create a course template or a new version of one
+      description: |
+        Administrators only. If no template has this `code`, the template is created at version 1.
+        Otherwise a new version is added (latest + 1) and earlier versions are kept unchanged.
+        `programId` must match the existing template's program. Audited as `course_template.created`
+        or `course_template.version_created`.
+      tags:
+        - Academic structure
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CourseTemplateCreate"
+      responses:
+        "201":
+          description: Template version created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseTemplateVersion"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses:
+    get:
+      operationId: listCourses
+      summary: List courses visible to the caller
+      description: |
+        Administrators see every course. Other users see only courses where they hold an active
+        enrollment; students see only published ones. Ordered by `code`.
+      tags:
+        - Courses
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of courses.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoursePage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createCourse
+      summary: Create a course from a course template version
+      description: |
+        Administrators only. Copies the template version's sections into the new course in a single
+        transaction. The template must belong to `programId` (or to no program). Without
+        `templateVersion`, the latest version is used. Audited as `course.created`.
+      tags:
+        - Courses
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CourseCreate"
+      responses:
+        "201":
+          description: Course created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Course"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}:
+    get:
+      operationId: getCourse
+      summary: Get a course the caller can access
+      tags:
+        - Courses
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: The course.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Course"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/enrollments:
+    get:
+      operationId: listCourseEnrollments
+      summary: List a course's enrollments
+      description: |
+        Administrators and the course's staff (design team, instructors, non-editing instructors)
+        see every enrollment. Students see only their own. Ordered by user email.
+      tags:
+        - Courses
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of enrollments.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrollmentPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createCourseEnrollment
+      summary: Enroll a user in a course with a course-level role
+      description: |
+        Administrators only. Identify the user by `userId` or `email` (exactly one). A user can hold
+        one enrollment (one role) per course. Audited as `enrollment.created`.
+      tags:
+        - Courses
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollmentCreate"
+      responses:
+        "201":
+          description: User enrolled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Enrollment"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/sections:
+    get:
+      operationId: listCourseSections
+      summary: List a course's sections in order
+      description: Students see only visible sections; administrators and course staff see all.
+      tags:
+        - Courses
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of sections ordered by `position`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SectionPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      description: Page size.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque cursor from the previous page's `nextCursor`.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 512
+    CourseId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   securitySchemes:
     sessionCookie:
       type: apiKey
@@ -219,6 +604,47 @@ components:
             status: 429
             detail: Too many attempts. Try again later.
             code: RATE_LIMITED
+    NotFound:
+      description: "The resource does not exist or the caller cannot access it (`code`: `NOT_FOUND`)."
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: about:blank
+            title: Not Found
+            status: 404
+            detail: Course not found.
+            code: NOT_FOUND
+    Conflict:
+      description: |
+        A uniqueness rule was violated: `PROGRAM_CODE_TAKEN`, `TERM_CODE_TAKEN`, `COURSE_CODE_TAKEN`,
+        `ENROLLMENT_EXISTS` or `TEMPLATE_VERSION_CONFLICT`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: about:blank
+            title: Conflict
+            status: 409
+            detail: The user is already enrolled in this course.
+            code: ENROLLMENT_EXISTS
+    UnprocessableContent:
+      description: |
+        The request is well-formed but refers to missing or incompatible data: `INVALID_TERM_DATES`,
+        `PROGRAM_NOT_FOUND`, `PROGRAM_INACTIVE`, `TERM_NOT_FOUND`, `TEMPLATE_NOT_FOUND`,
+        `TEMPLATE_VERSION_NOT_FOUND`, `TEMPLATE_PROGRAM_MISMATCH`, `USER_NOT_FOUND` or `USER_INACTIVE`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: about:blank
+            title: Unprocessable Entity
+            status: 422
+            detail: The course template belongs to a different program.
+            code: TEMPLATE_PROGRAM_MISMATCH
   schemas:
     HealthResponse:
       type: object
@@ -365,3 +791,456 @@ components:
             - UNSUPPORTED_MEDIA_TYPE
             - REQUEST_ERROR
             - INTERNAL_ERROR
+            - INVALID_CURSOR
+            - PROGRAM_CODE_TAKEN
+            - TERM_CODE_TAKEN
+            - COURSE_CODE_TAKEN
+            - ENROLLMENT_EXISTS
+            - TEMPLATE_VERSION_CONFLICT
+            - INVALID_TERM_DATES
+            - PROGRAM_NOT_FOUND
+            - PROGRAM_INACTIVE
+            - TERM_NOT_FOUND
+            - TEMPLATE_NOT_FOUND
+            - TEMPLATE_VERSION_NOT_FOUND
+            - TEMPLATE_PROGRAM_MISMATCH
+            - USER_NOT_FOUND
+            - USER_INACTIVE
+    Code:
+      type: string
+      minLength: 1
+      maxLength: 32
+      pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    CourseRole:
+      type: string
+      description: Course-level role. `administrator` is system-level and never a course role.
+      enum:
+        - design_team
+        - instructor
+        - non_editing_instructor
+        - student
+    CourseStatus:
+      type: string
+      enum:
+        - draft
+        - published
+        - archived
+    Program:
+      type: object
+      required: [id, code, name, description, isActive, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          $ref: "#/components/schemas/Code"
+        name:
+          type: string
+        description:
+          type: [string, "null"]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ProgramCreate:
+      type: object
+      required: [code, name]
+      additionalProperties: false
+      properties:
+        code:
+          $ref: "#/components/schemas/Code"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 2000
+    ProgramPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Program"
+        nextCursor:
+          type: [string, "null"]
+    Term:
+      type: object
+      required: [id, code, name, startsOn, endsOn, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          $ref: "#/components/schemas/Code"
+        name:
+          type: string
+        startsOn:
+          type: string
+          format: date
+        endsOn:
+          type: string
+          format: date
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    TermCreate:
+      type: object
+      required: [code, name, startsOn, endsOn]
+      additionalProperties: false
+      properties:
+        code:
+          $ref: "#/components/schemas/Code"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        startsOn:
+          type: string
+          format: date
+        endsOn:
+          type: string
+          format: date
+    TermPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Term"
+        nextCursor:
+          type: [string, "null"]
+    TemplateSectionInput:
+      type: object
+      required: [title]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        summary:
+          type: string
+          maxLength: 2000
+        isVisible:
+          type: boolean
+          default: true
+    CourseTemplateCreate:
+      type: object
+      required: [code, title, sections]
+      additionalProperties: false
+      properties:
+        code:
+          $ref: "#/components/schemas/Code"
+        programId:
+          type: [string, "null"]
+          format: uuid
+          description: Omit or null for templates shared across programs.
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 2000
+        sections:
+          type: array
+          maxItems: 100
+          description: Ordered sections; positions are assigned from array order.
+          items:
+            $ref: "#/components/schemas/TemplateSectionInput"
+    TemplateSection:
+      type: object
+      required: [id, title, summary, position, isVisible]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        summary:
+          type: [string, "null"]
+        position:
+          type: integer
+          minimum: 0
+        isVisible:
+          type: boolean
+    CourseTemplateVersion:
+      type: object
+      description: An immutable template version and its sections.
+      required: [id, templateId, programId, code, version, title, description, sections, createdAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        templateId:
+          type: string
+          format: uuid
+        programId:
+          type: [string, "null"]
+          format: uuid
+        code:
+          $ref: "#/components/schemas/Code"
+        version:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+        description:
+          type: [string, "null"]
+        sections:
+          type: array
+          items:
+            $ref: "#/components/schemas/TemplateSection"
+        createdAt:
+          type: string
+          format: date-time
+    CourseTemplate:
+      type: object
+      required: [id, programId, code, title, description, latestVersion, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        programId:
+          type: [string, "null"]
+          format: uuid
+        code:
+          $ref: "#/components/schemas/Code"
+        title:
+          type: string
+          description: Title of the latest version.
+        description:
+          type: [string, "null"]
+        latestVersion:
+          type: [object, "null"]
+          description: Null only for templates created before versioning (no versions yet).
+          required: [id, version, createdAt]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            version:
+              type: integer
+              minimum: 1
+            createdAt:
+              type: string
+              format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CourseTemplatePage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CourseTemplate"
+        nextCursor:
+          type: [string, "null"]
+    Course:
+      type: object
+      required:
+        - id
+        - programId
+        - termId
+        - templateId
+        - templateVersionId
+        - code
+        - title
+        - description
+        - status
+        - viewerRole
+        - createdAt
+        - updatedAt
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        programId:
+          type: [string, "null"]
+          format: uuid
+        termId:
+          type: string
+          format: uuid
+        templateId:
+          type: [string, "null"]
+          format: uuid
+        templateVersionId:
+          type: [string, "null"]
+          format: uuid
+        code:
+          $ref: "#/components/schemas/Code"
+        title:
+          type: string
+        description:
+          type: [string, "null"]
+        status:
+          $ref: "#/components/schemas/CourseStatus"
+        viewerRole:
+          description: The caller's role in this course, or null (e.g. an administrator who is not enrolled).
+          oneOf:
+            - $ref: "#/components/schemas/CourseRole"
+            - type: "null"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CourseCreate:
+      type: object
+      required: [programId, termId, templateId, code]
+      additionalProperties: false
+      properties:
+        programId:
+          type: string
+          format: uuid
+        termId:
+          type: string
+          format: uuid
+        templateId:
+          type: string
+          format: uuid
+        templateVersion:
+          type: integer
+          minimum: 1
+          description: Defaults to the template's latest version.
+        code:
+          $ref: "#/components/schemas/Code"
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Defaults to the template version's title.
+        description:
+          type: string
+          maxLength: 2000
+        status:
+          type: string
+          enum: [draft, published]
+          default: draft
+    CoursePage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Course"
+        nextCursor:
+          type: [string, "null"]
+    Section:
+      type: object
+      required: [id, title, summary, position, isVisible]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        summary:
+          type: [string, "null"]
+        position:
+          type: integer
+          minimum: 0
+        isVisible:
+          type: boolean
+    SectionPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Section"
+        nextCursor:
+          type: [string, "null"]
+    EnrollmentCreate:
+      type: object
+      required: [role]
+      additionalProperties: false
+      oneOf:
+        - required: [userId]
+        - required: [email]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          minLength: 1
+          maxLength: 254
+        role:
+          $ref: "#/components/schemas/CourseRole"
+    Enrollment:
+      type: object
+      required: [id, courseId, role, status, user, createdAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        courseId:
+          type: string
+          format: uuid
+        role:
+          $ref: "#/components/schemas/CourseRole"
+        status:
+          type: string
+          enum: [active, inactive]
+        user:
+          type: object
+          required: [id, email, givenName, familyName]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+            givenName:
+              type: string
+            familyName:
+              type: string
+        createdAt:
+          type: string
+          format: date-time
+    EnrollmentPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Enrollment"
+        nextCursor:
+          type: [string, "null"]
