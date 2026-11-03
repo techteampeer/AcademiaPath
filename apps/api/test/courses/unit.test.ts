@@ -9,17 +9,29 @@ import {
 } from '../../src/auth/authorization.js';
 import { courseRoleEnum } from '../../src/db/schema/index.js';
 import { ApiProblem } from '../../src/http/errors.js';
+import { normalizeSafeHttpUrl } from '../../src/content/urls.js';
 import { decodeCursor, encodeCursor, toPage } from '../../src/http/pagination.js';
 
 describe('course role permissions', () => {
   it('grants exactly the documented permissions per role (default deny)', () => {
     const granted = (role: keyof typeof COURSE_ROLE_PERMISSIONS) => [...COURSE_ROLE_PERMISSIONS[role]].sort();
-    const staff: CoursePermission[] = ['course.view', 'course.viewUnpublished', 'enrollments.viewAll', 'sections.viewHidden'];
+    const staff: CoursePermission[] = [
+      'course.view',
+      'course.viewUnpublished',
+      'enrollments.viewAll',
+      'sections.viewHidden',
+      'content.viewUnapproved',
+    ];
     assert.deepEqual(granted('student'), ['course.view']);
     assert.deepEqual(granted('non_editing_instructor'), [...staff].sort());
-    assert.deepEqual(granted('instructor'), [...staff, 'content.edit'].sort());
-    assert.deepEqual(granted('design_team'), [...staff, 'content.edit'].sort());
-    assert.equal(hasCoursePermission('non_editing_instructor', 'content.edit'), false);
+    assert.deepEqual(granted('instructor'), [...staff, 'content.edit', 'content.submit'].sort());
+    assert.deepEqual(granted('design_team'), [...staff, 'content.edit', 'content.submit', 'content.review'].sort());
+    assert.equal(hasCoursePermission('instructor', 'content.review'), false, 'instructors never approve');
+    for (const permission of ['content.edit', 'content.submit', 'content.review'] as const) {
+      assert.equal(hasCoursePermission('non_editing_instructor', permission), false);
+      assert.equal(hasCoursePermission('student', permission), false);
+    }
+    assert.equal(hasCoursePermission('student', 'content.viewUnapproved'), false);
     assert.equal(hasCoursePermission('student', 'enrollments.viewAll'), false);
     assert.equal(hasCoursePermission(null, 'course.view'), false);
   });
@@ -62,5 +74,34 @@ describe('cursor pagination', () => {
     assert.equal(page.items.length, 2);
     assert.deepEqual(decodeCursor(page.nextCursor ?? undefined, 'string'), { key: 'C2', id: rows[1]?.id });
     assert.equal(toPage(rows.slice(0, 2), 2, (row) => [row.code, row.id]).nextCursor, null);
+  });
+});
+
+describe('external URL safety', () => {
+  it('accepts absolute http(s) URLs and normalizes them', () => {
+    assert.equal(normalizeSafeHttpUrl('https://www.axelos.com/itil'), 'https://www.axelos.com/itil');
+    assert.equal(normalizeSafeHttpUrl('  HTTP://Example.edu/path?q=1#x  '), 'http://example.edu/path?q=1#x');
+  });
+
+  it('rejects other schemes, relative URLs, credentials and malformed input', () => {
+    for (const value of [
+      'javascript:alert(1)',
+      'JavaScript:alert(1)',
+      'data:text/html,<script>alert(1)</script>',
+      'vbscript:msgbox(1)',
+      'file:///etc/passwd',
+      'ftp://example.com/file',
+      '/relative/path',
+      '//example.com/protocol-relative',
+      'example.com',
+      'https://user:secret@example.com/',
+      'https://exa mple.com/',
+      'https://example.com/\nnext',
+      'http://',
+      '',
+      `https://example.com/${'a'.repeat(2048)}`,
+    ]) {
+      assert.equal(normalizeSafeHttpUrl(value), null, value.slice(0, 40));
+    }
   });
 });

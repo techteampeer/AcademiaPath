@@ -13,16 +13,30 @@ export type CoursePermission =
   | 'course.viewUnpublished'
   | 'sections.viewHidden'
   | 'enrollments.viewAll'
-  | 'content.edit';
+  /** See working copies and review status of content (otherwise only approved live versions). */
+  | 'content.viewUnapproved'
+  | 'content.edit'
+  | 'content.submit'
+  | 'content.review';
 
 /**
  * Course-level permissions per role. Default deny: a permission not listed here is not granted.
  * Enrolling users and managing institutional structures are administrator-only (system level).
  */
+const STAFF_READ: CoursePermission[] = [
+  'course.view',
+  'course.viewUnpublished',
+  'sections.viewHidden',
+  'enrollments.viewAll',
+  'content.viewUnapproved',
+];
+
 export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermission>> = {
-  design_team: new Set(['course.view', 'course.viewUnpublished', 'sections.viewHidden', 'enrollments.viewAll', 'content.edit']),
-  instructor: new Set(['course.view', 'course.viewUnpublished', 'sections.viewHidden', 'enrollments.viewAll', 'content.edit']),
-  non_editing_instructor: new Set(['course.view', 'course.viewUnpublished', 'sections.viewHidden', 'enrollments.viewAll']),
+  // Design team reviews (approves/returns) content and can also author it.
+  design_team: new Set([...STAFF_READ, 'content.edit', 'content.submit', 'content.review']),
+  // Instructors author and submit content but never approve it.
+  instructor: new Set([...STAFF_READ, 'content.edit', 'content.submit']),
+  non_editing_instructor: new Set(STAFF_READ),
   student: new Set(['course.view']),
 };
 

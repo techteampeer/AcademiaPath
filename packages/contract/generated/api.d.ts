@@ -269,6 +269,107 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{id}/sections/{sectionId}/activities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a section's content in order
+         * @description Course staff and administrators see the working copy and review status of every item.
+         *     Students see only approved, visible content in visible sections of published courses
+         *     they are enrolled in (the live version), without review metadata.
+         */
+        get: operations["listSectionActivities"];
+        put?: never;
+        /**
+         * Add a text lesson or external link to a section
+         * @description Requires `content.edit` in the course (instructor, design team) or the administrator role.
+         *     New content is always a `draft` and is appended after the section's existing content.
+         *     Link URLs must be absolute `http`/`https` URLs without credentials; they are never fetched
+         *     by the server. Audited as `activity.created`.
+         */
+        post: operations["createSectionActivity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/activities/{activityId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one activity
+         * @description Staff receive the working copy, review status and live version. Students receive only the
+         *     approved live version; anything else responds `404`.
+         */
+        get: operations["getActivity"];
+        /**
+         * Replace the working copy of draft, returned or approved content
+         * @description Requires `content.edit`. Content waiting for review cannot be edited (`409`). Editing
+         *     approved content sets the status back to `draft`; students keep seeing the previously
+         *     approved live version until the revision is approved. Returned content stays `returned`
+         *     until it is resubmitted. The body must match the activity's type. Audited as
+         *     `activity.updated`.
+         */
+        put: operations["updateActivity"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/activities/{activityId}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit draft or returned content for review
+         * @description Requires `content.submit` (instructor, design team) or the administrator role. Send no request body. Audited as `activity.submitted`.
+         */
+        post: operations["submitActivityForReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/activities/{activityId}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve or return submitted content
+         * @description Requires `content.review` (design team) or the administrator role; instructors cannot
+         *     approve. The person who submitted the content cannot approve it
+         *     (`SELF_REVIEW_NOT_ALLOWED`). Approving publishes the working copy as the live version;
+         *     returning requires a `comment`. Audited as `activity.approved` or `activity.returned`.
+         */
+        post: operations["reviewActivity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -334,7 +435,7 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED";
         };
         Code: string;
         /**
@@ -544,6 +645,97 @@ export interface components {
             items: components["schemas"]["Enrollment"][];
             nextCursor: string | null;
         };
+        /**
+         * @description Content types supported by the content API.
+         * @enum {string}
+         */
+        ActivityType: "page" | "link";
+        /** @enum {string} */
+        ReviewStatus: "draft" | "submitted" | "approved" | "returned";
+        /** @description Plain-text lesson. Clients must render `body` as text, never as HTML. */
+        PageContent: {
+            body: string;
+        };
+        /** @description External resource. `url` is an absolute http(s) URL. */
+        LinkContent: {
+            /** Format: uri */
+            url: string;
+            description: string | null;
+        };
+        ActivityContent: components["schemas"]["PageContent"] | components["schemas"]["LinkContent"];
+        PageContentInput: {
+            title: string;
+            /** @description Plain text; line breaks are preserved. HTML is not interpreted. */
+            body: string;
+        };
+        LinkContentInput: {
+            title: string;
+            /** @description Absolute http or https URL without embedded credentials. */
+            url: string;
+            description?: string;
+        };
+        ActivityCreate: (components["schemas"]["PageContentInput"] & {
+            /** @constant */
+            type: "page";
+        }) | (components["schemas"]["LinkContentInput"] & {
+            /** @constant */
+            type: "link";
+        });
+        /** @description Must match the activity's type. */
+        ActivityUpdate: components["schemas"]["PageContentInput"] | components["schemas"]["LinkContentInput"];
+        ActivityReviewDecision: {
+            /** @enum {string} */
+            decision: "approve" | "return";
+            /** @description Required when returning content. */
+            comment?: string;
+        };
+        /** @description Review metadata (staff only). */
+        ActivityReview: {
+            status: components["schemas"]["ReviewStatus"];
+            comment: string | null;
+            /** Format: date-time */
+            submittedAt: string | null;
+            /** Format: uuid */
+            submittedByUserId: string | null;
+            /** Format: date-time */
+            reviewedAt: string | null;
+            /** Format: uuid */
+            reviewedByUserId: string | null;
+        };
+        /** @description The approved version students currently see (staff only). */
+        ActivityLiveVersion: {
+            title: string;
+            content: components["schemas"]["ActivityContent"];
+            /** Format: date-time */
+            approvedAt: string;
+        };
+        /**
+         * @description For staff, `title`/`content` are the working copy and `review`/`liveVersion` are present.
+         *     For students, `title`/`content` are the approved live version and `review`/`liveVersion` are null.
+         */
+        Activity: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            courseId: string;
+            /** Format: uuid */
+            sectionId: string;
+            type: components["schemas"]["ActivityType"];
+            position: number;
+            isVisible: boolean;
+            title: string;
+            content: components["schemas"]["ActivityContent"];
+            review: components["schemas"]["ActivityReview"] | null;
+            liveVersion: components["schemas"]["ActivityLiveVersion"] | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ActivityPage: {
+            items: components["schemas"]["Activity"][];
+            nextCursor: string | null;
+        };
     };
     responses: {
         /** @description The request body is missing or invalid (`code`: `VALIDATION_ERROR`). */
@@ -586,7 +778,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
-        /** @description `code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED` or `FORBIDDEN`. */
+        /** @description `code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` or `SELF_REVIEW_NOT_ALLOWED`. */
         Forbidden: {
             headers: {
                 [name: string]: unknown;
@@ -644,7 +836,8 @@ export interface components {
         };
         /**
          * @description A uniqueness rule was violated: `PROGRAM_CODE_TAKEN`, `TERM_CODE_TAKEN`, `COURSE_CODE_TAKEN`,
-         *     `ENROLLMENT_EXISTS` or `TEMPLATE_VERSION_CONFLICT`.
+         *     `ENROLLMENT_EXISTS` or `TEMPLATE_VERSION_CONFLICT`; or an invalid review transition:
+         *     `ACTIVITY_UNDER_REVIEW`, `INVALID_REVIEW_STATE`.
          */
         Conflict: {
             headers: {
@@ -666,7 +859,8 @@ export interface components {
         /**
          * @description The request is well-formed but refers to missing or incompatible data: `INVALID_TERM_DATES`,
          *     `PROGRAM_NOT_FOUND`, `PROGRAM_INACTIVE`, `TERM_NOT_FOUND`, `TEMPLATE_NOT_FOUND`,
-         *     `TEMPLATE_VERSION_NOT_FOUND`, `TEMPLATE_PROGRAM_MISMATCH`, `USER_NOT_FOUND` or `USER_INACTIVE`.
+         *     `TEMPLATE_VERSION_NOT_FOUND`, `TEMPLATE_PROGRAM_MISMATCH`, `USER_NOT_FOUND`, `USER_INACTIVE`,
+         *     `INVALID_URL`, `CONTENT_TYPE_MISMATCH` or `REVIEW_COMMENT_REQUIRED`.
          */
         UnprocessableContent: {
             headers: {
@@ -692,6 +886,8 @@ export interface components {
         /** @description Opaque cursor from the previous page's `nextCursor`. */
         Cursor: string;
         CourseId: string;
+        SectionId: string;
+        ActivityId: string;
     };
     requestBodies: never;
     headers: {
@@ -1160,6 +1356,188 @@ export interface operations {
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listSectionActivities: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from the previous page's `nextCursor`. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                sectionId: components["parameters"]["SectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of activities ordered by `position`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityPage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createSectionActivity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                sectionId: components["parameters"]["SectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivityCreate"];
+            };
+        };
+        responses: {
+            /** @description Draft created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Activity"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    getActivity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The activity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Activity"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateActivity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivityUpdate"];
+            };
+        };
+        responses: {
+            /** @description Working copy updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Activity"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    submitActivityForReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Submitted for review. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Activity"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    reviewActivity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivityReviewDecision"];
+            };
+        };
+        responses: {
+            /** @description Review decision recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Activity"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
         };
     };
 }

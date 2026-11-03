@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
+import { contentAbilities } from '@/components/content/contentDisplay';
+import { lessonHref, SectionActivities } from '@/components/content/SectionActivities';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { Alert } from '@/components/ui/Alert';
@@ -11,24 +13,45 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
-import type { Course, Section } from '@/lib/api/types';
+import type { Activity, Course, CurrentUser, Section } from '@/lib/api/types';
 import { CourseStatusBadge } from './CourseCard';
 import { COURSE_ROLE_LABELS } from './courseDisplay';
 
-/** Upper bound on section pages fetched for one course (100 sections per page). */
-const MAX_SECTION_PAGES = 10;
+/** Upper bound on pages fetched per list (100 items per page). */
+const MAX_PAGES = 10;
+
+type ActivitiesBySection = Record<string, Activity[]>;
 
 type DetailState =
   | { status: 'loading' }
   | { status: 'not-found' }
   | { status: 'error' }
-  | { status: 'ready'; course: Course; sections: Section[] };
+  | { status: 'ready'; course: Course; sections: Section[]; activities: ActivitiesBySection };
 
-export function CourseDetail({ courseId }: { courseId: string }) {
-  return <RequireAuth>{() => <CourseDetailContent courseId={courseId} />}</RequireAuth>;
+async function loadAll<T>(fetchPage: (cursor: string | null) => Promise<{ items: T[]; nextCursor: string | null }>): Promise<T[]> {
+  const items: T[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const result = await fetchPage(cursor);
+    items.push(...result.items);
+    cursor = result.nextCursor;
+    if (!cursor) break;
+  }
+  return items;
 }
 
-function CourseDetailContent({ courseId }: { courseId: string }) {
+async function loadActivities(courseId: string, sections: Section[]): Promise<ActivitiesBySection> {
+  const lists = await Promise.all(
+    sections.map((section) => loadAll((cursor) => api.listActivities(courseId, section.id, { limit: 100, cursor }))),
+  );
+  return Object.fromEntries(sections.map((section, index) => [section.id, lists[index] ?? []]));
+}
+
+export function CourseDetail({ courseId }: { courseId: string }) {
+  return <RequireAuth>{(user) => <CourseDetailContent courseId={courseId} user={user} />}</RequireAuth>;
+}
+
+function CourseDetailContent({ courseId, user }: { courseId: string; user: CurrentUser }) {
   const { handleUnauthorized } = useSession();
   const [state, setState] = useState<DetailState>({ status: 'loading' });
 
@@ -36,15 +59,9 @@ function CourseDetailContent({ courseId }: { courseId: string }) {
     setState({ status: 'loading' });
     try {
       const course = await api.getCourse(courseId);
-      const sections: Section[] = [];
-      let cursor: string | null = null;
-      for (let page = 0; page < MAX_SECTION_PAGES; page += 1) {
-        const result = await api.listSections(courseId, { limit: 100, cursor });
-        sections.push(...result.items);
-        cursor = result.nextCursor;
-        if (!cursor) break;
-      }
-      setState({ status: 'ready', course, sections });
+      const sections = await loadAll((cursor) => api.listSections(courseId, { limit: 100, cursor }));
+      const activities = await loadActivities(courseId, sections);
+      setState({ status: 'ready', course, sections, activities });
     } catch (error) {
       if (isApiError(error, 401)) handleUnauthorized();
       // The API answers 404 both for missing courses and for courses this user may not access.
@@ -56,6 +73,16 @@ function CourseDetailContent({ courseId }: { courseId: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const refreshActivities = useCallback(async () => {
+    if (state.status !== 'ready') return;
+    try {
+      const activities = await loadActivities(courseId, state.sections);
+      setState({ ...state, activities });
+    } catch (error) {
+      if (isApiError(error, 401)) handleUnauthorized();
+    }
+  }, [courseId, state, handleUnauthorized]);
 
   const backLink = (
     <Link href="/dashboard" className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
@@ -91,7 +118,16 @@ function CourseDetailContent({ courseId }: { courseId: string }) {
     );
   }
 
-  const { course, sections } = state;
+  const { course, sections, activities } = state;
+  const abilities = contentAbilities(user, course.viewerRole);
+  const waitingForReview = abilities.review
+    ? sections.flatMap((section) =>
+        (activities[section.id] ?? [])
+          .filter((activity) => activity.review?.status === 'submitted')
+          .map((activity) => ({ activity, section })),
+      )
+    : [];
+
   return (
     <div className="space-y-8">
       <div>
@@ -106,6 +142,28 @@ function CourseDetailContent({ courseId }: { courseId: string }) {
         </p>
         {course.description ? <p className="mt-3 max-w-3xl text-slate-600">{course.description}</p> : null}
       </div>
+
+      {abilities.review ? (
+        <Card as="section" aria-labelledby="review-queue-heading">
+          <h2 id="review-queue-heading" className="text-lg font-semibold text-slate-900">
+            Waiting for review
+          </h2>
+          {waitingForReview.length ? (
+            <ul className="mt-3 space-y-2">
+              {waitingForReview.map(({ activity, section }) => (
+                <li key={activity.id} className="text-sm">
+                  <Link href={lessonHref(course.id, activity.id)} className="font-medium text-brand-700 hover:underline">
+                    {activity.title}
+                  </Link>
+                  <span className="text-slate-500"> · {section.title}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm text-slate-600">Nothing is waiting for review.</p>
+          )}
+        </Card>
+      ) : null}
 
       <section aria-labelledby="sections-heading">
         <h2 id="sections-heading" className="text-xl font-semibold tracking-tight text-slate-900">
@@ -125,6 +183,14 @@ function CourseDetailContent({ courseId }: { courseId: string }) {
                   {section.isVisible ? null : <Badge tone="warning">Hidden from students</Badge>}
                 </div>
                 {section.summary ? <p className="mt-2 text-sm text-slate-600">{section.summary}</p> : null}
+                <SectionActivities
+                  courseId={course.id}
+                  sectionId={section.id}
+                  sectionTitle={section.title}
+                  items={activities[section.id] ?? []}
+                  abilities={abilities}
+                  onChanged={refreshActivities}
+                />
               </Card>
             ))}
           </ol>

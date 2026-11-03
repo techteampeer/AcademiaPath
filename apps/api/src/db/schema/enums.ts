@@ -31,6 +31,9 @@ export const activityTypeEnum = pgEnum('activity_type', [
   'lti',
 ]);
 
+/** Review workflow for course content. New content always starts as `draft`. */
+export const activityReviewStatusEnum = pgEnum('activity_review_status', ['draft', 'submitted', 'approved', 'returned']);
+
 export const localeEnum = pgEnum('locale', ['es', 'en']);
 
 export type SystemRole = (typeof systemRoleEnum.enumValues)[number];
@@ -39,6 +42,7 @@ export type CourseStatus = (typeof courseStatusEnum.enumValues)[number];
 export type EnrollmentStatus = (typeof enrollmentStatusEnum.enumValues)[number];
 export type ActivityType = (typeof activityTypeEnum.enumValues)[number];
 export type Locale = (typeof localeEnum.enumValues)[number];
+export type ActivityReviewStatus = (typeof activityReviewStatusEnum.enumValues)[number];
 
 /** The five AcademiaPath role categories: one system-level, four course-level. */
 export type RoleCategory = Extract<SystemRole, 'administrator'> | CourseRole;
