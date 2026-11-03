@@ -15,6 +15,21 @@ export type ProblemDetails = {
   code: string;
 };
 
+/**
+ * Throw from route handlers (including inside database transactions, which then roll back) to
+ * respond with an RFC 9457 problem. `message` is the client-safe `detail`.
+ */
+export class ApiProblem extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    detail: string,
+  ) {
+    super(detail);
+    this.name = 'ApiProblem';
+  }
+}
+
 export function sendError(reply: FastifyReply, status: number, code: string, detail: string): FastifyReply {
   const problem: ProblemDetails = {
     type: 'about:blank',
@@ -36,6 +51,9 @@ const CLIENT_ERROR_CODES: Record<number, string> = {
 /** All errors become RFC 9457 problem details. Internal error details are never returned. */
 export function registerErrorHandling(app: FastifyInstance): void {
   app.setErrorHandler((error: FastifyError, request, reply) => {
+    if (error instanceof ApiProblem) {
+      return sendError(reply, error.status, error.code, error.message);
+    }
     if (error.validation) {
       return sendError(reply, 400, 'VALIDATION_ERROR', 'Request validation failed.');
     }

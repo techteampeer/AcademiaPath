@@ -5,7 +5,9 @@ import { createAuthHooks, createOriginCheck } from './auth/hooks.js';
 import type { AppConfig } from './config.js';
 import type { Database } from './db/client.js';
 import { registerErrorHandling } from './http/errors.js';
+import { academicRoutes } from './routes/academic.js';
 import { authRoutes } from './routes/auth.js';
+import { courseRoutes } from './routes/courses.js';
 import { healthRoutes } from './routes/health.js';
 import { meRoutes } from './routes/me.js';
 
@@ -58,6 +60,8 @@ export function buildApp({ config, database, logger = false }: BuildAppOptions) 
   app.register(healthRoutes, { prefix: API_PREFIX });
   app.register(authRoutes, { prefix: API_PREFIX });
   app.register(meRoutes, { prefix: API_PREFIX });
+  app.register(academicRoutes, { prefix: API_PREFIX });
+  app.register(courseRoutes, { prefix: API_PREFIX });
 
   return app;
 }

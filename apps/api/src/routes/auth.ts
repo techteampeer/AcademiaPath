@@ -1,5 +1,5 @@
-import { isIP } from 'node:net';
 import type { FastifyPluginAsync } from 'fastify';
+import { auditIp } from '../audit.js';
 import { clearSessionCookie, setSessionCookie } from '../auth/cookies.js';
 import { getAuth } from '../auth/hooks.js';
 import { getDummyPasswordHash, verifyPassword } from '../auth/password.js';
@@ -13,8 +13,6 @@ type LoginBody = { email: string; password: string };
 
 const normalizeEmail = (email: unknown) => String(email ?? '').trim().toLowerCase();
 
-/** Only valid IPs are audited; a malformed forwarded address must not break login or logout. */
-const auditIp = (ip: string) => (isIP(ip) ? ip : null);
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
   const { db, config } = app;
