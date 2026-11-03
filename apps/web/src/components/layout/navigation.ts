@@ -14,6 +14,10 @@ export const navSections: NavSection[] = [
     title: 'Overview',
     items: [{ href: '/', label: 'Home' }],
   },
+  {
+    title: 'Previews',
+    items: [{ href: '/preview/courses', label: 'Course components' }],
+  },
 ];
 
 export function isActivePath(pathname: string, href: string): boolean {

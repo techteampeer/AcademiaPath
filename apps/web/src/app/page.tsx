@@ -1,4 +1,6 @@
+import Link from 'next/link';
 import { Badge } from '@/components/ui/Badge';
+import { buttonClasses } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 
 const capabilities = [
@@ -35,6 +37,9 @@ export default function HomePage() {
             One place for universities to deliver courses, assess learning and support every student.
             This is an early development preview of the platform.
           </p>
+          <Link href="/preview/courses" className={buttonClasses({ className: 'mt-6' })}>
+            Preview course components
+          </Link>
         </Card>
       </section>
 

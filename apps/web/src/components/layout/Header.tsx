@@ -22,9 +22,9 @@ export function Header() {
           </span>
         </Link>
         <div className="flex items-center gap-3">
-          <Badge tone="brand" className="hidden sm:inline-flex">
-            Development preview
-          </Badge>
+          <span className="hidden sm:block">
+            <Badge tone="brand">Development preview</Badge>
+          </span>
           <MobileNav />
         </div>
       </div>
