@@ -13,6 +13,10 @@
     "dev:api": "pnpm --filter @academiapath/api run dev",
     "typecheck": "pnpm -r run typecheck",
     "build": "pnpm -r run build",
-    "validate:openapi": "pnpm --filter @academiapath/contract run validate"
+    "validate:openapi": "pnpm --filter @academiapath/contract run validate",
+    "test": "pnpm -r run test",
+    "db:generate": "pnpm --filter @academiapath/api run db:generate",
+    "db:check": "pnpm --filter @academiapath/api run db:check",
+    "db:migrate": "pnpm --filter @academiapath/api run db:migrate"
   }
 }
