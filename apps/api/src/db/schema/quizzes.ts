@@ -77,6 +77,8 @@ export const quizAttempts = pgTable(
   },
   (t) => [
     unique('quiz_attempts_activity_user_number_unique').on(t.activityId, t.userId, t.attemptNumber),
+    // Target of the gradebook's composite reference, so a grade always points at the same student's attempt.
+    unique('quiz_attempts_id_activity_user_unique').on(t.id, t.activityId, t.userId),
     uniqueIndex('quiz_attempts_one_in_progress_idx')
       .on(t.activityId, t.userId)
       .where(sql`${t.status} = 'in_progress'`),

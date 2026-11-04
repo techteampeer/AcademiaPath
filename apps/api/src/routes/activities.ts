@@ -20,13 +20,18 @@ import {
 } from './activity-schemas.js';
 import { pageSchema } from './course-schemas.js';
 import { readSettings, readSnapshotQuestions, settingsFromInput, type QuizSettingsInput, type QuizSnapshot } from '../quizzes/model.js';
+import { assignmentFromInput, readAssignment, rubricTotal, type AssignmentInput } from '../assignments/model.js';
 
 type SectionParams = { id: string; sectionId: string };
 type ActivityParams = { id: string; activityId: string };
 type PageInput = { title: string; body: string };
 type LinkInput = { title: string; url: string; description?: string };
-type CreateBody = ({ type: 'page' } & PageInput) | ({ type: 'link' } & LinkInput) | ({ type: 'quiz' } & QuizSettingsInput);
-type UpdateBody = PageInput | LinkInput | QuizSettingsInput;
+type CreateBody =
+  | ({ type: 'page' } & PageInput)
+  | ({ type: 'link' } & LinkInput)
+  | ({ type: 'quiz' } & QuizSettingsInput)
+  | ({ type: 'assignment' } & AssignmentInput);
+type UpdateBody = PageInput | LinkInput | QuizSettingsInput | AssignmentInput;
 type QuizStats = { questionCount: number; totalPoints: number };
 type ReviewBody = { decision: 'approve' | 'return'; comment?: string };
 
@@ -38,11 +43,12 @@ const forbidden = () => new ApiProblem(403, 'FORBIDDEN', 'You do not have permis
 
 /** Validated, type-specific content stored in `config`. Lesson text is stored as plain text. */
 function buildContent(type: ContentType, input: UpdateBody): ActivityConfig {
-  const kind: ContentType = 'body' in input ? 'page' : 'url' in input ? 'link' : 'quiz';
+  const kind: ContentType = 'body' in input ? 'page' : 'url' in input ? 'link' : 'rubric' in input ? 'assignment' : 'quiz';
   if (kind !== type) {
     throw new ApiProblem(422, 'CONTENT_TYPE_MISMATCH', `The request body does not match this ${type} activity.`);
   }
   if ('body' in input) return { body: input.body };
+  if ('rubric' in input) return assignmentFromInput(input);
   if (!('url' in input)) return settingsFromInput(input);
   const url = normalizeSafeHttpUrl(input.url);
   if (!url) {
@@ -58,6 +64,10 @@ const snapshotStats = (config: ActivityConfig | null): QuizStats => {
 
 /** Content as exposed by the API. Quizzes expose only settings and totals, never questions or answer keys. */
 function presentContent(type: ActivityRecord['type'], config: ActivityConfig | null, stats: QuizStats): ActivityConfig | null {
+  if (type === 'assignment') {
+    const assignment = readAssignment(config);
+    return { ...assignment, totalPoints: rubricTotal(assignment.rubric) };
+  }
   if (type !== 'quiz') return config;
   return { ...readSettings(config), ...stats };
 }

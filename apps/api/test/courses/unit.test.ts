@@ -11,6 +11,8 @@ import { courseRoleEnum } from '../../src/db/schema/index.js';
 import { ApiProblem } from '../../src/http/errors.js';
 import { normalizeSafeHttpUrl } from '../../src/content/urls.js';
 import { gradeResponse, normalizeResponse } from '../../src/quizzes/grading.js';
+import { assignmentFromInput, validateScores } from '../../src/assignments/model.js';
+import { courseTotal, toScale20 } from '../../src/grading/scale.js';
 import { buildQuestion, shuffle } from '../../src/quizzes/model.js';
 import { decodeCursor, encodeCursor, toPage } from '../../src/http/pagination.js';
 
@@ -24,9 +26,10 @@ describe('course role permissions', () => {
       'sections.viewHidden',
       'content.viewUnapproved',
     ];
-    assert.deepEqual(granted('student'), ['course.view', 'quiz.attempt']);
-    assert.deepEqual(granted('non_editing_instructor'), [...staff, 'quiz.viewResults'].sort());
-    assert.deepEqual(granted('instructor'), [...staff, 'content.edit', 'content.submit', 'quiz.viewResults'].sort());
+    const grader = ['grades.grade', 'grades.release', 'grades.view'];
+    assert.deepEqual(granted('student'), ['assignment.submit', 'course.view', 'grades.viewOwn', 'quiz.attempt']);
+    assert.deepEqual(granted('non_editing_instructor'), [...staff, 'quiz.viewResults', ...grader].sort());
+    assert.deepEqual(granted('instructor'), [...staff, 'content.edit', 'content.submit', 'quiz.viewResults', ...grader].sort());
     assert.deepEqual(granted('design_team'), [...staff, 'content.edit', 'content.submit', 'content.review'].sort());
     assert.equal(hasCoursePermission('design_team', 'quiz.attempt'), false, 'staff never take quizzes');
     assert.equal(hasCoursePermission('instructor', 'content.review'), false, 'instructors never approve');
@@ -150,5 +153,62 @@ describe('quiz grading (server-side)', () => {
     const shuffled = shuffle(items);
     assert.deepEqual([...shuffled].sort((a, b) => a - b), items);
     assert.deepEqual(items, Array.from({ length: 20 }, (_, i) => i), 'input not mutated');
+  });
+});
+
+describe('0–20 grade scale (server-side)', () => {
+  it('converts points to the 0–20 scale, rounding half up to one decimal', () => {
+    assert.equal(toScale20(6, 6), 20);
+    assert.equal(toScale20(0, 6), 0);
+    assert.equal(toScale20(7, 9), 15.6, '15.555… rounds up');
+    assert.equal(toScale20(1, 3), 6.7, '6.666… rounds up');
+    assert.equal(toScale20(2, 3), 13.3, '13.333… rounds down');
+    assert.equal(toScale20(1, 80), 0.3, 'exact half (0.25) rounds up, not to even');
+    assert.equal(toScale20(13, 40), 6.5);
+    assert.equal(toScale20(11, 20), 11);
+    for (const [points, max] of [[-1, 5], [6, 5], [1.5, 5], [0, 0]] as const) {
+      assert.throws(() => toScale20(points, max), RangeError);
+    }
+  });
+
+  it('sums points before converting the course total (no compounded rounding)', () => {
+    assert.deepEqual(courseTotal([{ points: 7, maxPoints: 9 }, { points: 1, maxPoints: 3 }]), { points: 8, maxPoints: 12, grade20: 13.3, gradedItems: 2 });
+    assert.deepEqual(courseTotal([]), { points: 0, maxPoints: 0, grade20: null, gradedItems: 0 });
+  });
+});
+
+describe('assignment rules (server-side)', () => {
+  const base = { title: 'Essay', instructions: 'Write.', dueAt: '2026-11-20T23:59:00-05:00', rubric: [{ title: ' Content ', maxPoints: 8 }, { title: 'Style', description: ' clear ', maxPoints: 4 }] };
+
+  it('normalizes dates and generates rubric criterion ids', () => {
+    const settings = assignmentFromInput({ ...base, lateUntil: '2026-11-22T23:59:00-05:00' });
+    assert.equal(settings.dueAt, '2026-11-21T04:59:00.000Z');
+    assert.equal(settings.lateUntil, '2026-11-23T04:59:00.000Z');
+    assert.deepEqual(settings.rubric.map((c) => [c.title, c.description, c.maxPoints]), [['Content', null, 8], ['Style', 'clear', 4]]);
+    assert.ok(settings.rubric.every((c) => /^[0-9a-f-]{36}$/.test(c.id)));
+  });
+
+  it('rejects late windows that end before the due date or more than 30 days after it', () => {
+    const invalid = (lateUntil: string) =>
+      assert.throws(() => assignmentFromInput({ ...base, lateUntil }), (e: unknown) => e instanceof ApiProblem && e.code === 'INVALID_DUE_DATE');
+    invalid('2026-11-20T23:59:00-05:00');
+    invalid('2026-11-19T00:00:00Z');
+    invalid('2026-12-31T00:00:00Z');
+  });
+
+  it('accepts only complete rubric scores within each criterion maximum', () => {
+    const { rubric } = assignmentFromInput(base);
+    const content = rubric[0]!;
+    const style = rubric[1]!;
+    assert.deepEqual(
+      validateScores(rubric, [{ criterionId: style.id, points: 4 }, { criterionId: content.id, points: 0 }]).map((s) => s.points),
+      [0, 4],
+    );
+    const invalid = (scores: Array<{ criterionId: string; points: number }>) =>
+      assert.throws(() => validateScores(rubric, scores), (e: unknown) => e instanceof ApiProblem && e.code === 'INVALID_RUBRIC_SCORES');
+    invalid([{ criterionId: content.id, points: 9 }, { criterionId: style.id, points: 1 }]);
+    invalid([{ criterionId: content.id, points: 1 }]);
+    invalid([{ criterionId: content.id, points: 1 }, { criterionId: content.id, points: 1 }]);
+    invalid([{ criterionId: content.id, points: 1 }, { criterionId: '00000000-0000-4000-8000-000000000000', points: 1 }]);
   });
 });

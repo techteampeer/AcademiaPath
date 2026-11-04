@@ -21,7 +21,17 @@ export type CoursePermission =
   /** Take quizzes (students only). */
   | 'quiz.attempt'
   /** See students' quiz attempts and server-computed results. */
-  | 'quiz.viewResults';
+  | 'quiz.viewResults'
+  /** Submit assignment work (students only; role-only check). */
+  | 'assignment.submit'
+  /** See one's own released grades (students only; role-only check). */
+  | 'grades.viewOwn'
+  /** See submissions and the course gradebook (read-only for administrators). */
+  | 'grades.view'
+  /** Grade submissions and give feedback (role-only check). */
+  | 'grades.grade'
+  /** Release grades to students (role-only check). */
+  | 'grades.release';
 
 /**
  * Course-level permissions per role. Default deny: a permission not listed here is not granted.
@@ -35,13 +45,16 @@ const STAFF_READ: CoursePermission[] = [
   'content.viewUnapproved',
 ];
 
+const GRADER: CoursePermission[] = ['grades.view', 'grades.grade', 'grades.release'];
+
 export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermission>> = {
   // Design team reviews (approves/returns) content and can also author it.
   design_team: new Set([...STAFF_READ, 'content.edit', 'content.submit', 'content.review']),
-  // Instructors author and submit content but never approve it.
-  instructor: new Set([...STAFF_READ, 'content.edit', 'content.submit', 'quiz.viewResults']),
-  non_editing_instructor: new Set([...STAFF_READ, 'quiz.viewResults']),
-  student: new Set(['course.view', 'quiz.attempt']),
+  // Instructors author and submit content but never approve it; they grade and release grades.
+  instructor: new Set([...STAFF_READ, 'content.edit', 'content.submit', 'quiz.viewResults', ...GRADER]),
+  // Non-editing instructors grade and release but never change content.
+  non_editing_instructor: new Set([...STAFF_READ, 'quiz.viewResults', ...GRADER]),
+  student: new Set(['course.view', 'quiz.attempt', 'assignment.submit', 'grades.viewOwn']),
 };
 
 export function hasCoursePermission(role: CourseRole | null, permission: CoursePermission): boolean {
@@ -64,6 +77,15 @@ export type CourseAccess = {
 
 export function canInCourse(access: CourseAccess, permission: CoursePermission): boolean {
   return access.isAdministrator || hasCoursePermission(access.viewerRole, permission);
+}
+
+/**
+ * Role-only check for student-only and grader-only actions (taking quizzes, submitting work, grading,
+ * releasing grades, reading one's own grades). Unlike `canInCourse`, the administrator override never
+ * applies: the caller must hold a course role that grants the permission.
+ */
+export function canAsCourseRole(access: CourseAccess, permission: CoursePermission): boolean {
+  return hasCoursePermission(access.viewerRole, permission);
 }
 
 /**

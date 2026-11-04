@@ -8,6 +8,7 @@ import { getPgError } from '../db/errors.js';
 import { activities, enrollments, quizAttemptAnswers, quizAttempts, quizQuestions, sections, users } from '../db/schema/index.js';
 import { ApiProblem } from '../http/errors.js';
 import { decodeCursor, paginationQuerySchema, toPage, type PaginationQuery } from '../http/pagination.js';
+import { isGradeReleased, syncQuizGrade } from '../grading/grades.js';
 import { gradeResponse, normalizeResponse } from '../quizzes/grading.js';
 import { buildQuestion, DEADLINE_GRACE_SECONDS, QUIZ_LIMITS, readSettings, readSnapshotQuestions, shuffle, type QuestionInput } from '../quizzes/model.js';
 import {
@@ -266,6 +267,8 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
       before: null,
       after: { activityId: row.activityId, userId: row.userId, score: row.score, maxScore: row.maxScore, gradedBy: 'server' },
     });
+    // The gradebook keeps one quiz grade per student: the best submitted attempt (never double-counted).
+    await syncQuizGrade(tx, request, row);
     return row;
   }
 
@@ -296,7 +299,8 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
       deadlineAt: attempt.deadlineAt,
       submittedAt: attempt.submittedAt,
       closedByTimeLimit: attempt.closedByTimeLimit,
-      resultsReleased: false,
+      // Release only reveals the released grade (via /grades/mine); per-attempt scores and keys stay hidden.
+      resultsReleased: await isGradeReleased(executor, attempt.activityId, attempt.userId),
       questions: answers.map((answer) => ({
         questionId: answer.questionId,
         position: answer.position,
@@ -441,6 +445,7 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
           attemptsUsed: attempts.length,
           timeLimitMinutes: settings.timeLimitMinutes,
           activeAttemptId: attempts.find((attempt) => attempt.status === 'in_progress')?.id ?? null,
+          gradeReleased: await isGradeReleased(tx, quiz.id, user.id),
           items: attempts.map((attempt) => ({
             id: attempt.id,
             attemptNumber: attempt.attemptNumber,

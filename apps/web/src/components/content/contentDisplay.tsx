@@ -17,8 +17,12 @@ export function contentAbilities(user: CurrentUser, viewerRole: CourseRole | nul
     review: admin || role === 'design_team',
     /** Instructors (editing or not) and administrators see quiz attempts and server-calculated scores. */
     viewResults: admin || role === 'instructor' || role === 'non_editing_instructor',
-    /** Only enrolled students take quizzes. */
+    /** Only enrolled students take quizzes and submit assignments (never via the administrator role). */
     attempt: role === 'student',
+    /** Gradebook and submissions (administrators read only). */
+    viewGrades: admin || role === 'instructor' || role === 'non_editing_instructor',
+    /** Grading and releasing grades need the course role itself; the administrator role never grants them. */
+    grade: role === 'instructor' || role === 'non_editing_instructor',
   };
 }
 
@@ -45,6 +49,7 @@ export const ACTIVITY_TYPE_LABELS: Record<Activity['type'], string> = {
   page: 'Lesson',
   link: 'External resource',
   quiz: 'Quiz',
+  assignment: 'Assignment',
 };
 
 /** Only absolute http(s) URLs are ever rendered as links (the API enforces this too). */

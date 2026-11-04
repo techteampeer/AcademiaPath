@@ -6,3 +6,4 @@ export * from './content.js';
 export * from './audit.js';
 export * from './auth.js';
 export * from './quizzes.js';
+export * from './grading.js';

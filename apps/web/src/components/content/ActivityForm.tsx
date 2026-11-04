@@ -3,13 +3,27 @@
 import { useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/Button';
 import { SelectField, TextField } from '@/components/ui/Field';
+import { fromLocalInput, toLocalInput } from '@/components/assignments/assignmentDisplay';
+import { emptyCriterion, RubricEditor, validateRubric, type CriterionDraft } from '@/components/assignments/RubricEditor';
 import type { Activity, ActivityCreate } from '@/lib/api/types';
 import { safeHttpUrl } from './contentDisplay';
 
 type ActivityType = Activity['type'];
-type Errors = Partial<Record<'title' | 'body' | 'url' | 'description' | 'instructions' | 'attemptLimit' | 'timeLimitMinutes', string>>;
+type Errors = Partial<
+  Record<'title' | 'body' | 'url' | 'description' | 'instructions' | 'attemptLimit' | 'timeLimitMinutes' | 'dueAt' | 'lateUntil' | 'rubric', string>
+>;
 
-const LIMITS = { title: 200, body: 20000, url: 2048, description: 1000, instructions: 5000, attemptLimit: 10, timeLimitMinutes: 300 } as const;
+const LIMITS = {
+  title: 200,
+  body: 20000,
+  url: 2048,
+  description: 1000,
+  instructions: 5000,
+  assignmentInstructions: 20000,
+  attemptLimit: 10,
+  timeLimitMinutes: 300,
+  lateWindowDays: 30,
+} as const;
 
 function wholeNumberIn(value: string, min: number, max: number): number | null {
   if (!/^\d+$/.test(value.trim())) return null;
@@ -48,7 +62,13 @@ export function ActivityForm({
     initialContent && 'url' in initialContent ? (initialContent.description ?? '') : '',
   );
   const quiz = initialContent && 'attemptLimit' in initialContent ? initialContent : null;
-  const [instructions, setInstructions] = useState(quiz?.instructions ?? '');
+  const assignment = initialContent && 'rubric' in initialContent ? initialContent : null;
+  const [instructions, setInstructions] = useState(quiz?.instructions ?? assignment?.instructions ?? '');
+  const [dueAt, setDueAt] = useState(toLocalInput(assignment?.dueAt ?? null));
+  const [lateUntil, setLateUntil] = useState(toLocalInput(assignment?.lateUntil ?? null));
+  const [criteria, setCriteria] = useState<CriterionDraft[]>(
+    assignment?.rubric.map((c) => ({ title: c.title, maxPoints: String(c.maxPoints), description: c.description ?? '' })) ?? [emptyCriterion()],
+  );
   const [attemptLimit, setAttemptLimit] = useState(String(quiz?.attemptLimit ?? 1));
   const [timeLimit, setTimeLimit] = useState(quiz?.timeLimitMinutes ? String(quiz.timeLimitMinutes) : '');
   const [shuffleQuestions, setShuffleQuestions] = useState(quiz?.shuffleQuestions ?? false);
@@ -62,6 +82,18 @@ export function ActivityForm({
     if (type === 'page') {
       if (!body.trim()) next.body = 'Enter the lesson text.';
       else if (body.length > LIMITS.body) next.body = `Use at most ${LIMITS.body} characters.`;
+    } else if (type === 'assignment') {
+      if (!instructions.trim()) next.instructions = 'Enter the assignment instructions.';
+      else if (instructions.length > LIMITS.assignmentInstructions) next.instructions = `Use at most ${LIMITS.assignmentInstructions} characters.`;
+      const due = fromLocalInput(dueAt);
+      const late = fromLocalInput(lateUntil);
+      if (!due) next.dueAt = 'Choose the due date and time.';
+      if (lateUntil && !late) next.lateUntil = 'Choose a valid date and time, or leave empty.';
+      else if (due && late && (Date.parse(late) <= Date.parse(due) || Date.parse(late) - Date.parse(due) > LIMITS.lateWindowDays * 86_400_000)) {
+        next.lateUntil = `Late submissions must end after the due date and at most ${LIMITS.lateWindowDays} days later.`;
+      }
+      const rubricError = validateRubric(criteria);
+      if (rubricError) next.rubric = rubricError;
     } else if (type === 'quiz') {
       if (instructions.length > LIMITS.instructions) next.instructions = `Use at most ${LIMITS.instructions} characters.`;
       if (wholeNumberIn(attemptLimit, 1, LIMITS.attemptLimit) === null) next.attemptLimit = `Enter a whole number from 1 to ${LIMITS.attemptLimit}.`;
@@ -84,7 +116,20 @@ export function ActivityForm({
     const value: ActivityCreate =
       type === 'page'
         ? { type: 'page', title: title.trim(), body }
-        : type === 'quiz'
+        : type === 'assignment'
+          ? {
+              type: 'assignment',
+              title: title.trim(),
+              instructions,
+              dueAt: fromLocalInput(dueAt)!,
+              lateUntil: fromLocalInput(lateUntil),
+              rubric: criteria.map((c) => ({
+                title: c.title.trim(),
+                maxPoints: Number(c.maxPoints),
+                ...(c.description.trim() ? { description: c.description.trim() } : {}),
+              })),
+            }
+          : type === 'quiz'
           ? {
               type: 'quiz',
               title: title.trim(),
@@ -102,6 +147,9 @@ export function ActivityForm({
       setUrl('');
       setDescription('');
       setInstructions('');
+      setDueAt('');
+      setLateUntil('');
+      setCriteria([emptyCriterion()]);
       setAttemptLimit('1');
       setTimeLimit('');
       setShuffleQuestions(false);
@@ -116,11 +164,15 @@ export function ActivityForm({
           id={`${idPrefix}-type`}
           label="Content type"
           value={type}
-          onChange={(event) => setType(event.target.value === 'link' || event.target.value === 'quiz' ? event.target.value : 'page')}
+          onChange={(event) => {
+            const next = event.target.value;
+            setType(next === 'link' || next === 'quiz' || next === 'assignment' ? next : 'page');
+          }}
           options={[
             { value: 'page', label: 'Text lesson' },
             { value: 'link', label: 'External resource (link)' },
             { value: 'quiz', label: 'Quiz' },
+            { value: 'assignment', label: 'Assignment (text submission)' },
           ]}
         />
       )}
@@ -149,6 +201,51 @@ export function ActivityForm({
             </p>
           ) : null}
         </div>
+      ) : type === 'assignment' ? (
+        <>
+          <div>
+            <label htmlFor={`${idPrefix}-assignment-instructions`} className="block text-sm font-medium text-slate-800">
+              Instructions
+            </label>
+            <textarea
+              id={`${idPrefix}-assignment-instructions`}
+              rows={5}
+              value={instructions}
+              maxLength={LIMITS.assignmentInstructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              aria-invalid={errors.instructions ? true : undefined}
+              aria-describedby={errors.instructions ? `${idPrefix}-assignment-instructions-error` : undefined}
+              className={`mt-1 block w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm ${errors.instructions ? 'border-red-500' : 'border-slate-300'}`}
+            />
+            {errors.instructions ? (
+              <p id={`${idPrefix}-assignment-instructions-error`} className="mt-1 text-sm text-red-700">
+                {errors.instructions}
+              </p>
+            ) : null}
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <TextField
+              id={`${idPrefix}-due`}
+              label="Due date and time"
+              type="datetime-local"
+              value={dueAt}
+              onChange={(e) => setDueAt(e.target.value)}
+              error={errors.dueAt}
+              hint="Your local time. The server decides whether a submission is on time."
+              required
+            />
+            <TextField
+              id={`${idPrefix}-late`}
+              label="Accept late submissions until (optional)"
+              type="datetime-local"
+              value={lateUntil}
+              onChange={(e) => setLateUntil(e.target.value)}
+              error={errors.lateUntil}
+              hint="Late work is accepted until then and marked late. Leave empty to close at the due date."
+            />
+          </div>
+          <RubricEditor idPrefix={idPrefix} criteria={criteria} onChange={setCriteria} error={errors.rubric} />
+        </>
       ) : type === 'quiz' ? (
         <>
           <div>

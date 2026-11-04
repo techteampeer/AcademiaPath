@@ -141,6 +141,11 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
           {course.viewerRole ? ` · Your role: ${COURSE_ROLE_LABELS[course.viewerRole]}` : ''}
         </p>
         {course.description ? <p className="mt-3 max-w-3xl text-slate-600">{course.description}</p> : null}
+        {abilities.viewGrades || abilities.attempt ? (
+          <Link href={`/courses/${course.id}/grades`} className={`mt-4 ${buttonClasses({ variant: 'secondary', size: 'sm' })}`}>
+            {abilities.viewGrades ? 'Gradebook' : 'My grades'}
+          </Link>
+        ) : null}
       </div>
 
       {abilities.review ? (

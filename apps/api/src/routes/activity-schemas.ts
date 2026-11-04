@@ -2,7 +2,7 @@ import { activityReviewStatusEnum } from '../db/schema/index.js';
 
 // JSON schemas mirroring the content endpoints in packages/contract/openapi.yaml.
 
-export const CONTENT_TYPES = ['page', 'link', 'quiz'] as const;
+export const CONTENT_TYPES = ['page', 'link', 'quiz', 'assignment'] as const;
 export type ContentType = (typeof CONTENT_TYPES)[number];
 
 const uuid = { type: 'string', format: 'uuid' } as const;
@@ -26,6 +26,24 @@ const quizSettingsFields = {
   timeLimitMinutes: { type: ['integer', 'null'], minimum: 1, maximum: 300 },
   shuffleQuestions: { type: 'boolean' },
   shuffleOptions: { type: 'boolean' },
+} as const;
+
+const assignmentFields = {
+  title: text(200),
+  instructions: text(20000),
+  dueAt: dateTime,
+  lateUntil: nullableDateTime,
+  rubric: {
+    type: 'array',
+    minItems: 1,
+    maxItems: 20,
+    items: {
+      type: 'object',
+      required: ['title', 'maxPoints'],
+      additionalProperties: false,
+      properties: { title: text(200), description: { type: 'string', maxLength: 1000 }, maxPoints: { type: 'integer', minimum: 1, maximum: 100 } },
+    },
+  },
 } as const;
 
 export const courseSectionParamsSchema = {
@@ -62,6 +80,12 @@ export const activityCreateSchema = {
       additionalProperties: false,
       properties: { type: { type: 'string', const: 'quiz' }, ...quizSettingsFields },
     },
+    {
+      type: 'object',
+      required: ['type', 'title', 'instructions', 'dueAt', 'rubric'],
+      additionalProperties: false,
+      properties: { type: { type: 'string', const: 'assignment' }, ...assignmentFields },
+    },
   ],
 } as const;
 
@@ -70,6 +94,7 @@ export const activityUpdateSchema = {
     { type: 'object', required: ['title', 'body'], additionalProperties: false, properties: pageFields },
     { type: 'object', required: ['title', 'url'], additionalProperties: false, properties: linkFields },
     { type: 'object', required: ['title', 'attemptLimit'], additionalProperties: false, properties: quizSettingsFields },
+    { type: 'object', required: ['title', 'instructions', 'dueAt', 'rubric'], additionalProperties: false, properties: assignmentFields },
   ],
 } as const;
 
@@ -98,6 +123,17 @@ const contentSchema = {
     shuffleOptions: { type: 'boolean' },
     questionCount: { type: 'integer' },
     totalPoints: { type: 'integer' },
+    dueAt: dateTime,
+    lateUntil: nullableDateTime,
+    rubric: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['id', 'title', 'description', 'maxPoints'],
+        additionalProperties: false,
+        properties: { id: uuid, title: { type: 'string' }, description: { type: ['string', 'null'] }, maxPoints: { type: 'integer' } },
+      },
+    },
   },
 } as const;
 
