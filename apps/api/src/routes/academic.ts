@@ -1,4 +1,4 @@
-import { asc, desc, eq, inArray, max, sql } from 'drizzle-orm';
+import { asc, count, desc, eq, inArray, max, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { recordAudit } from '../audit.js';
 import { withUniqueConflict } from '../db/errors.js';
@@ -13,24 +13,52 @@ import { ApiProblem } from '../http/errors.js';
 import { decodeCursor, paginationQuerySchema, toPage, type PaginationQuery } from '../http/pagination.js';
 import {
   courseTemplateCreateSchema,
+  courseTemplateDetailSchema,
   courseTemplateSchema,
   courseTemplateVersionSchema,
   pageSchema,
   programCreateSchema,
+  programParamsSchema,
   programSchema,
+  programUpdateSchema,
+  templateParamsSchema,
   termCreateSchema,
+  termParamsSchema,
   termSchema,
+  termUpdateSchema,
 } from './course-schemas.js';
 
 type ProgramCreateBody = { code: string; name: string; description?: string };
-type TermCreateBody = { code: string; name: string; startsOn: string; endsOn: string };
+type ProgramUpdateBody = { name: string; description?: string | null; isActive: boolean };
+type TermCreateBody = { code: string; name: string; academicYear?: number; startsOn: string; endsOn: string };
+type TermUpdateBody = { name: string; startsOn: string; endsOn: string };
 type CourseTemplateCreateBody = {
   code: string;
   programId?: string | null;
   title: string;
   description?: string;
+  baseVersion?: number;
   sections: Array<{ title: string; summary?: string; isVisible: boolean }>;
 };
+
+const notFound = (what: string) => new ApiProblem(404, 'NOT_FOUND', `${what} not found.`);
+
+/**
+ * Academic year of a new term: the year of a Peru-style code (2026-1 → 2026) or of the start date.
+ * An explicit year must agree with a year-prefixed code.
+ */
+function termAcademicYear(code: string, startsOn: string, requested?: number): number {
+  const fromCode = /^(\d{4})-/.exec(code)?.[1];
+  const codeYear = fromCode ? Number(fromCode) : null;
+  if (requested !== undefined && codeYear !== null && requested !== codeYear) {
+    throw new ApiProblem(422, 'TERM_YEAR_MISMATCH', `The term code ${code} belongs to ${codeYear}, not ${requested}.`);
+  }
+  const year = requested ?? codeYear ?? Number(startsOn.slice(0, 4));
+  if (year < 2000 || year > 2100) {
+    throw new ApiProblem(422, 'TERM_YEAR_MISMATCH', 'The academic year must be between 2000 and 2100.');
+  }
+  return year;
+}
 
 /** Institutional academic structure. Every route is administrator-only. */
 export const academicRoutes: FastifyPluginAsync = async (app) => {
@@ -88,6 +116,30 @@ export const academicRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
+  app.put<{ Params: { programId: string }; Body: ProgramUpdateBody }>(
+    '/programs/:programId',
+    { ...adminWrite, schema: { params: programParamsSchema, body: programUpdateSchema, response: { 200: programSchema } } },
+    async (request) => {
+      const name = request.body.name.trim();
+      const description = request.body.description?.trim() || null;
+      const { isActive } = request.body;
+      return db.transaction(async (tx) => {
+        const [current] = await tx.select().from(programs).where(eq(programs.id, request.params.programId)).for('update');
+        if (!current) throw notFound('Program');
+        const [row] = await tx.update(programs).set({ name, description, isActive }).where(eq(programs.id, current.id)).returning();
+        if (!row) throw new Error('Program was not updated');
+        await recordAudit(tx, request, {
+          action: 'program.updated',
+          entityType: 'program',
+          entityId: row.id,
+          before: { name: current.name, description: current.description, isActive: current.isActive },
+          after: { name: row.name, description: row.description, isActive: row.isActive },
+        });
+        return row;
+      });
+    },
+  );
+
   // ---- Terms ----
 
   app.get<{ Querystring: PaginationQuery }>(
@@ -114,9 +166,10 @@ export const academicRoutes: FastifyPluginAsync = async (app) => {
       if (endsOn < startsOn) {
         throw new ApiProblem(422, 'INVALID_TERM_DATES', 'The term cannot end before it starts.');
       }
+      const academicYear = termAcademicYear(code, startsOn, request.body.academicYear);
       const term = await db.transaction(async (tx) => {
         const [row] = await withUniqueConflict(
-          () => tx.insert(terms).values({ code, name, startsOn, endsOn }).returning(),
+          () => tx.insert(terms).values({ code, name, academicYear, startsOn, endsOn }).returning(),
           'terms_code_unique',
           'TERM_CODE_TAKEN',
           'A term with this code already exists.',
@@ -127,11 +180,38 @@ export const academicRoutes: FastifyPluginAsync = async (app) => {
           entityType: 'term',
           entityId: row.id,
           before: null,
-          after: { code: row.code, name: row.name, startsOn: row.startsOn, endsOn: row.endsOn },
+          after: { code: row.code, name: row.name, academicYear: row.academicYear, startsOn: row.startsOn, endsOn: row.endsOn },
         });
         return row;
       });
       return reply.code(201).send(term);
+    },
+  );
+
+  app.put<{ Params: { termId: string }; Body: TermUpdateBody }>(
+    '/terms/:termId',
+    { ...adminWrite, schema: { params: termParamsSchema, body: termUpdateSchema, response: { 200: termSchema } } },
+    async (request) => {
+      const { startsOn, endsOn } = request.body;
+      const name = request.body.name.trim();
+      if (endsOn < startsOn) {
+        throw new ApiProblem(422, 'INVALID_TERM_DATES', 'The term cannot end before it starts.');
+      }
+      return db.transaction(async (tx) => {
+        const [current] = await tx.select().from(terms).where(eq(terms.id, request.params.termId)).for('update');
+        if (!current) throw notFound('Term');
+        // Code and academic year are the term's identity and never change here.
+        const [row] = await tx.update(terms).set({ name, startsOn, endsOn }).where(eq(terms.id, current.id)).returning();
+        if (!row) throw new Error('Term was not updated');
+        await recordAudit(tx, request, {
+          action: 'term.updated',
+          entityType: 'term',
+          entityId: row.id,
+          before: { name: current.name, startsOn: current.startsOn, endsOn: current.endsOn },
+          after: { name: row.name, startsOn: row.startsOn, endsOn: row.endsOn },
+        });
+        return row;
+      });
     },
   );
 
@@ -193,6 +273,13 @@ export const academicRoutes: FastifyPluginAsync = async (app) => {
         let version: number;
         let before: Record<string, unknown> | null = null;
 
+        // Optional guard: 0 = create a new subject only; n = only if version n is still the latest.
+        const { baseVersion } = request.body;
+        if (baseVersion === 0 && existing) {
+          throw new ApiProblem(409, 'TEMPLATE_CODE_TAKEN', 'A subject with this code already exists.');
+        }
+        if (baseVersion !== undefined && baseVersion > 0 && !existing) throw notFound('Subject');
+
         if (existing) {
           if (existing.programId !== programId) {
             throw new ApiProblem(
@@ -205,6 +292,13 @@ export const academicRoutes: FastifyPluginAsync = async (app) => {
             .select({ latest: max(courseTemplateVersions.version) })
             .from(courseTemplateVersions)
             .where(eq(courseTemplateVersions.templateId, existing.id));
+          if (baseVersion !== undefined && baseVersion !== (latest ?? 0)) {
+            throw new ApiProblem(
+              409,
+              'TEMPLATE_VERSION_CONFLICT',
+              `The subject is now at version ${latest ?? 0}; reload it before saving a new version.`,
+            );
+          }
           version = (latest ?? 0) + 1;
           before = { title: existing.title, description: existing.description, latestVersion: latest };
           const [updated] = await tx
@@ -287,6 +381,49 @@ export const academicRoutes: FastifyPluginAsync = async (app) => {
       });
 
       return reply.code(201).send(created);
+    },
+  );
+
+  app.get<{ Params: { templateId: string } }>(
+    '/course-templates/:templateId',
+    { ...adminRead, schema: { params: templateParamsSchema, response: { 200: courseTemplateDetailSchema } } },
+    async (request) => {
+      const [template] = await db.select().from(courseTemplates).where(eq(courseTemplates.id, request.params.templateId));
+      if (!template) throw notFound('Subject');
+      const [{ versionCount } = { versionCount: 0 }] = await db
+        .select({ versionCount: count() })
+        .from(courseTemplateVersions)
+        .where(eq(courseTemplateVersions.templateId, template.id));
+      const [latest] = await db
+        .select()
+        .from(courseTemplateVersions)
+        .where(eq(courseTemplateVersions.templateId, template.id))
+        .orderBy(desc(courseTemplateVersions.version))
+        .limit(1);
+      const sections = latest
+        ? await db
+            .select()
+            .from(courseTemplateSections)
+            .where(eq(courseTemplateSections.templateVersionId, latest.id))
+            .orderBy(asc(courseTemplateSections.position))
+        : [];
+      return {
+        ...template,
+        versionCount,
+        latestVersion: latest
+          ? {
+              id: latest.id,
+              templateId: template.id,
+              programId: template.programId,
+              code: template.code,
+              version: latest.version,
+              title: latest.title,
+              description: latest.description,
+              sections,
+              createdAt: latest.createdAt,
+            }
+          : null,
+      };
     },
   );
 };

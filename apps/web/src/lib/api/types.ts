@@ -74,3 +74,7 @@ export type TutorCitation = Schemas['TutorCitation'];
 export type TutorMessageResponse = Schemas['TutorMessageResponse'];
 export type TutorPracticeResponse = Schemas['TutorPracticeResponse'];
 export type TutorUsage = Schemas['TutorUsage'];
+
+export type ProgramUpdate = Schemas['ProgramUpdate'];
+export type TermUpdate = Schemas['TermUpdate'];
+export type CourseTemplateDetail = Schemas['CourseTemplateDetail'];

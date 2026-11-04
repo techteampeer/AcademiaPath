@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.7.0
+  version: 0.8.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -44,6 +44,10 @@ info:
     hidden until the next release. Grades are shown on the 0–20 scale: points × 20 / maxPoints,
     rounded half up to one decimal place. Course totals sum points over the counted items before
     converting, without weighting.
+
+    Academic hierarchy: academic year → term → program → subject. The academic year is stored on each
+    term (`academicYear`, for example 2026 for term `2026-2`). Programs and subjects (course
+    templates) are reusable across years and terms; a course is one offering of a subject in a term.
 
     Tutor: a course-grounded tutor for students, instructors and non-editing instructors. It searches
     only approved lesson text the caller may read in the course (PostgreSQL full-text search) and
@@ -365,6 +369,100 @@ paths:
           $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/programs/{programId}:
+    put:
+      operationId: updateProgram
+      summary: Update a program (administrators only)
+      description: |
+        Changes the name, description and active flag. The code is the program's stable identifier
+        and cannot change. Programs are shared across academic years and terms. Audited as
+        `program.updated`.
+      tags: [Academic structure]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/ProgramId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProgramUpdate"
+      responses:
+        "200":
+          description: The updated program.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Program"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/terms/{termId}:
+    put:
+      operationId: updateTerm
+      summary: Update a term (administrators only)
+      description: |
+        Changes the name and dates. The code (for example `2026-2`) and academic year are the term's
+        stable identity and cannot change. Courses offered in the term are not affected.
+        `INVALID_TERM_DATES` when the term would end before it starts. Audited as `term.updated`.
+      tags: [Academic structure]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/TermId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TermUpdate"
+      responses:
+        "200":
+          description: The updated term.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Term"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/course-templates/{templateId}:
+    get:
+      operationId: getCourseTemplate
+      summary: A subject (course template) with its latest version and sections (administrators only)
+      tags: [Academic structure]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/TemplateId"
+      responses:
+        "200":
+          description: The template.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseTemplateDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/courses:
     get:
       operationId: listCourses
@@ -379,6 +477,27 @@ paths:
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Cursor"
+        - name: termId
+          in: query
+          required: false
+          description: Only courses offered in this term.
+          schema:
+            type: string
+            format: uuid
+        - name: programId
+          in: query
+          required: false
+          description: Only courses of this program.
+          schema:
+            type: string
+            format: uuid
+        - name: templateId
+          in: query
+          required: false
+          description: Only offerings of this subject (course template).
+          schema:
+            type: string
+            format: uuid
       responses:
         "200":
           description: A page of courses.
@@ -1508,6 +1627,27 @@ components:
       schema:
         type: string
         format: uuid
+    ProgramId:
+      name: programId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TermId:
+      name: termId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TemplateId:
+      name: templateId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     AttemptId:
       name: attemptId
       in: path
@@ -1611,7 +1751,7 @@ components:
     Conflict:
       description: |
         A uniqueness rule was violated: `PROGRAM_CODE_TAKEN`, `TERM_CODE_TAKEN`, `COURSE_CODE_TAKEN`,
-        `ENROLLMENT_EXISTS` or `TEMPLATE_VERSION_CONFLICT`; or an invalid review transition:
+        `ENROLLMENT_EXISTS`, `TEMPLATE_CODE_TAKEN` or `TEMPLATE_VERSION_CONFLICT`; or an invalid review transition:
         `ACTIVITY_UNDER_REVIEW`, `INVALID_REVIEW_STATE`; or a quiz rule: `QUIZ_QUESTION_LIMIT`,
         `ATTEMPT_LIMIT_REACHED`, `ATTEMPT_NOT_IN_PROGRESS`, `ATTEMPT_EXPIRED`, `ATTEMPT_CONFLICT`; or an
         assignment rule: `SUBMISSION_EXISTS`, `SUBMISSION_CLOSED`.
@@ -1628,6 +1768,7 @@ components:
     UnprocessableContent:
       description: |
         The request is well-formed but refers to missing or incompatible data: `INVALID_TERM_DATES`,
+        `TERM_YEAR_MISMATCH`,
         `PROGRAM_NOT_FOUND`, `PROGRAM_INACTIVE`, `TERM_NOT_FOUND`, `TEMPLATE_NOT_FOUND`,
         `TEMPLATE_VERSION_NOT_FOUND`, `TEMPLATE_PROGRAM_MISMATCH`, `USER_NOT_FOUND`, `USER_INACTIVE`,
         `INVALID_URL`, `CONTENT_TYPE_MISMATCH`, `REVIEW_COMMENT_REQUIRED`, `QUIZ_HAS_NO_QUESTIONS`,
@@ -1821,6 +1962,8 @@ components:
             - SUBMISSION_CLOSED
             - INVALID_DUE_DATE
             - INVALID_RUBRIC_SCORES
+            - TERM_YEAR_MISMATCH
+            - TEMPLATE_CODE_TAKEN
     Code:
       type: string
       minLength: 1
@@ -1889,7 +2032,7 @@ components:
           type: [string, "null"]
     Term:
       type: object
-      required: [id, code, name, startsOn, endsOn, createdAt, updatedAt]
+      required: [id, code, name, academicYear, startsOn, endsOn, createdAt, updatedAt]
       additionalProperties: false
       properties:
         id:
@@ -1899,6 +2042,9 @@ components:
           $ref: "#/components/schemas/Code"
         name:
           type: string
+        academicYear:
+          type: integer
+          description: Academic year the term belongs to (for example 2026 for `2026-2`).
         startsOn:
           type: string
           format: date
@@ -1918,10 +2064,18 @@ components:
       properties:
         code:
           $ref: "#/components/schemas/Code"
+          description: Peru-style labels such as `2026-1` and `2026-2` are recommended.
         name:
           type: string
           minLength: 1
           maxLength: 200
+        academicYear:
+          type: integer
+          minimum: 2000
+          maximum: 2100
+          description: |
+            Defaults to the year in a `YYYY-…` code, otherwise to the year of `startsOn`. When the code
+            starts with a year, it must match (`TERM_YEAR_MISMATCH`).
         startsOn:
           type: string
           format: date
@@ -1972,6 +2126,13 @@ components:
         description:
           type: string
           maxLength: 2000
+        baseVersion:
+          type: integer
+          minimum: 0
+          description: |
+            Optional guard. `0`: create a new subject only (`TEMPLATE_CODE_TAKEN` if the code exists).
+            `n`: create version `n + 1` only if `n` is still the latest (`TEMPLATE_VERSION_CONFLICT`
+            otherwise). Omit for the original behaviour (create or add a version).
         sections:
           type: array
           maxItems: 100
@@ -3485,3 +3646,66 @@ components:
           maxItems: 20
           items:
             $ref: "#/components/schemas/TutorUsageRecord"
+    ProgramUpdate:
+      type: object
+      required: [name, isActive]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: "\\S"
+        description:
+          type: [string, "null"]
+          maxLength: 2000
+          description: Omit, null or blank to clear.
+        isActive:
+          type: boolean
+          description: Inactive programs keep their subjects and courses but cannot receive new courses.
+    TermUpdate:
+      type: object
+      required: [name, startsOn, endsOn]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: "\\S"
+        startsOn:
+          type: string
+          format: date
+        endsOn:
+          type: string
+          format: date
+    CourseTemplateDetail:
+      type: object
+      description: A reusable subject (course template) with its latest version, including sections.
+      required: [id, programId, code, title, description, versionCount, latestVersion, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        programId:
+          type: [string, "null"]
+          format: uuid
+        code:
+          $ref: "#/components/schemas/Code"
+        title:
+          type: string
+        description:
+          type: [string, "null"]
+        versionCount:
+          type: integer
+        latestVersion:
+          oneOf:
+            - $ref: "#/components/schemas/CourseTemplateVersion"
+            - type: "null"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
