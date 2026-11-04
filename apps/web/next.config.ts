@@ -14,9 +14,22 @@ function apiOrigin(): string {
   return url.origin;
 }
 
+/**
+ * Request bodies the proxy forwards in full. Next.js truncates larger bodies silently instead of
+ * rejecting them, so this stays above the API's document upload limit (DOCUMENT_MAX_UPLOAD_MB,
+ * default 10) plus multipart overhead; the API then answers oversized uploads with 413.
+ */
+function proxyBodyLimitBytes(): number {
+  const uploadMb = Number(process.env.DOCUMENT_MAX_UPLOAD_MB ?? 10);
+  return (Number.isInteger(uploadMb) && uploadMb > 0 && uploadMb <= 100 ? uploadMb + 2 : 12) * 1024 * 1024;
+}
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  experimental: {
+    proxyClientMaxBodySize: proxyBodyLimitBytes(),
+  },
   async rewrites() {
     return [{ source: '/api/:path*', destination: `${apiOrigin()}/api/:path*` }];
   },

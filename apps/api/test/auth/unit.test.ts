@@ -80,10 +80,27 @@ describe('configuration', () => {
 
   it('requires explicit origins and a Secure __Host- cookie in production', () => {
     assert.throws(() => loadConfig({ NODE_ENV: 'production' }), /APP_ORIGINS/);
-    const config = loadConfig({ NODE_ENV: 'production', APP_ORIGINS: 'https://lms.example.edu/, https://admin.example.edu' });
+    const config = loadConfig({
+      NODE_ENV: 'production',
+      APP_ORIGINS: 'https://lms.example.edu/, https://admin.example.edu',
+      DOCUMENT_STORAGE_DIR: '/var/lib/academiapath/documents',
+    });
     assert.equal(config.session.cookieName, '__Host-ap_session');
     assert.equal(config.session.cookieSecure, true);
     assert.deepEqual(config.allowedOrigins, ['https://lms.example.edu', 'https://admin.example.edu']);
+  });
+
+  it('keeps uploaded documents in an explicit private directory outside the repository', () => {
+    const config = loadConfig({});
+    assert.equal(config.documents.maxUploadBytes, 10 * 1024 * 1024);
+    assert.equal(config.documents.extractionTimeoutMs, 20_000);
+    assert.ok(config.documents.storageDir.endsWith('/.academiapath/documents'));
+    assert.equal(loadConfig({ DOCUMENT_STORAGE_DIR: '/srv/ap-docs', DOCUMENT_MAX_UPLOAD_MB: '5' }).documents.maxUploadBytes, 5 * 1024 * 1024);
+    assert.throws(() => loadConfig({ NODE_ENV: 'production', APP_ORIGINS: 'https://lms.example.edu' }), /DOCUMENT_STORAGE_DIR must be set/);
+    assert.throws(() => loadConfig({ DOCUMENT_STORAGE_DIR: 'relative/dir' }), /absolute path/);
+    const repoDir = new URL('../../../web/public/uploads', import.meta.url).pathname;
+    assert.throws(() => loadConfig({ DOCUMENT_STORAGE_DIR: repoDir }), /outside the repository/);
+    assert.throws(() => loadConfig({ DOCUMENT_MAX_UPLOAD_MB: '0' }), /DOCUMENT_MAX_UPLOAD_MB/);
   });
 
   it('accepts only explicit trusted-proxy settings, never "trust all"', () => {

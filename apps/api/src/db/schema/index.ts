@@ -8,3 +8,4 @@ export * from './auth.js';
 export * from './quizzes.js';
 export * from './grading.js';
 export * from './tutor.js';
+export * from './documents.js';

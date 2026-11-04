@@ -85,6 +85,20 @@
       "when": 1793813318221,
       "tag": "0011_term_academic_year",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793817346407,
+      "tag": "0012_course_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793817350371,
+      "tag": "0013_document_immutability",
+      "breakpoints": true
     }
   ]
 }

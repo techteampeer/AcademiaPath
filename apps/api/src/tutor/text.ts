@@ -40,6 +40,11 @@ export function fold(value: string): string {
   return out;
 }
 
+/** Common English or Spanish function word (expects accent-folded lowercase input). */
+export function isStopword(word: string): boolean {
+  return EN_STOPWORDS.has(word) || ES_STOPWORDS.has(word) || RESERVED.has(word);
+}
+
 /** Accent-folded lowercase words (letters and digits only). */
 export function words(value: string): string[] {
   return fold(value).split(/[^a-z0-9]+/).filter(Boolean);

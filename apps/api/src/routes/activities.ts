@@ -21,6 +21,7 @@ import {
 import { pageSchema } from './course-schemas.js';
 import { readSettings, readSnapshotQuestions, settingsFromInput, type QuizSettingsInput, type QuizSnapshot } from '../quizzes/model.js';
 import { assignmentFromInput, readAssignment, rubricTotal, type AssignmentInput } from '../assignments/model.js';
+import { presentDocumentContent } from '../documents/model.js';
 
 type SectionParams = { id: string; sectionId: string };
 type ActivityParams = { id: string; activityId: string };
@@ -62,8 +63,12 @@ const snapshotStats = (config: ActivityConfig | null): QuizStats => {
   return { questionCount: questions.length, totalPoints: questions.reduce((total, q) => total + q.points, 0) };
 };
 
-/** Content as exposed by the API. Quizzes expose only settings and totals, never questions or answer keys. */
+/**
+ * Content as exposed by the API. Quizzes expose only settings and totals, never questions or answer keys.
+ * Documents expose only their file name, format and summary revision.
+ */
 function presentContent(type: ActivityRecord['type'], config: ActivityConfig | null, stats: QuizStats): ActivityConfig | null {
+  if (type === 'file') return presentDocumentContent(config);
   if (type === 'assignment') {
     const assignment = readAssignment(config);
     return { ...assignment, totalPoints: rubricTotal(assignment.rubric) };
@@ -146,6 +151,26 @@ function auditLiveVersion(type: ActivityRecord['type'], title: string | null, co
   };
 }
 
+/**
+ * Loads an activity of this course (row-locked inside transactions). Students only reach approved,
+ * visible content in visible sections; anything else is 404 (shared with the document routes).
+ */
+export async function findActivity(executor: Executor, access: CourseAccess, activityId: string, lock: boolean) {
+  const query = executor
+    .select({ activity: activities, sectionVisible: sections.isVisible })
+    .from(activities)
+    .innerJoin(sections, eq(sections.id, activities.sectionId))
+    .where(and(eq(activities.id, activityId), eq(sections.courseId, access.course.id), inArray(activities.type, CONTENT_TYPES)))
+    .limit(1);
+  const [row] = lock ? await query.for('update', { of: activities }) : await query;
+  if (!row) throw notFound('Activity');
+  if (!canInCourse(access, 'content.viewUnapproved')) {
+    const readable = row.sectionVisible && row.activity.isVisible && row.activity.approvedConfig !== null;
+    if (!readable) throw notFound('Activity');
+  }
+  return row.activity;
+}
+
 export const activityRoutes: FastifyPluginAsync = async (app) => {
   const { db } = app;
   // Guards run before body/params validation so unauthenticated or forged requests are rejected first.
@@ -166,23 +191,6 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
 
   function requirePermission(access: CourseAccess, permission: CoursePermission) {
     if (!canInCourse(access, permission)) throw forbidden();
-  }
-
-  /** Loads an activity of this course (row-locked inside transactions). Students only reach approved, visible content. */
-  async function findActivity(executor: Executor, access: CourseAccess, activityId: string, lock: boolean) {
-    const query = executor
-      .select({ activity: activities, sectionVisible: sections.isVisible })
-      .from(activities)
-      .innerJoin(sections, eq(sections.id, activities.sectionId))
-      .where(and(eq(activities.id, activityId), eq(sections.courseId, access.course.id), inArray(activities.type, CONTENT_TYPES)))
-      .limit(1);
-    const [row] = lock ? await query.for('update', { of: activities }) : await query;
-    if (!row) throw notFound('Activity');
-    if (!canInCourse(access, 'content.viewUnapproved')) {
-      const readable = row.sectionVisible && row.activity.isVisible && row.activity.approvedConfig !== null;
-      if (!readable) throw notFound('Activity');
-    }
-    return row.activity;
   }
 
   app.get<{ Params: SectionParams; Querystring: PaginationQuery }>(

@@ -1,4 +1,7 @@
 import { isIP } from 'node:net';
+import { homedir } from 'node:os';
+import { isAbsolute, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export type AppConfig = {
   isProduction: boolean;
@@ -25,6 +28,14 @@ export type AppConfig = {
    * (trusts client-supplied headers) and never a hop count (cannot verify the peer).
    */
   trustProxy: false | string;
+  /** Uploaded course documents (local private storage; never a public web directory). */
+  documents: {
+    /** Absolute directory outside the repository; original files are stored here with opaque names. */
+    storageDir: string;
+    maxUploadBytes: number;
+    /** Hard limit for validating and extracting one document (the worker is terminated after it). */
+    extractionTimeoutMs: number;
+  };
 };
 
 export const SESSION_COOKIE_NAMES = {
@@ -34,6 +45,23 @@ export const SESSION_COOKIE_NAMES = {
 } as const;
 
 const DEFAULT_DEV_ORIGIN = 'http://localhost:3000';
+
+/** Repository root (this file lives in apps/api/src or apps/api/dist). */
+const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
+
+function parseStorageDir(raw: string | undefined, isProduction: boolean): string {
+  const value = raw?.trim();
+  if (!value && isProduction) throw new Error('DOCUMENT_STORAGE_DIR must be set in production');
+  const dir = value || resolve(homedir(), '.academiapath', 'documents');
+  if (!isAbsolute(dir)) throw new Error('DOCUMENT_STORAGE_DIR must be an absolute path');
+  const resolved = resolve(dir);
+  const fromRepo = relative(REPOSITORY_ROOT, resolved);
+  if (fromRepo === '' || (!fromRepo.startsWith('..') && !isAbsolute(fromRepo))) {
+    // Keeps uploads out of the repository and therefore out of every public web directory.
+    throw new Error('DOCUMENT_STORAGE_DIR must be outside the repository');
+  }
+  return resolved;
+}
 
 function readPositiveInt(env: NodeJS.ProcessEnv, name: string, fallback: number, max: number): number {
   const raw = env[name];
@@ -108,5 +136,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       windowMinutes: readPositiveInt(env, 'TUTOR_RATE_LIMIT_WINDOW_MINUTES', 10, 24 * 60),
     },
     trustProxy: parseTrustProxy(env.TRUST_PROXY),
+    documents: {
+      storageDir: parseStorageDir(env.DOCUMENT_STORAGE_DIR, isProduction),
+      maxUploadBytes: readPositiveInt(env, 'DOCUMENT_MAX_UPLOAD_MB', 10, 100) * 1024 * 1024,
+      extractionTimeoutMs: readPositiveInt(env, 'DOCUMENT_EXTRACTION_TIMEOUT_SECONDS', 20, 300) * 1000,
+    },
   };
 }

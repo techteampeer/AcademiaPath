@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.8.0
+  version: 0.9.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -53,6 +53,18 @@ info:
     only approved lesson text the caller may read in the course (PostgreSQL full-text search) and
     answers through a local, deterministic mock provider (`mode: mock`) that quotes passages with
     citations. No language model or external service is used.
+
+    Documents: course staff who may edit content upload PDF, DOCX or PPTX files to a course section.
+    The server verifies each file's signature and container structure (never trusting the extension
+    or the browser's media type), rejects encrypted, macro-enabled, malformed and oversized files,
+    extracts the selectable text in a time- and memory-limited worker, and keeps the original in
+    private local storage under a server-generated name (never a public URL). Each upload becomes a
+    `file` activity with a deterministic, extractive mock summary (`mode: mock`, "Mock AI summary —
+    local demonstration"): every point is an original sentence with its page, slide or paragraph as
+    evidence. No language model, OCR or external service is used, and no malware scanner is
+    connected yet (uploads are recorded as `not_scanned`). Documents use the content review
+    workflow: approval freezes the document and the reviewed summary revision; refreshing the summary
+    creates a new revision that students do not see until it is approved again.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -77,6 +89,8 @@ tags:
     description: Gradebook, grade release and students' released grades
   - name: Tutor
     description: Course-grounded tutor (local mock provider) and usage
+  - name: Documents
+    description: Uploaded course documents, extracted text and mock summaries
 paths:
   /api/v1/health:
     get:
@@ -867,6 +881,181 @@ paths:
           $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/sections/{sectionId}/documents:
+    post:
+      operationId: uploadSectionDocument
+      summary: Upload a PDF, DOCX or PPTX document to a section
+      description: |
+        Requires `content.edit` (instructor, design team) or the administrator role. Send
+        `multipart/form-data` with an optional `title` field followed by exactly one `file` part.
+        Only `.pdf`, `.docx` and `.pptx` names are accepted, and the file's content must match:
+        the server checks the signature and container structure and ignores the browser's media
+        type. Encrypted or password-protected files, macro-enabled Office files, templates,
+        malformed files and files that exceed the processing limits are rejected and not stored
+        (audited as `document.upload_rejected`). The size limit is configurable (10 MB by default).
+
+        Accepted files are stored privately under a server-generated name. The response contains the
+        extracted text (PDF pages, PPTX slides or DOCX paragraphs) and summary revision 1. A file
+        without selectable text (for example scanned pages) is stored with extraction status
+        `no_text`; no OCR is performed. The new `file` activity is a `draft`. Audited as
+        `activity.created`, `document.uploaded` and `document.summary_generated`.
+      tags:
+        - Documents
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SectionId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/DocumentUpload"
+            encoding:
+              file:
+                contentType: application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/vnd.openxmlformats-officedocument.presentationml.presentation, application/octet-stream
+      responses:
+        "201":
+          description: Document stored and extracted; summary revision 1 created.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/activities/{activityId}/document:
+    get:
+      operationId: getActivityDocument
+      summary: Read a document's metadata, extracted text and summary
+      description: |
+        For a `file` activity. Staff receive the working copy: the document, its current summary
+        revision and, once approved, the approved summary as `liveSummary`. Students receive only
+        the approved document and the approved summary revision of approved, visible documents in
+        visible sections of published courses they are enrolled in (`liveSummary` is null); never
+        drafts, pending revisions or review comments. Anything else responds `404`.
+      tags:
+        - Documents
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200":
+          description: The readable version of the document.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/activities/{activityId}/document/summaries:
+    post:
+      operationId: refreshDocumentSummary
+      summary: Generate a new summary revision (Refresh summary)
+      description: |
+        Requires `content.edit` or the administrator role. Send no request body. Creates the next
+        summary revision from the stored extracted text with the mock provider and points the
+        working copy at it. Documents waiting for review cannot be changed (`409`). Like editing,
+        refreshing approved content sets the status back to `draft`: students keep seeing the
+        approved document and summary revision until the new revision is approved. Earlier
+        revisions are never modified. Audited as `document.summary_generated`.
+      tags:
+        - Documents
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "201":
+          description: New summary revision created.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/courses/{id}/activities/{activityId}/document/file:
+    get:
+      operationId: downloadActivityDocument
+      summary: Download the original file
+      description: |
+        Same access rules as reading the document: staff download the working copy's file, students
+        only approved, visible documents. Served as an attachment with the server-detected media
+        type, `X-Content-Type-Options: nosniff` and a sandboxing Content-Security-Policy. The file's
+        SHA-256 is verified before it is sent. Original files are never reachable through a public
+        URL.
+      tags:
+        - Documents
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200":
+          description: The original file.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+            Content-Disposition:
+              description: Always `attachment`, with the sanitized original file name.
+              schema:
+                type: string
+          content:
+            application/pdf:
+              schema:
+                type: string
+                contentMediaType: application/pdf
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema:
+                type: string
+                contentMediaType: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+            application/vnd.openxmlformats-officedocument.presentationml.presentation:
+              schema:
+                type: string
+                contentMediaType: application/vnd.openxmlformats-officedocument.presentationml.presentation
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/courses/{id}/activities/{activityId}/questions:
     get:
       operationId: listQuizQuestions
@@ -1719,6 +1908,33 @@ components:
             status: 403
             detail: Missing or invalid CSRF token.
             code: CSRF_TOKEN_INVALID
+    PayloadTooLarge:
+      description: "The uploaded file exceeds the configured size limit (`code`: `PAYLOAD_TOO_LARGE`)."
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: about:blank
+            title: Payload Too Large
+            status: 413
+            detail: The file exceeds the 10 MB upload limit.
+            code: PAYLOAD_TOO_LARGE
+    UnsupportedMediaType:
+      description: |
+        The request is not `multipart/form-data` (`UNSUPPORTED_MEDIA_TYPE`), or the file is not an
+        accepted document type: not `.pdf`/`.docx`/`.pptx`, macro-enabled, a template or a slide show
+        (`UNSUPPORTED_FILE_TYPE`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: about:blank
+            title: Unsupported Media Type
+            status: 415
+            detail: Only PDF (.pdf), Word (.docx) and PowerPoint (.pptx) files are accepted.
+            code: UNSUPPORTED_FILE_TYPE
     RateLimited:
       description: "Too many sign-in attempts or tutor requests (`code`: `RATE_LIMITED`)."
       headers:
@@ -1772,7 +1988,10 @@ components:
         `PROGRAM_NOT_FOUND`, `PROGRAM_INACTIVE`, `TERM_NOT_FOUND`, `TEMPLATE_NOT_FOUND`,
         `TEMPLATE_VERSION_NOT_FOUND`, `TEMPLATE_PROGRAM_MISMATCH`, `USER_NOT_FOUND`, `USER_INACTIVE`,
         `INVALID_URL`, `CONTENT_TYPE_MISMATCH`, `REVIEW_COMMENT_REQUIRED`, `QUIZ_HAS_NO_QUESTIONS`,
-        `INVALID_ANSWER_KEY`, `INVALID_ANSWER`, `INVALID_DUE_DATE` or `INVALID_RUBRIC_SCORES`.
+        `INVALID_ANSWER_KEY`, `INVALID_ANSWER`, `INVALID_DUE_DATE` or `INVALID_RUBRIC_SCORES`; or a refused
+        document upload: `FILE_SIGNATURE_MISMATCH` (content does not match the extension),
+        `DOCUMENT_ENCRYPTED`, `DOCUMENT_MALFORMED`, `DOCUMENT_LIMITS_EXCEEDED` (decompressed size,
+        processing time or memory) or `MALWARE_DETECTED`.
       content:
         application/problem+json:
           schema:
@@ -1964,6 +2183,12 @@ components:
             - INVALID_RUBRIC_SCORES
             - TERM_YEAR_MISMATCH
             - TEMPLATE_CODE_TAKEN
+            - UNSUPPORTED_FILE_TYPE
+            - FILE_SIGNATURE_MISMATCH
+            - DOCUMENT_ENCRYPTED
+            - DOCUMENT_MALFORMED
+            - DOCUMENT_LIMITS_EXCEEDED
+            - MALWARE_DETECTED
     Code:
       type: string
       minLength: 1
@@ -2422,8 +2647,8 @@ components:
           type: [string, "null"]
     ActivityType:
       type: string
-      description: Content types supported by the content API.
-      enum: [page, link, quiz, assignment]
+      description: Content types supported by the content API. `file` activities are documents, created only by uploading.
+      enum: [page, link, quiz, assignment, file]
     ReviewStatus:
       type: string
       enum: [draft, submitted, approved, returned]
@@ -2504,12 +2729,31 @@ components:
             $ref: "#/components/schemas/RubricCriterion"
         totalPoints:
           type: integer
+    DocumentContent:
+      type: object
+      description: |
+        Uploaded document (activity type `file`). Text and summaries are read from the document
+        endpoint; `summaryRevision` is the summary revision of this version (working or live).
+      required: [documentId, fileName, format, summaryRevision]
+      additionalProperties: false
+      properties:
+        documentId:
+          type: string
+          format: uuid
+        fileName:
+          type: string
+        format:
+          $ref: "#/components/schemas/DocumentFormat"
+        summaryRevision:
+          type: integer
+          minimum: 1
     ActivityContent:
       oneOf:
         - $ref: "#/components/schemas/PageContent"
         - $ref: "#/components/schemas/LinkContent"
         - $ref: "#/components/schemas/QuizContent"
         - $ref: "#/components/schemas/AssignmentContent"
+        - $ref: "#/components/schemas/DocumentContent"
     PageContentInput:
       type: object
       required: [title, body]
@@ -2765,6 +3009,185 @@ components:
         nextCursor:
           type: [string, "null"]
 
+    DocumentFormat:
+      type: string
+      enum: [pdf, docx, pptx]
+    DocumentUpload:
+      type: object
+      required: [file]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          description: Optional display title (send before `file`). Defaults to the file name without its extension.
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          description: One PDF, DOCX or PPTX file.
+    DocumentSegment:
+      type: object
+      description: |
+        One block of extracted plain text: a PDF page (`Page 3`), a PPTX slide (`Slide 2`) or a DOCX
+        paragraph (`Paragraph 5`; DOCX files have no fixed pages). Clients must render `text` as
+        text, never as HTML.
+      required: [index, kind, label, text]
+      additionalProperties: false
+      properties:
+        index:
+          type: integer
+          minimum: 0
+        kind:
+          type: string
+          enum: [page, slide, paragraph]
+        label:
+          type: string
+        text:
+          type: string
+    DocumentExtraction:
+      type: object
+      required: [status, detail, characterCount, segmentCount, truncated]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [extracted, no_text]
+          description: "`no_text`: the file is valid but has no selectable text (for example scanned pages). No OCR is performed."
+        detail:
+          type: [string, "null"]
+        characterCount:
+          type: integer
+          minimum: 0
+        segmentCount:
+          type: integer
+          minimum: 0
+        truncated:
+          type: boolean
+          description: True when the text was cut at the extraction limit.
+    DocumentInfo:
+      type: object
+      required: [id, fileName, format, byteSize, uploadedAt, extraction, malwareScan, segments]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        fileName:
+          type: string
+        format:
+          $ref: "#/components/schemas/DocumentFormat"
+        byteSize:
+          type: integer
+          minimum: 1
+        uploadedAt:
+          type: string
+          format: date-time
+        extraction:
+          $ref: "#/components/schemas/DocumentExtraction"
+        malwareScan:
+          type: object
+          description: "No malware scanning service is connected yet, so uploads report `not_scanned` (scanner `none`)."
+          required: [status, scanner]
+          additionalProperties: false
+          properties:
+            status:
+              type: string
+              enum: [not_scanned, clean]
+            scanner:
+              type: string
+        segments:
+          type: array
+          items:
+            $ref: "#/components/schemas/DocumentSegment"
+    DocumentSummaryPoint:
+      type: object
+      required: [text, evidence]
+      additionalProperties: false
+      properties:
+        text:
+          type: string
+          description: An original sentence from the document (shortened with "…" when long).
+        evidence:
+          type: object
+          required: [segmentIndex, label, quote]
+          additionalProperties: false
+          properties:
+            segmentIndex:
+              type: integer
+            label:
+              type: string
+            quote:
+              type: string
+              description: The full original sentence (line breaks joined with spaces).
+    DocumentSummary:
+      type: object
+      description: |
+        One immutable summary revision. With `mode: mock` it is a deterministic extractive summary
+        (no language model): the same text and revision always give the same points, and refreshing
+        alternates between `key_sentences` and `section_coverage`. `insufficient_text` means there
+        was not enough readable text; `points` is then empty.
+      required: [id, revision, status, provider, strategy, points, sourceCharacterCount, createdAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [ready, insufficient_text]
+        provider:
+          type: object
+          required: [id, mode, label]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              examples: [mock-extractive-v1]
+            mode:
+              type: string
+              enum: [mock]
+            label:
+              type: string
+              examples: ["Mock AI summary — local demonstration"]
+        strategy:
+          type: string
+          enum: [key_sentences, section_coverage]
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/DocumentSummaryPoint"
+        sourceCharacterCount:
+          type: integer
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+    DocumentDetail:
+      type: object
+      description: |
+        Staff: the working document and summary revision, plus the approved summary as `liveSummary`
+        (null until approved). Students: the approved document and summary; `liveSummary` is null.
+      required: [activityId, courseId, document, summary, liveSummary]
+      additionalProperties: false
+      properties:
+        activityId:
+          type: string
+          format: uuid
+        courseId:
+          type: string
+          format: uuid
+        document:
+          $ref: "#/components/schemas/DocumentInfo"
+        summary:
+          oneOf:
+            - $ref: "#/components/schemas/DocumentSummary"
+            - type: "null"
+        liveSummary:
+          oneOf:
+            - $ref: "#/components/schemas/DocumentSummary"
+            - type: "null"
     QuizQuestionType:
       type: string
       description: Supported now. Matching, short answer and essay are not implemented.

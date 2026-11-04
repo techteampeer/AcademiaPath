@@ -225,6 +225,7 @@ const en = {
     link: 'External resource',
     quiz: 'Quiz',
     assignment: 'Assignment',
+    file: 'Document',
   },
   academics: {
     hierarchy: 'Hierarchy',
@@ -465,6 +466,7 @@ const es: Messages = {
     link: 'Recurso externo',
     quiz: 'Cuestionario',
     assignment: 'Tarea',
+    file: 'Documento',
   },
   academics: {
     hierarchy: 'Jerarquía',

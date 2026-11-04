@@ -52,6 +52,7 @@ export const ACTIVITY_TYPE_LABELS: Record<Activity['type'], string> = {
   link: 'External resource',
   quiz: 'Quiz',
   assignment: 'Assignment',
+  file: 'Document',
 };
 
 /** Only absolute http(s) URLs are ever rendered as links (the API enforces this too). */

@@ -2,7 +2,8 @@ import { activityReviewStatusEnum } from '../db/schema/index.js';
 
 // JSON schemas mirroring the content endpoints in packages/contract/openapi.yaml.
 
-export const CONTENT_TYPES = ['page', 'link', 'quiz', 'assignment'] as const;
+/** `file` activities are documents: created only by the upload endpoint (routes/documents.ts). */
+export const CONTENT_TYPES = ['page', 'link', 'quiz', 'assignment', 'file'] as const;
 export type ContentType = (typeof CONTENT_TYPES)[number];
 
 const uuid = { type: 'string', format: 'uuid' } as const;
@@ -112,7 +113,12 @@ const contentSchema = {
   type: 'object',
   additionalProperties: false,
   // Quiz content is a summary only: questions and answer keys are never part of an activity.
+  // Document content is file metadata only; text and summaries come from the document endpoint.
   properties: {
+    documentId: uuid,
+    fileName: { type: 'string' },
+    format: { type: 'string', enum: ['pdf', 'docx', 'pptx'] },
+    summaryRevision: { type: 'integer' },
     body: { type: 'string' },
     url: { type: 'string' },
     description: { type: ['string', 'null'] },

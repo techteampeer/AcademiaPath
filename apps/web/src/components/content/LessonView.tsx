@@ -19,6 +19,7 @@ import { AssignmentSummary } from '@/components/assignments/assignmentDisplay';
 import { QuizSummary } from '@/components/quizzes/quizDisplay';
 import { QuizQuestionsPanel, QuizResultsPanel } from '@/components/quizzes/QuizStaffPanels';
 import { QuizStudentPanel } from '@/components/quizzes/QuizStudentPanel';
+import { DocumentPanel } from '@/components/documents/DocumentPanel';
 import { ActivityForm } from './ActivityForm';
 import { ACTIVITY_TYPE_LABELS, contentAbilities, ReviewStatusBadge, safeHttpUrl, type ContentAbilities } from './contentDisplay';
 
@@ -37,6 +38,8 @@ function ContentBody({ activity }: { activity: Activity }) {
   const content = activity.content;
   if ('attemptLimit' in content) return <QuizSummary content={content} />;
   if ('rubric' in content) return <AssignmentSummary content={content} />;
+  // Documents are rendered by DocumentPanel.
+  if ('documentId' in content) return null;
   if ('body' in content) {
     return <div className="whitespace-pre-wrap break-words text-slate-800">{content.body}</div>;
   }
@@ -128,9 +131,18 @@ function LessonContent({ courseId, activityId, user }: { courseId: string; activ
         />
       ) : null}
 
-      <Card as="article" padding="lg" aria-label={isQuiz ? 'Quiz details' : 'Lesson content'}>
-        <ContentBody activity={activity} />
-      </Card>
+      {activity.type === 'file' ? (
+        <DocumentPanel
+          courseId={courseId}
+          activity={activity}
+          canRefresh={abilities.edit && activity.review !== null && activity.review.status !== 'submitted'}
+          onChanged={() => void load()}
+        />
+      ) : (
+        <Card as="article" padding="lg" aria-label={isQuiz ? 'Quiz details' : 'Lesson content'}>
+          <ContentBody activity={activity} />
+        </Card>
+      )}
 
       {isQuiz && activity.review && abilities.viewUnapproved ? (
         <QuizQuestionsPanel
@@ -172,7 +184,8 @@ function StaffPanel({
   const { run, pending, result } = useCsrfAction();
 
   const status = review.status;
-  const canEdit = abilities.edit && status !== 'submitted';
+  // Documents change through upload and "Refresh summary" (DocumentPanel), not the text editor.
+  const canEdit = abilities.edit && status !== 'submitted' && activity.type !== 'file';
   const canSubmit = abilities.edit && (status === 'draft' || status === 'returned');
   const canReview = abilities.review && status === 'submitted';
   const ownSubmission = review.submittedByUserId === user.id;

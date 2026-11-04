@@ -431,6 +431,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{id}/sections/{sectionId}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a PDF, DOCX or PPTX document to a section
+         * @description Requires `content.edit` (instructor, design team) or the administrator role. Send
+         *     `multipart/form-data` with an optional `title` field followed by exactly one `file` part.
+         *     Only `.pdf`, `.docx` and `.pptx` names are accepted, and the file's content must match:
+         *     the server checks the signature and container structure and ignores the browser's media
+         *     type. Encrypted or password-protected files, macro-enabled Office files, templates,
+         *     malformed files and files that exceed the processing limits are rejected and not stored
+         *     (audited as `document.upload_rejected`). The size limit is configurable (10 MB by default).
+         *
+         *     Accepted files are stored privately under a server-generated name. The response contains the
+         *     extracted text (PDF pages, PPTX slides or DOCX paragraphs) and summary revision 1. A file
+         *     without selectable text (for example scanned pages) is stored with extraction status
+         *     `no_text`; no OCR is performed. The new `file` activity is a `draft`. Audited as
+         *     `activity.created`, `document.uploaded` and `document.summary_generated`.
+         */
+        post: operations["uploadSectionDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/activities/{activityId}/document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a document's metadata, extracted text and summary
+         * @description For a `file` activity. Staff receive the working copy: the document, its current summary
+         *     revision and, once approved, the approved summary as `liveSummary`. Students receive only
+         *     the approved document and the approved summary revision of approved, visible documents in
+         *     visible sections of published courses they are enrolled in (`liveSummary` is null); never
+         *     drafts, pending revisions or review comments. Anything else responds `404`.
+         */
+        get: operations["getActivityDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/activities/{activityId}/document/summaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate a new summary revision (Refresh summary)
+         * @description Requires `content.edit` or the administrator role. Send no request body. Creates the next
+         *     summary revision from the stored extracted text with the mock provider and points the
+         *     working copy at it. Documents waiting for review cannot be changed (`409`). Like editing,
+         *     refreshing approved content sets the status back to `draft`: students keep seeing the
+         *     approved document and summary revision until the new revision is approved. Earlier
+         *     revisions are never modified. Audited as `document.summary_generated`.
+         */
+        post: operations["refreshDocumentSummary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/activities/{activityId}/document/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the original file
+         * @description Same access rules as reading the document: staff download the working copy's file, students
+         *     only approved, visible documents. Served as an attachment with the server-detected media
+         *     type, `X-Content-Type-Options: nosniff` and a sandboxing Content-Security-Policy. The file's
+         *     SHA-256 is verified before it is sent. Original files are never reachable through a public
+         *     URL.
+         */
+        get: operations["downloadActivityDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{id}/activities/{activityId}/questions": {
         parameters: {
             query?: never;
@@ -935,7 +1040,7 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED";
         };
         Code: string;
         /**
@@ -1160,10 +1265,10 @@ export interface components {
             nextCursor: string | null;
         };
         /**
-         * @description Content types supported by the content API.
+         * @description Content types supported by the content API. `file` activities are documents, created only by uploading.
          * @enum {string}
          */
-        ActivityType: "page" | "link" | "quiz" | "assignment";
+        ActivityType: "page" | "link" | "quiz" | "assignment" | "file";
         /** @enum {string} */
         ReviewStatus: "draft" | "submitted" | "approved" | "returned";
         /** @description Plain-text lesson. Clients must render `body` as text, never as HTML. */
@@ -1206,7 +1311,18 @@ export interface components {
             rubric: components["schemas"]["RubricCriterion"][];
             totalPoints: number;
         };
-        ActivityContent: components["schemas"]["PageContent"] | components["schemas"]["LinkContent"] | components["schemas"]["QuizContent"] | components["schemas"]["AssignmentContent"];
+        /**
+         * @description Uploaded document (activity type `file`). Text and summaries are read from the document
+         *     endpoint; `summaryRevision` is the summary revision of this version (working or live).
+         */
+        DocumentContent: {
+            /** Format: uuid */
+            documentId: string;
+            fileName: string;
+            format: components["schemas"]["DocumentFormat"];
+            summaryRevision: number;
+        };
+        ActivityContent: components["schemas"]["PageContent"] | components["schemas"]["LinkContent"] | components["schemas"]["QuizContent"] | components["schemas"]["AssignmentContent"] | components["schemas"]["DocumentContent"];
         PageContentInput: {
             title: string;
             /** @description Plain text; line breaks are preserved. HTML is not interpreted. */
@@ -1318,6 +1434,105 @@ export interface components {
         ActivityPage: {
             items: components["schemas"]["Activity"][];
             nextCursor: string | null;
+        };
+        /** @enum {string} */
+        DocumentFormat: "pdf" | "docx" | "pptx";
+        DocumentUpload: {
+            /** @description Optional display title (send before `file`). Defaults to the file name without its extension. */
+            title?: string;
+            /** @description One PDF, DOCX or PPTX file. */
+            file: string;
+        };
+        /**
+         * @description One block of extracted plain text: a PDF page (`Page 3`), a PPTX slide (`Slide 2`) or a DOCX
+         *     paragraph (`Paragraph 5`; DOCX files have no fixed pages). Clients must render `text` as
+         *     text, never as HTML.
+         */
+        DocumentSegment: {
+            index: number;
+            /** @enum {string} */
+            kind: "page" | "slide" | "paragraph";
+            label: string;
+            text: string;
+        };
+        DocumentExtraction: {
+            /**
+             * @description `no_text`: the file is valid but has no selectable text (for example scanned pages). No OCR is performed.
+             * @enum {string}
+             */
+            status: "extracted" | "no_text";
+            detail: string | null;
+            characterCount: number;
+            segmentCount: number;
+            /** @description True when the text was cut at the extraction limit. */
+            truncated: boolean;
+        };
+        DocumentInfo: {
+            /** Format: uuid */
+            id: string;
+            fileName: string;
+            format: components["schemas"]["DocumentFormat"];
+            byteSize: number;
+            /** Format: date-time */
+            uploadedAt: string;
+            extraction: components["schemas"]["DocumentExtraction"];
+            /** @description No malware scanning service is connected yet, so uploads report `not_scanned` (scanner `none`). */
+            malwareScan: {
+                /** @enum {string} */
+                status: "not_scanned" | "clean";
+                scanner: string;
+            };
+            segments: components["schemas"]["DocumentSegment"][];
+        };
+        DocumentSummaryPoint: {
+            /** @description An original sentence from the document (shortened with "…" when long). */
+            text: string;
+            evidence: {
+                segmentIndex: number;
+                label: string;
+                /** @description The full original sentence (line breaks joined with spaces). */
+                quote: string;
+            };
+        };
+        /**
+         * @description One immutable summary revision. With `mode: mock` it is a deterministic extractive summary
+         *     (no language model): the same text and revision always give the same points, and refreshing
+         *     alternates between `key_sentences` and `section_coverage`. `insufficient_text` means there
+         *     was not enough readable text; `points` is then empty.
+         */
+        DocumentSummary: {
+            /** Format: uuid */
+            id: string;
+            revision: number;
+            /** @enum {string} */
+            status: "ready" | "insufficient_text";
+            provider: {
+                /** @example mock-extractive-v1 */
+                id: string;
+                /** @enum {string} */
+                mode: "mock";
+                /** @example Mock AI summary — local demonstration */
+                label: string;
+            };
+            /** @enum {string} */
+            strategy: "key_sentences" | "section_coverage";
+            points: components["schemas"]["DocumentSummaryPoint"][];
+            sourceCharacterCount: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /**
+         * @description Staff: the working document and summary revision, plus the approved summary as `liveSummary`
+         *     (null until approved). Students: the approved document and summary; `liveSummary` is null.
+         */
+        DocumentDetail: {
+            /** Format: uuid */
+            activityId: string;
+            /** Format: uuid */
+            courseId: string;
+            document: components["schemas"]["DocumentInfo"];
+            summary: components["schemas"]["DocumentSummary"] | null;
+            liveSummary: components["schemas"]["DocumentSummary"] | null;
         };
         /**
          * @description Supported now. Matching, short answer and essay are not implemented.
@@ -1842,6 +2057,46 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
+        /** @description The uploaded file exceeds the configured size limit (`code`: `PAYLOAD_TOO_LARGE`). */
+        PayloadTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "type": "about:blank",
+                 *       "title": "Payload Too Large",
+                 *       "status": 413,
+                 *       "detail": "The file exceeds the 10 MB upload limit.",
+                 *       "code": "PAYLOAD_TOO_LARGE"
+                 *     }
+                 */
+                "application/problem+json": components["schemas"]["ProblemDetails"];
+            };
+        };
+        /**
+         * @description The request is not `multipart/form-data` (`UNSUPPORTED_MEDIA_TYPE`), or the file is not an
+         *     accepted document type: not `.pdf`/`.docx`/`.pptx`, macro-enabled, a template or a slide show
+         *     (`UNSUPPORTED_FILE_TYPE`).
+         */
+        UnsupportedMediaType: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "type": "about:blank",
+                 *       "title": "Unsupported Media Type",
+                 *       "status": 415,
+                 *       "detail": "Only PDF (.pdf), Word (.docx) and PowerPoint (.pptx) files are accepted.",
+                 *       "code": "UNSUPPORTED_FILE_TYPE"
+                 *     }
+                 */
+                "application/problem+json": components["schemas"]["ProblemDetails"];
+            };
+        };
         /** @description Too many sign-in attempts or tutor requests (`code`: `RATE_LIMITED`). */
         RateLimited: {
             headers: {
@@ -1910,7 +2165,10 @@ export interface components {
          *     `PROGRAM_NOT_FOUND`, `PROGRAM_INACTIVE`, `TERM_NOT_FOUND`, `TEMPLATE_NOT_FOUND`,
          *     `TEMPLATE_VERSION_NOT_FOUND`, `TEMPLATE_PROGRAM_MISMATCH`, `USER_NOT_FOUND`, `USER_INACTIVE`,
          *     `INVALID_URL`, `CONTENT_TYPE_MISMATCH`, `REVIEW_COMMENT_REQUIRED`, `QUIZ_HAS_NO_QUESTIONS`,
-         *     `INVALID_ANSWER_KEY`, `INVALID_ANSWER`, `INVALID_DUE_DATE` or `INVALID_RUBRIC_SCORES`.
+         *     `INVALID_ANSWER_KEY`, `INVALID_ANSWER`, `INVALID_DUE_DATE` or `INVALID_RUBRIC_SCORES`; or a refused
+         *     document upload: `FILE_SIGNATURE_MISMATCH` (content does not match the extension),
+         *     `DOCUMENT_ENCRYPTED`, `DOCUMENT_MALFORMED`, `DOCUMENT_LIMITS_EXCEEDED` (decompressed size,
+         *     processing time or memory) or `MALWARE_DETECTED`.
          */
         UnprocessableContent: {
             headers: {
@@ -2686,6 +2944,127 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    uploadSectionDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                sectionId: components["parameters"]["SectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["DocumentUpload"];
+            };
+        };
+        responses: {
+            /** @description Document stored and extracted; summary revision 1 created. */
+            201: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    getActivityDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The readable version of the document. */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    refreshDocumentSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description New summary revision created. */
+            201: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    downloadActivityDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The original file. */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    /** @description Always `attachment`, with the sanitized original file name. */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": string;
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation": string;
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     listQuizQuestions: {

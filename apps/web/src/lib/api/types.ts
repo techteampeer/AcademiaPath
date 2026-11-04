@@ -75,6 +75,12 @@ export type TutorMessageResponse = Schemas['TutorMessageResponse'];
 export type TutorPracticeResponse = Schemas['TutorPracticeResponse'];
 export type TutorUsage = Schemas['TutorUsage'];
 
+export type DocumentFormat = Schemas['DocumentFormat'];
+export type DocumentContent = Schemas['DocumentContent'];
+export type DocumentDetail = Schemas['DocumentDetail'];
+export type DocumentSegment = Schemas['DocumentSegment'];
+export type DocumentSummary = Schemas['DocumentSummary'];
+
 export type ProgramUpdate = Schemas['ProgramUpdate'];
 export type TermUpdate = Schemas['TermUpdate'];
 export type CourseTemplateDetail = Schemas['CourseTemplateDetail'];
