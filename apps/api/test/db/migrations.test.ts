@@ -105,6 +105,7 @@ describe('database migrations (PostgreSQL)', { skip: testServerUrl ? false : 'TE
         'sections',
         'sessions',
         'terms',
+        'tutor_usage',
         'user_credentials',
         'users',
       ],

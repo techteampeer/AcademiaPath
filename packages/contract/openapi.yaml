@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.6.0
+  version: 0.7.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -44,6 +44,11 @@ info:
     hidden until the next release. Grades are shown on the 0–20 scale: points × 20 / maxPoints,
     rounded half up to one decimal place. Course totals sum points over the counted items before
     converting, without weighting.
+
+    Tutor: a course-grounded tutor for students, instructors and non-editing instructors. It searches
+    only approved lesson text the caller may read in the course (PostgreSQL full-text search) and
+    answers through a local, deterministic mock provider (`mode: mock`) that quotes passages with
+    citations. No language model or external service is used.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -66,6 +71,8 @@ tags:
     description: Text submissions and rubric grading
   - name: Grades
     description: Gradebook, grade release and students' released grades
+  - name: Tutor
+    description: Course-grounded tutor (local mock provider) and usage
 paths:
   /api/v1/health:
     get:
@@ -1345,6 +1352,115 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/tutor/messages:
+    post:
+      operationId: askTutor
+      summary: Ask the course tutor a question (local mock provider, grounded in approved lessons)
+      description: |
+        Students, instructors and non-editing instructors of the course only (`tutor.use`; the
+        administrator and design-team roles never grant it). Students must be enrolled in a published
+        course. The answer is built only from approved lesson text this user may read in this course
+        (students: visible lessons in visible sections). Draft, submitted or returned revisions,
+        quizzes and answer keys, assignments, submissions, grades, review comments and audit entries
+        are never used. When a lesson has an unapproved revision, only the approved version is used.
+
+        Responses come from a local, deterministic mock provider (`provider.mode` = `mock`): it quotes
+        the retrieved passages verbatim with citations, uses fixed English or Spanish wording, does
+        not translate sources, and does not use a language model. Lesson text is treated as data,
+        never as instructions. When nothing relevant is found, `grounding` is `insufficient_material`
+        and no citations are returned. Requests are limited per user and course (`RATE_LIMITED`) and
+        recorded without the question text.
+      tags: [Tutor]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TutorMessageRequest"
+      responses:
+        "200":
+          description: The grounded (or insufficient-material) mock response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TutorMessageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/courses/{id}/tutor/practice:
+    post:
+      operationId: suggestTutorPractice
+      summary: Suggest practice prompts from approved lessons (local mock provider)
+      description: |
+        Same access, sources, limits and recording as `askTutor`. Returns up to three clearly labelled,
+        ungraded practice prompts, each built from a cited approved lesson passage (optionally about
+        `topic`). Prompts never contain assessment questions or answer keys.
+      tags: [Tutor]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TutorPracticeRequest"
+      responses:
+        "200":
+          description: Practice prompts (or an insufficient-material response).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TutorPracticeResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/courses/{id}/tutor/usage:
+    get:
+      operationId: getMyTutorUsage
+      summary: The signed-in user's own tutor usage in this course
+      description: |
+        Same access as `askTutor`. Only the caller's own records are returned (most recent first,
+        at most 20); other users' usage is never exposed.
+      tags: [Tutor]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: Usage summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TutorUsage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   parameters:
     Limit:
@@ -1464,7 +1580,7 @@ components:
             detail: Missing or invalid CSRF token.
             code: CSRF_TOKEN_INVALID
     RateLimited:
-      description: "Too many sign-in attempts (`code`: `RATE_LIMITED`)."
+      description: "Too many sign-in attempts or tutor requests (`code`: `RATE_LIMITED`)."
       headers:
         Retry-After:
           description: Seconds until another attempt is allowed.
@@ -3185,3 +3301,187 @@ components:
             $ref: "#/components/schemas/StudentGradeItem"
         total:
           $ref: "#/components/schemas/CourseTotal"
+    TutorLanguage:
+      type: string
+      description: Response language. Sources are never translated.
+      enum: [en, es]
+    TutorProvider:
+      type: object
+      required: [mode, label]
+      additionalProperties: false
+      properties:
+        mode:
+          type: string
+          description: "`mock`: a local, deterministic provider that quotes approved lesson passages. No language model is used."
+          enum: [mock]
+        label:
+          type: string
+          description: Notice to display with every response (for example "Mock AI — local demonstration").
+    TutorGrounding:
+      type: string
+      description: "`grounded` when approved lesson passages support the response; otherwise `insufficient_material`."
+      enum: [grounded, insufficient_material]
+    TutorMessageRequest:
+      type: object
+      required: [question, language]
+      additionalProperties: false
+      properties:
+        question:
+          type: string
+          minLength: 1
+          maxLength: 500
+          pattern: "\\S"
+        language:
+          $ref: "#/components/schemas/TutorLanguage"
+    TutorPracticeRequest:
+      type: object
+      required: [language]
+      additionalProperties: false
+      properties:
+        language:
+          $ref: "#/components/schemas/TutorLanguage"
+        topic:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: "\\S"
+    TutorCitation:
+      type: object
+      required: [ref, activityId, sectionId, title, excerpt, sourceLanguage, matchesRequestedLanguage]
+      additionalProperties: false
+      properties:
+        ref:
+          type: integer
+          minimum: 1
+          description: Number used in the response text, e.g. [1].
+        activityId:
+          type: string
+          format: uuid
+          description: The approved lesson the excerpt comes from.
+        sectionId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          description: Title of the approved lesson version.
+        excerpt:
+          type: string
+          maxLength: 402
+          description: Verbatim text from the approved lesson, possibly shortened with "…"; never translated.
+        sourceLanguage:
+          type: string
+          description: Detected language of the source passage (simple word-list heuristic).
+          enum: [en, es, unknown]
+        matchesRequestedLanguage:
+          type: boolean
+    TutorUsageSummary:
+      type: object
+      required: [limit, windowMinutes, usedInWindow]
+      additionalProperties: false
+      properties:
+        limit:
+          type: integer
+        windowMinutes:
+          type: integer
+        usedInWindow:
+          type: integer
+    TutorMessageResponse:
+      type: object
+      required: [provider, language, grounding, text, citations, usage]
+      additionalProperties: false
+      properties:
+        provider:
+          $ref: "#/components/schemas/TutorProvider"
+        language:
+          $ref: "#/components/schemas/TutorLanguage"
+        grounding:
+          $ref: "#/components/schemas/TutorGrounding"
+        text:
+          type: string
+          maxLength: 4000
+          description: Plain text to render as text, never as HTML.
+        citations:
+          type: array
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/TutorCitation"
+        usage:
+          $ref: "#/components/schemas/TutorUsageSummary"
+    TutorPracticePrompt:
+      type: object
+      required: [ref, kind, text, citation]
+      additionalProperties: false
+      properties:
+        ref:
+          type: integer
+          minimum: 1
+        kind:
+          type: string
+          enum: [explain, key_terms]
+        text:
+          type: string
+          maxLength: 800
+        citation:
+          $ref: "#/components/schemas/TutorCitation"
+    TutorPracticeResponse:
+      type: object
+      required: [provider, language, grounding, prompts, usage]
+      additionalProperties: false
+      properties:
+        provider:
+          $ref: "#/components/schemas/TutorProvider"
+        language:
+          $ref: "#/components/schemas/TutorLanguage"
+        grounding:
+          $ref: "#/components/schemas/TutorGrounding"
+        prompts:
+          type: array
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/TutorPracticePrompt"
+        usage:
+          $ref: "#/components/schemas/TutorUsageSummary"
+    TutorUsageRecord:
+      type: object
+      required: [id, kind, language, outcome, providerMode, sourceActivityIds, createdAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [message, practice]
+        language:
+          $ref: "#/components/schemas/TutorLanguage"
+        outcome:
+          $ref: "#/components/schemas/TutorGrounding"
+        providerMode:
+          type: string
+          enum: [mock]
+        sourceActivityIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        createdAt:
+          type: string
+          format: date-time
+    TutorUsage:
+      type: object
+      required: [limit, windowMinutes, usedInWindow, totalRequests, items]
+      additionalProperties: false
+      properties:
+        limit:
+          type: integer
+        windowMinutes:
+          type: integer
+        usedInWindow:
+          type: integer
+        totalRequests:
+          type: integer
+        items:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TutorUsageRecord"

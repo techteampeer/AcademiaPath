@@ -42,6 +42,10 @@ export const quizAttemptStatusEnum = pgEnum('quiz_attempt_status', ['in_progress
 /** Where a gradebook entry comes from: the best quiz attempt or a graded assignment submission. */
 export const gradeSourceEnum = pgEnum('grade_source', ['quiz', 'assignment']);
 
+/** Tutor usage accounting: request kind and grounding outcome (never the question text). */
+export const tutorRequestKindEnum = pgEnum('tutor_request_kind', ['message', 'practice']);
+export const tutorOutcomeEnum = pgEnum('tutor_outcome', ['grounded', 'insufficient_material']);
+
 export const localeEnum = pgEnum('locale', ['es', 'en']);
 
 export type SystemRole = (typeof systemRoleEnum.enumValues)[number];

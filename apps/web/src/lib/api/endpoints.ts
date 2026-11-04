@@ -38,6 +38,10 @@ import type {
   StudentGrades,
   StudentQuizAttempt,
   StudentQuizAttemptSummary,
+  TutorLanguage,
+  TutorMessageResponse,
+  TutorPracticeResponse,
+  TutorUsage,
   Term,
   TermCreate,
   TermPage,
@@ -130,4 +134,11 @@ export const api = {
     apiRequest<GradeReleaseResult>('POST', `${activity(courseId, activityId)}/grades/release`, { csrfToken }),
   getGradebook: (courseId: string, page?: PageRequest) => apiRequest<Gradebook>('GET', withPage(`${course(courseId)}/gradebook`, page)),
   myGrades: (courseId: string) => apiRequest<StudentGrades>('GET', `${course(courseId)}/grades/mine`),
+
+  // Course tutor (local mock provider on the API; nothing is sent to external services).
+  askTutor: (courseId: string, question: string, language: TutorLanguage, csrfToken: string) =>
+    apiRequest<TutorMessageResponse>('POST', `${course(courseId)}/tutor/messages`, { body: { question, language }, csrfToken }),
+  tutorPractice: (courseId: string, language: TutorLanguage, topic: string | null, csrfToken: string) =>
+    apiRequest<TutorPracticeResponse>('POST', `${course(courseId)}/tutor/practice`, { body: { language, ...(topic ? { topic } : {}) }, csrfToken }),
+  tutorUsage: (courseId: string) => apiRequest<TutorUsage>('GET', `${course(courseId)}/tutor/usage`),
 };

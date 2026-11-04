@@ -23,6 +23,8 @@ export function contentAbilities(user: CurrentUser, viewerRole: CourseRole | nul
     viewGrades: admin || role === 'instructor' || role === 'non_editing_instructor',
     /** Grading and releasing grades need the course role itself; the administrator role never grants them. */
     grade: role === 'instructor' || role === 'non_editing_instructor',
+    /** Course tutor: students, instructors and non-editing instructors (never via the administrator role). */
+    tutor: role === 'student' || role === 'instructor' || role === 'non_editing_instructor',
   };
 }
 
