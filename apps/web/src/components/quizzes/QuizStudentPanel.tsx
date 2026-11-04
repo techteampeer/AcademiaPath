@@ -89,7 +89,14 @@ export function QuizStudentPanel({ courseId, quizId }: { courseId: string; quizI
               ))}
             </ul>
           ) : null}
-          {state.summary.items.some((attempt) => attempt.status === 'submitted') ? (
+          {state.summary.gradeReleased ? (
+            <p className="text-sm text-slate-700">
+              Your grade for this quiz has been released (best attempt).{' '}
+              <Link href={`/courses/${courseId}/grades`} className="font-medium text-brand-700 hover:underline">
+                See my grades
+              </Link>
+            </p>
+          ) : state.summary.items.some((attempt) => attempt.status === 'submitted') ? (
             <p className="text-sm text-slate-600">Results have not been released yet. Your instructor will publish them later.</p>
           ) : null}
         </>

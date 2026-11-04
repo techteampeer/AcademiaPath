@@ -175,11 +175,12 @@ export const studentAttemptSchema = {
 
 export const studentAttemptSummarySchema = {
   type: 'object',
-  required: ['attemptLimit', 'attemptsUsed', 'timeLimitMinutes', 'activeAttemptId', 'items'],
+  required: ['attemptLimit', 'attemptsUsed', 'timeLimitMinutes', 'activeAttemptId', 'gradeReleased', 'items'],
   additionalProperties: false,
   properties: {
     attemptLimit: { type: 'integer' },
     attemptsUsed: { type: 'integer' },
+    gradeReleased: { type: 'boolean' },
     timeLimitMinutes: { type: ['integer', 'null'] },
     activeAttemptId: { type: ['string', 'null'], format: 'uuid' },
     items: {

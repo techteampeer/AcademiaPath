@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.5.0
+  version: 0.6.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -31,8 +31,19 @@ info:
 
     Quizzes are activities of type `quiz` that use the same review workflow: approval publishes the
     settings together with a snapshot of the questions. Students never receive answer keys or
-    scores; grading happens on the server when an attempt is submitted, and results are visible to
-    course staff only until a grade-release feature exists.
+    scores; grading happens on the server when an attempt is submitted.
+
+    Assignments are activities of type `assignment` (text submissions) with a due date, an optional
+    late-submission window and a points-based rubric, using the same review workflow. Each student
+    submits once; the server records the time. Instructors and non-editing instructors grade against
+    the rubric and release grades; the administrator role never submits work, grades or releases.
+
+    Grades: every grade is calculated by the server and stored once per student and activity (a
+    quiz counts its best submitted attempt by score / maxScore, earliest first on ties). Students see
+    a grade only after staff release it; a release copies the current grade, and later changes stay
+    hidden until the next release. Grades are shown on the 0–20 scale: points × 20 / maxPoints,
+    rounded half up to one decimal place. Course totals sum points over the counted items before
+    converting, without weighting.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -51,6 +62,10 @@ tags:
     description: Lessons and external resources in course sections, with review and approval
   - name: Quizzes
     description: Quiz questions, student attempts and server-side grading
+  - name: Assignments
+    description: Text submissions and rubric grading
+  - name: Grades
+    description: Gradebook, grade release and students' released grades
 paths:
   /api/v1/health:
     get:
@@ -1074,6 +1089,262 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/activities/{activityId}/submissions:
+    post:
+      operationId: submitAssignment
+      summary: Submit text work for an approved assignment (students only)
+      description: |
+        Students only (`assignment.submit`; the administrator role never grants it), for approved,
+        visible assignments in published courses they are enrolled in. The server records the
+        submission time from its own clock. Submissions up to `dueAt` are on time. When the
+        assignment sets `lateUntil`, submissions after `dueAt` and up to `lateUntil` are accepted and
+        flagged late (no automatic deduction); otherwise, and after `lateUntil`, they are rejected
+        with `SUBMISSION_CLOSED`. One final submission per student (`SUBMISSION_EXISTS`). The approved
+        rubric is copied into the submission, so later revisions never change how it is graded.
+        Audited as `assignment.submitted`.
+      tags: [Assignments]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignmentSubmissionCreate"
+      responses:
+        "201":
+          description: The recorded submission. No grade is returned until it is released.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentAssignmentSubmission"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    get:
+      operationId: listAssignmentSubmissions
+      summary: Submissions to an assignment with their grading status (graders)
+      description: |
+        Requires `grades.view` (instructor, non-editing instructor) or the administrator role
+        (read-only). Ordered by student email.
+      tags: [Assignments]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of submissions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentSubmissionPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/activities/{activityId}/submissions/mine:
+    get:
+      operationId: getMyAssignmentSubmission
+      summary: The signed-in student's submission status for an assignment
+      description: |
+        Students only. `submission` is null until the student submits. The grade appears only after
+        release; until then `gradeStatus` is `pending` and no numbers are returned.
+      tags: [Assignments]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200":
+          description: Submission window and the student's own submission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentAssignmentStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/activities/{activityId}/submissions/{submissionId}:
+    get:
+      operationId: getAssignmentSubmission
+      summary: One submission with its rubric, scores and feedback (graders)
+      description: Requires `grades.view` (instructor, non-editing instructor) or the administrator role (read-only).
+      tags: [Assignments]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+        - $ref: "#/components/parameters/SubmissionId"
+      responses:
+        "200":
+          description: The submission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentSubmissionDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/activities/{activityId}/submissions/{submissionId}/grade:
+    put:
+      operationId: gradeAssignmentSubmission
+      summary: Grade a submission against its rubric
+      description: |
+        Requires `grades.grade`: instructors and non-editing instructors assigned to the course. The
+        administrator and design-team roles cannot grade. Every criterion of the submission's rubric
+        must be scored exactly once, with whole points from 0 to the criterion maximum
+        (`INVALID_RUBRIC_SCORES`; the database enforces the maximums too). The server computes the
+        total; totals sent by the client are rejected. Regrading is allowed: a grade changed after
+        release stays hidden from the student until it is released again. Audited as
+        `assignment.graded`.
+      tags: [Assignments]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+        - $ref: "#/components/parameters/SubmissionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignmentGradeInput"
+      responses:
+        "200":
+          description: The graded submission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentSubmissionDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/activities/{activityId}/grades/release:
+    post:
+      operationId: releaseGrades
+      summary: Release the current grades of a quiz or assignment to its students
+      description: |
+        Requires `grades.release` (instructor, non-editing instructor; never the administrator or
+        design-team roles). In one transaction, copies each graded student's current grade (points,
+        feedback and rubric scores; for quizzes the best attempt's score) to the released grade the
+        student can see. Grades given or changed later stay hidden until the next release, and
+        releasing again without changes releases nothing. Answer keys are never released. Audited as
+        `grades.released`. No request body.
+      tags: [Grades]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200":
+          description: How many grades were released.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GradeReleaseResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/gradebook:
+    get:
+      operationId: getGradebook
+      summary: Course gradebook (staff)
+      description: |
+        Requires `grades.view` (instructor, non-editing instructor) or the administrator role
+        (read-only). Columns are the course's approved quizzes and assignments; rows are active
+        students ordered by email and paginated. Cells hold the current server-calculated grade and
+        its release status. A quiz counts the best submitted attempt, once per student. The total
+        sums points over graded items and converts them to the 0–20 scale.
+      tags: [Grades]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of gradebook rows.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Gradebook"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/grades/mine:
+    get:
+      operationId: getMyGrades
+      summary: The signed-in student's released grades in a course
+      description: |
+        Students only (`grades.viewOwn`). Lists the course's quizzes and assignments. Released items
+        include points, the 0–20 grade and, for assignments, feedback and rubric scores; everything
+        else is `pending` without numbers. Answer keys are never included. The total uses released
+        grades only.
+      tags: [Grades]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: The student's grades.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentGrades"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   parameters:
     Limit:
@@ -1123,6 +1394,13 @@ components:
         format: uuid
     AttemptId:
       name: attemptId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SubmissionId:
+      name: submissionId
       in: path
       required: true
       schema:
@@ -1219,7 +1497,8 @@ components:
         A uniqueness rule was violated: `PROGRAM_CODE_TAKEN`, `TERM_CODE_TAKEN`, `COURSE_CODE_TAKEN`,
         `ENROLLMENT_EXISTS` or `TEMPLATE_VERSION_CONFLICT`; or an invalid review transition:
         `ACTIVITY_UNDER_REVIEW`, `INVALID_REVIEW_STATE`; or a quiz rule: `QUIZ_QUESTION_LIMIT`,
-        `ATTEMPT_LIMIT_REACHED`, `ATTEMPT_NOT_IN_PROGRESS`, `ATTEMPT_EXPIRED`, `ATTEMPT_CONFLICT`.
+        `ATTEMPT_LIMIT_REACHED`, `ATTEMPT_NOT_IN_PROGRESS`, `ATTEMPT_EXPIRED`, `ATTEMPT_CONFLICT`; or an
+        assignment rule: `SUBMISSION_EXISTS`, `SUBMISSION_CLOSED`.
       content:
         application/problem+json:
           schema:
@@ -1236,7 +1515,7 @@ components:
         `PROGRAM_NOT_FOUND`, `PROGRAM_INACTIVE`, `TERM_NOT_FOUND`, `TEMPLATE_NOT_FOUND`,
         `TEMPLATE_VERSION_NOT_FOUND`, `TEMPLATE_PROGRAM_MISMATCH`, `USER_NOT_FOUND`, `USER_INACTIVE`,
         `INVALID_URL`, `CONTENT_TYPE_MISMATCH`, `REVIEW_COMMENT_REQUIRED`, `QUIZ_HAS_NO_QUESTIONS`,
-        `INVALID_ANSWER_KEY` or `INVALID_ANSWER`.
+        `INVALID_ANSWER_KEY`, `INVALID_ANSWER`, `INVALID_DUE_DATE` or `INVALID_RUBRIC_SCORES`.
       content:
         application/problem+json:
           schema:
@@ -1422,6 +1701,10 @@ components:
             - ATTEMPT_NOT_IN_PROGRESS
             - ATTEMPT_EXPIRED
             - ATTEMPT_CONFLICT
+            - SUBMISSION_EXISTS
+            - SUBMISSION_CLOSED
+            - INVALID_DUE_DATE
+            - INVALID_RUBRIC_SCORES
     Code:
       type: string
       minLength: 1
@@ -1863,7 +2146,7 @@ components:
     ActivityType:
       type: string
       description: Content types supported by the content API.
-      enum: [page, link, quiz]
+      enum: [page, link, quiz, assignment]
     ReviewStatus:
       type: string
       enum: [draft, submitted, approved, returned]
@@ -1907,11 +2190,49 @@ components:
           type: integer
         totalPoints:
           type: integer
+    RubricCriterion:
+      type: object
+      required: [id, title, description, maxPoints]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: [string, "null"]
+        maxPoints:
+          type: integer
+          minimum: 1
+          maximum: 100
+    AssignmentContent:
+      type: object
+      description: Assignment instructions, deadline, late-submission window and points-based rubric.
+      required: [instructions, dueAt, lateUntil, rubric, totalPoints]
+      additionalProperties: false
+      properties:
+        instructions:
+          type: string
+        dueAt:
+          type: string
+          format: date-time
+        lateUntil:
+          type: [string, "null"]
+          format: date-time
+          description: When set, submissions after `dueAt` and up to this time are accepted and flagged late.
+        rubric:
+          type: array
+          items:
+            $ref: "#/components/schemas/RubricCriterion"
+        totalPoints:
+          type: integer
     ActivityContent:
       oneOf:
         - $ref: "#/components/schemas/PageContent"
         - $ref: "#/components/schemas/LinkContent"
         - $ref: "#/components/schemas/QuizContent"
+        - $ref: "#/components/schemas/AssignmentContent"
     PageContentInput:
       type: object
       required: [title, body]
@@ -1975,6 +2296,54 @@ components:
           type: boolean
           default: false
           description: Shuffles options of choice questions (not true/false).
+    RubricCriterionInput:
+      type: object
+      required: [title, maxPoints]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: "\\S"
+        description:
+          type: string
+          maxLength: 1000
+        maxPoints:
+          type: integer
+          minimum: 1
+          maximum: 100
+    AssignmentInput:
+      type: object
+      required: [title, instructions, dueAt, rubric]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: "\\S"
+        instructions:
+          type: string
+          minLength: 1
+          maxLength: 20000
+          pattern: "\\S"
+          description: Plain text; line breaks are preserved. HTML is not interpreted.
+        dueAt:
+          type: string
+          format: date-time
+        lateUntil:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            Optional end of the late-submission window. Must be after `dueAt` and at most 30 days
+            later (`INVALID_DUE_DATE`). Omit or null to reject submissions after `dueAt`.
+        rubric:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/RubricCriterionInput"
     ActivityCreate:
       oneOf:
         - allOf:
@@ -2001,12 +2370,21 @@ components:
                 type:
                   type: string
                   const: quiz
+        - allOf:
+            - $ref: "#/components/schemas/AssignmentInput"
+            - type: object
+              required: [type]
+              properties:
+                type:
+                  type: string
+                  const: assignment
     ActivityUpdate:
       description: Must match the activity's type.
       oneOf:
         - $ref: "#/components/schemas/PageContentInput"
         - $ref: "#/components/schemas/LinkContentInput"
         - $ref: "#/components/schemas/QuizSettingsInput"
+        - $ref: "#/components/schemas/AssignmentInput"
     ActivityReviewDecision:
       type: object
       required: [decision]
@@ -2290,7 +2668,10 @@ components:
           type: boolean
         resultsReleased:
           type: boolean
-          description: Always false until grade release is implemented.
+          description: |
+            True once staff have released this student's grade for the quiz (see
+            `GET /api/v1/courses/{id}/grades/mine`). Per-attempt scores and answer keys are never
+            returned to students.
         questions:
           type: array
           items:
@@ -2343,13 +2724,16 @@ components:
           type: boolean
     StudentQuizAttemptSummary:
       type: object
-      required: [attemptLimit, attemptsUsed, timeLimitMinutes, activeAttemptId, items]
+      required: [attemptLimit, attemptsUsed, timeLimitMinutes, activeAttemptId, gradeReleased, items]
       additionalProperties: false
       properties:
         attemptLimit:
           type: integer
         attemptsUsed:
           type: integer
+        gradeReleased:
+          type: boolean
+          description: True once staff have released this student's grade for the quiz.
         timeLimitMinutes:
           type: [integer, "null"]
         activeAttemptId:
@@ -2450,3 +2834,354 @@ components:
                     type: [integer, "null"]
                   isCorrect:
                     type: [boolean, "null"]
+    Grade20:
+      type: number
+      minimum: 0
+      maximum: 20
+      description: |
+        Grade on the 0–20 scale: points × 20 / maxPoints, rounded half up to one decimal place
+        (for example 15.55 → 15.6). Always calculated by the server.
+    GradableType:
+      type: string
+      enum: [quiz, assignment]
+    AssignmentSubmissionCreate:
+      type: object
+      required: [body]
+      additionalProperties: false
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 50000
+          pattern: "\\S"
+          description: Plain text; rendered as text, never as HTML.
+    RubricScore:
+      type: object
+      required: [criterionId, title, points, maxPoints]
+      additionalProperties: false
+      properties:
+        criterionId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        points:
+          type: integer
+        maxPoints:
+          type: integer
+    ReleasedGrade:
+      type: object
+      description: A grade exactly as released to the student. Never includes answer keys.
+      required: [points, maxPoints, grade20, releasedAt, feedback, criteria]
+      additionalProperties: false
+      properties:
+        points:
+          type: integer
+        maxPoints:
+          type: integer
+        grade20:
+          $ref: "#/components/schemas/Grade20"
+        releasedAt:
+          type: string
+          format: date-time
+        feedback:
+          type: [string, "null"]
+        criteria:
+          type: array
+          description: Rubric scores (assignments); empty for quizzes.
+          items:
+            $ref: "#/components/schemas/RubricScore"
+    StudentGradeStatus:
+      type: string
+      description: "`pending` covers every unreleased state; no numbers are returned for it."
+      enum: [pending, released]
+    StudentAssignmentSubmission:
+      type: object
+      required: [id, activityId, body, submittedAt, isLate, gradeStatus, grade]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        activityId:
+          type: string
+          format: uuid
+        body:
+          type: string
+        submittedAt:
+          type: string
+          format: date-time
+          description: Recorded by the server clock.
+        isLate:
+          type: boolean
+        gradeStatus:
+          $ref: "#/components/schemas/StudentGradeStatus"
+        grade:
+          oneOf:
+            - $ref: "#/components/schemas/ReleasedGrade"
+            - type: "null"
+    StudentAssignmentStatus:
+      type: object
+      required: [dueAt, lateUntil, acceptingSubmissions, submission]
+      additionalProperties: false
+      properties:
+        dueAt:
+          type: string
+          format: date-time
+        lateUntil:
+          type: [string, "null"]
+          format: date-time
+        acceptingSubmissions:
+          type: boolean
+          description: Whether the server would accept a submission from this student now.
+        submission:
+          oneOf:
+            - $ref: "#/components/schemas/StudentAssignmentSubmission"
+            - type: "null"
+    GradeStatus:
+      type: string
+      description: |
+        Staff view of one gradebook entry: `not_submitted`, `needs_grading` (submitted, not graded),
+        `unreleased` (graded, never released), `released`, or `changed_since_release` (the student
+        still sees the previously released grade).
+      enum: [not_submitted, needs_grading, unreleased, released, changed_since_release]
+    StaffGrade:
+      type: object
+      required: [points, maxPoints, grade20, gradedAt, releasedAt]
+      additionalProperties: false
+      properties:
+        points:
+          type: integer
+        maxPoints:
+          type: integer
+        grade20:
+          $ref: "#/components/schemas/Grade20"
+        gradedAt:
+          type: string
+          format: date-time
+        releasedAt:
+          type: [string, "null"]
+          format: date-time
+          description: Time of the last release, if any.
+    AssignmentSubmissionSummary:
+      type: object
+      required: [id, student, submittedAt, isLate, status, grade]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        student:
+          $ref: "#/components/schemas/QuizResultStudent"
+        submittedAt:
+          type: string
+          format: date-time
+        isLate:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/GradeStatus"
+        grade:
+          oneOf:
+            - $ref: "#/components/schemas/StaffGrade"
+            - type: "null"
+    AssignmentSubmissionPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssignmentSubmissionSummary"
+        nextCursor:
+          type: [string, "null"]
+    AssignmentSubmissionDetail:
+      type: object
+      required: [id, student, submittedAt, isLate, status, grade, body, rubric, scores, feedback]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        student:
+          $ref: "#/components/schemas/QuizResultStudent"
+        submittedAt:
+          type: string
+          format: date-time
+        isLate:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/GradeStatus"
+        grade:
+          oneOf:
+            - $ref: "#/components/schemas/StaffGrade"
+            - type: "null"
+        body:
+          type: string
+        rubric:
+          type: array
+          description: The rubric as approved when the student submitted.
+          items:
+            $ref: "#/components/schemas/RubricCriterion"
+        scores:
+          type: array
+          items:
+            $ref: "#/components/schemas/RubricScore"
+        feedback:
+          type: [string, "null"]
+    RubricScoreInput:
+      type: object
+      required: [criterionId, points]
+      additionalProperties: false
+      properties:
+        criterionId:
+          type: string
+          format: uuid
+        points:
+          type: integer
+          minimum: 0
+          maximum: 100
+    AssignmentGradeInput:
+      type: object
+      required: [scores]
+      additionalProperties: false
+      properties:
+        scores:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/RubricScoreInput"
+        feedback:
+          type: string
+          maxLength: 5000
+    GradeReleaseResult:
+      type: object
+      required: [activityId, releasedCount, releasedAt]
+      additionalProperties: false
+      properties:
+        activityId:
+          type: string
+          format: uuid
+        releasedCount:
+          type: integer
+          description: Grades released by this call (0 when nothing changed since the last release).
+        releasedAt:
+          type: [string, "null"]
+          format: date-time
+    GradebookColumn:
+      type: object
+      required: [activityId, title, type, maxPoints]
+      additionalProperties: false
+      properties:
+        activityId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        type:
+          $ref: "#/components/schemas/GradableType"
+        maxPoints:
+          type: integer
+          description: Points of the approved version.
+    GradebookCell:
+      type: object
+      required: [activityId, status, points, maxPoints, grade20, releasedAt]
+      additionalProperties: false
+      properties:
+        activityId:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/GradeStatus"
+        points:
+          type: [integer, "null"]
+        maxPoints:
+          type: [integer, "null"]
+        grade20:
+          oneOf:
+            - $ref: "#/components/schemas/Grade20"
+            - type: "null"
+        releasedAt:
+          type: [string, "null"]
+          format: date-time
+    CourseTotal:
+      type: object
+      description: Sum of points over the counted items, converted to the 0–20 scale (null when none).
+      required: [points, maxPoints, grade20, gradedItems]
+      additionalProperties: false
+      properties:
+        points:
+          type: integer
+        maxPoints:
+          type: integer
+        grade20:
+          oneOf:
+            - $ref: "#/components/schemas/Grade20"
+            - type: "null"
+        gradedItems:
+          type: integer
+    GradebookRow:
+      type: object
+      required: [student, cells, total]
+      additionalProperties: false
+      properties:
+        student:
+          $ref: "#/components/schemas/QuizResultStudent"
+        cells:
+          type: array
+          description: One cell per column, in column order.
+          items:
+            $ref: "#/components/schemas/GradebookCell"
+        total:
+          $ref: "#/components/schemas/CourseTotal"
+    Gradebook:
+      type: object
+      required: [scaleMax, columns, items, nextCursor]
+      additionalProperties: false
+      properties:
+        scaleMax:
+          type: integer
+          const: 20
+        columns:
+          type: array
+          items:
+            $ref: "#/components/schemas/GradebookColumn"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GradebookRow"
+        nextCursor:
+          type: [string, "null"]
+    StudentGradeItem:
+      type: object
+      required: [activityId, title, type, status, grade]
+      additionalProperties: false
+      properties:
+        activityId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        type:
+          $ref: "#/components/schemas/GradableType"
+        status:
+          $ref: "#/components/schemas/StudentGradeStatus"
+        grade:
+          oneOf:
+            - $ref: "#/components/schemas/ReleasedGrade"
+            - type: "null"
+    StudentGrades:
+      type: object
+      required: [scaleMax, items, total]
+      additionalProperties: false
+      properties:
+        scaleMax:
+          type: integer
+          const: 20
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/StudentGradeItem"
+        total:
+          $ref: "#/components/schemas/CourseTotal"

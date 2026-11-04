@@ -57,6 +57,20 @@
       "when": 1793791403636,
       "tag": "0007_quiz_attempt_immutability",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793797924601,
+      "tag": "0008_assignments_gradebook",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793797933303,
+      "tag": "0009_gradebook_integrity",
+      "breakpoints": true
     }
   ]
 }

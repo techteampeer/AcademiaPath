@@ -2,6 +2,9 @@ import { apiRequest } from './client';
 import type {
   Activity,
   ActivityCreate,
+  AssignmentGradeInput,
+  AssignmentSubmissionDetail,
+  AssignmentSubmissionPage,
   ActivityPage,
   ActivityReviewDecision,
   ActivityUpdate,
@@ -14,6 +17,8 @@ import type {
   CsrfTokenResponse,
   Enrollment,
   EnrollmentCreate,
+  Gradebook,
+  GradeReleaseResult,
   LoginRequest,
   LoginResponse,
   MeResponse,
@@ -28,6 +33,9 @@ import type {
   QuizQuestionList,
   QuizResultPage,
   SectionPage,
+  StudentAssignmentStatus,
+  StudentAssignmentSubmission,
+  StudentGrades,
   StudentQuizAttempt,
   StudentQuizAttemptSummary,
   Term,
@@ -103,4 +111,23 @@ export const api = {
     apiRequest<StudentQuizAttempt>('PUT', `${attempt(courseId, attemptId)}/answers`, { body, csrfToken }),
   submitQuizAttempt: (courseId: string, attemptId: string, body: QuizAttemptSubmit, csrfToken: string) =>
     apiRequest<StudentQuizAttempt>('POST', `${attempt(courseId, attemptId)}/submit`, { body, csrfToken }),
+
+  // Assignments and grades. The API calculates every grade; the browser only displays them.
+  submitAssignment: (courseId: string, activityId: string, body: string, csrfToken: string) =>
+    apiRequest<StudentAssignmentSubmission>('POST', `${activity(courseId, activityId)}/submissions`, { body: { body }, csrfToken }),
+  myAssignmentStatus: (courseId: string, activityId: string) =>
+    apiRequest<StudentAssignmentStatus>('GET', `${activity(courseId, activityId)}/submissions/mine`),
+  listSubmissions: (courseId: string, activityId: string, page?: PageRequest) =>
+    apiRequest<AssignmentSubmissionPage>('GET', withPage(`${activity(courseId, activityId)}/submissions`, page)),
+  getSubmission: (courseId: string, activityId: string, submissionId: string) =>
+    apiRequest<AssignmentSubmissionDetail>('GET', `${activity(courseId, activityId)}/submissions/${encodeURIComponent(submissionId)}`),
+  gradeSubmission: (courseId: string, activityId: string, submissionId: string, body: AssignmentGradeInput, csrfToken: string) =>
+    apiRequest<AssignmentSubmissionDetail>('PUT', `${activity(courseId, activityId)}/submissions/${encodeURIComponent(submissionId)}/grade`, {
+      body,
+      csrfToken,
+    }),
+  releaseGrades: (courseId: string, activityId: string, csrfToken: string) =>
+    apiRequest<GradeReleaseResult>('POST', `${activity(courseId, activityId)}/grades/release`, { csrfToken }),
+  getGradebook: (courseId: string, page?: PageRequest) => apiRequest<Gradebook>('GET', withPage(`${course(courseId)}/gradebook`, page)),
+  myGrades: (courseId: string) => apiRequest<StudentGrades>('GET', `${course(courseId)}/grades/mine`),
 };

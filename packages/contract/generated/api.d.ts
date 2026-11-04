@@ -563,6 +563,177 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{id}/activities/{activityId}/submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Submissions to an assignment with their grading status (graders)
+         * @description Requires `grades.view` (instructor, non-editing instructor) or the administrator role
+         *     (read-only). Ordered by student email.
+         */
+        get: operations["listAssignmentSubmissions"];
+        put?: never;
+        /**
+         * Submit text work for an approved assignment (students only)
+         * @description Students only (`assignment.submit`; the administrator role never grants it), for approved,
+         *     visible assignments in published courses they are enrolled in. The server records the
+         *     submission time from its own clock. Submissions up to `dueAt` are on time. When the
+         *     assignment sets `lateUntil`, submissions after `dueAt` and up to `lateUntil` are accepted and
+         *     flagged late (no automatic deduction); otherwise, and after `lateUntil`, they are rejected
+         *     with `SUBMISSION_CLOSED`. One final submission per student (`SUBMISSION_EXISTS`). The approved
+         *     rubric is copied into the submission, so later revisions never change how it is graded.
+         *     Audited as `assignment.submitted`.
+         */
+        post: operations["submitAssignment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/activities/{activityId}/submissions/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in student's submission status for an assignment
+         * @description Students only. `submission` is null until the student submits. The grade appears only after
+         *     release; until then `gradeStatus` is `pending` and no numbers are returned.
+         */
+        get: operations["getMyAssignmentSubmission"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/activities/{activityId}/submissions/{submissionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One submission with its rubric, scores and feedback (graders)
+         * @description Requires `grades.view` (instructor, non-editing instructor) or the administrator role (read-only).
+         */
+        get: operations["getAssignmentSubmission"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/activities/{activityId}/submissions/{submissionId}/grade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Grade a submission against its rubric
+         * @description Requires `grades.grade`: instructors and non-editing instructors assigned to the course. The
+         *     administrator and design-team roles cannot grade. Every criterion of the submission's rubric
+         *     must be scored exactly once, with whole points from 0 to the criterion maximum
+         *     (`INVALID_RUBRIC_SCORES`; the database enforces the maximums too). The server computes the
+         *     total; totals sent by the client are rejected. Regrading is allowed: a grade changed after
+         *     release stays hidden from the student until it is released again. Audited as
+         *     `assignment.graded`.
+         */
+        put: operations["gradeAssignmentSubmission"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/activities/{activityId}/grades/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release the current grades of a quiz or assignment to its students
+         * @description Requires `grades.release` (instructor, non-editing instructor; never the administrator or
+         *     design-team roles). In one transaction, copies each graded student's current grade (points,
+         *     feedback and rubric scores; for quizzes the best attempt's score) to the released grade the
+         *     student can see. Grades given or changed later stay hidden until the next release, and
+         *     releasing again without changes releases nothing. Answer keys are never released. Audited as
+         *     `grades.released`. No request body.
+         */
+        post: operations["releaseGrades"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/gradebook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Course gradebook (staff)
+         * @description Requires `grades.view` (instructor, non-editing instructor) or the administrator role
+         *     (read-only). Columns are the course's approved quizzes and assignments; rows are active
+         *     students ordered by email and paginated. Cells hold the current server-calculated grade and
+         *     its release status. A quiz counts the best submitted attempt, once per student. The total
+         *     sums points over graded items and converts them to the 0–20 scale.
+         */
+        get: operations["getGradebook"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/grades/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in student's released grades in a course
+         * @description Students only (`grades.viewOwn`). Lists the course's quizzes and assignments. Released items
+         *     include points, the 0–20 grade and, for assignments, feedback and rubric scores; everything
+         *     else is `pending` without numbers. Answer keys are never included. The total uses released
+         *     grades only.
+         */
+        get: operations["getMyGrades"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -628,7 +799,7 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES";
         };
         Code: string;
         /**
@@ -842,7 +1013,7 @@ export interface components {
          * @description Content types supported by the content API.
          * @enum {string}
          */
-        ActivityType: "page" | "link" | "quiz";
+        ActivityType: "page" | "link" | "quiz" | "assignment";
         /** @enum {string} */
         ReviewStatus: "draft" | "submitted" | "approved" | "returned";
         /** @description Plain-text lesson. Clients must render `body` as text, never as HTML. */
@@ -865,7 +1036,27 @@ export interface components {
             questionCount: number;
             totalPoints: number;
         };
-        ActivityContent: components["schemas"]["PageContent"] | components["schemas"]["LinkContent"] | components["schemas"]["QuizContent"];
+        RubricCriterion: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            description: string | null;
+            maxPoints: number;
+        };
+        /** @description Assignment instructions, deadline, late-submission window and points-based rubric. */
+        AssignmentContent: {
+            instructions: string;
+            /** Format: date-time */
+            dueAt: string;
+            /**
+             * Format: date-time
+             * @description When set, submissions after `dueAt` and up to this time are accepted and flagged late.
+             */
+            lateUntil: string | null;
+            rubric: components["schemas"]["RubricCriterion"][];
+            totalPoints: number;
+        };
+        ActivityContent: components["schemas"]["PageContent"] | components["schemas"]["LinkContent"] | components["schemas"]["QuizContent"] | components["schemas"]["AssignmentContent"];
         PageContentInput: {
             title: string;
             /** @description Plain text; line breaks are preserved. HTML is not interpreted. */
@@ -891,6 +1082,25 @@ export interface components {
              */
             shuffleOptions: boolean;
         };
+        RubricCriterionInput: {
+            title: string;
+            description?: string;
+            maxPoints: number;
+        };
+        AssignmentInput: {
+            title: string;
+            /** @description Plain text; line breaks are preserved. HTML is not interpreted. */
+            instructions: string;
+            /** Format: date-time */
+            dueAt: string;
+            /**
+             * Format: date-time
+             * @description Optional end of the late-submission window. Must be after `dueAt` and at most 30 days
+             *     later (`INVALID_DUE_DATE`). Omit or null to reject submissions after `dueAt`.
+             */
+            lateUntil?: string | null;
+            rubric: components["schemas"]["RubricCriterionInput"][];
+        };
         ActivityCreate: (components["schemas"]["PageContentInput"] & {
             /** @constant */
             type: "page";
@@ -900,9 +1110,12 @@ export interface components {
         }) | (components["schemas"]["QuizSettingsInput"] & {
             /** @constant */
             type: "quiz";
+        }) | (components["schemas"]["AssignmentInput"] & {
+            /** @constant */
+            type: "assignment";
         });
         /** @description Must match the activity's type. */
-        ActivityUpdate: components["schemas"]["PageContentInput"] | components["schemas"]["LinkContentInput"] | components["schemas"]["QuizSettingsInput"];
+        ActivityUpdate: components["schemas"]["PageContentInput"] | components["schemas"]["LinkContentInput"] | components["schemas"]["QuizSettingsInput"] | components["schemas"]["AssignmentInput"];
         ActivityReviewDecision: {
             /** @enum {string} */
             decision: "approve" | "return";
@@ -1035,7 +1248,11 @@ export interface components {
             /** Format: date-time */
             submittedAt: string | null;
             closedByTimeLimit: boolean;
-            /** @description Always false until grade release is implemented. */
+            /**
+             * @description True once staff have released this student's grade for the quiz (see
+             *     `GET /api/v1/courses/{id}/grades/mine`). Per-attempt scores and answer keys are never
+             *     returned to students.
+             */
             resultsReleased: boolean;
             questions: {
                 /** Format: uuid */
@@ -1065,6 +1282,8 @@ export interface components {
         StudentQuizAttemptSummary: {
             attemptLimit: number;
             attemptsUsed: number;
+            /** @description True once staff have released this student's grade for the quiz. */
+            gradeReleased: boolean;
             timeLimitMinutes: number | null;
             /** Format: uuid */
             activeAttemptId: string | null;
@@ -1111,6 +1330,181 @@ export interface components {
                 awardedPoints: number | null;
                 isCorrect: boolean | null;
             }[];
+        };
+        /**
+         * @description Grade on the 0–20 scale: points × 20 / maxPoints, rounded half up to one decimal place
+         *     (for example 15.55 → 15.6). Always calculated by the server.
+         */
+        Grade20: number;
+        /** @enum {string} */
+        GradableType: "quiz" | "assignment";
+        AssignmentSubmissionCreate: {
+            /** @description Plain text; rendered as text, never as HTML. */
+            body: string;
+        };
+        RubricScore: {
+            /** Format: uuid */
+            criterionId: string;
+            title: string;
+            points: number;
+            maxPoints: number;
+        };
+        /** @description A grade exactly as released to the student. Never includes answer keys. */
+        ReleasedGrade: {
+            points: number;
+            maxPoints: number;
+            grade20: components["schemas"]["Grade20"];
+            /** Format: date-time */
+            releasedAt: string;
+            feedback: string | null;
+            /** @description Rubric scores (assignments); empty for quizzes. */
+            criteria: components["schemas"]["RubricScore"][];
+        };
+        /**
+         * @description `pending` covers every unreleased state; no numbers are returned for it.
+         * @enum {string}
+         */
+        StudentGradeStatus: "pending" | "released";
+        StudentAssignmentSubmission: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            activityId: string;
+            body: string;
+            /**
+             * Format: date-time
+             * @description Recorded by the server clock.
+             */
+            submittedAt: string;
+            isLate: boolean;
+            gradeStatus: components["schemas"]["StudentGradeStatus"];
+            grade: components["schemas"]["ReleasedGrade"] | null;
+        };
+        StudentAssignmentStatus: {
+            /** Format: date-time */
+            dueAt: string;
+            /** Format: date-time */
+            lateUntil: string | null;
+            /** @description Whether the server would accept a submission from this student now. */
+            acceptingSubmissions: boolean;
+            submission: components["schemas"]["StudentAssignmentSubmission"] | null;
+        };
+        /**
+         * @description Staff view of one gradebook entry: `not_submitted`, `needs_grading` (submitted, not graded),
+         *     `unreleased` (graded, never released), `released`, or `changed_since_release` (the student
+         *     still sees the previously released grade).
+         * @enum {string}
+         */
+        GradeStatus: "not_submitted" | "needs_grading" | "unreleased" | "released" | "changed_since_release";
+        StaffGrade: {
+            points: number;
+            maxPoints: number;
+            grade20: components["schemas"]["Grade20"];
+            /** Format: date-time */
+            gradedAt: string;
+            /**
+             * Format: date-time
+             * @description Time of the last release, if any.
+             */
+            releasedAt: string | null;
+        };
+        AssignmentSubmissionSummary: {
+            /** Format: uuid */
+            id: string;
+            student: components["schemas"]["QuizResultStudent"];
+            /** Format: date-time */
+            submittedAt: string;
+            isLate: boolean;
+            status: components["schemas"]["GradeStatus"];
+            grade: components["schemas"]["StaffGrade"] | null;
+        };
+        AssignmentSubmissionPage: {
+            items: components["schemas"]["AssignmentSubmissionSummary"][];
+            nextCursor: string | null;
+        };
+        AssignmentSubmissionDetail: {
+            /** Format: uuid */
+            id: string;
+            student: components["schemas"]["QuizResultStudent"];
+            /** Format: date-time */
+            submittedAt: string;
+            isLate: boolean;
+            status: components["schemas"]["GradeStatus"];
+            grade: components["schemas"]["StaffGrade"] | null;
+            body: string;
+            /** @description The rubric as approved when the student submitted. */
+            rubric: components["schemas"]["RubricCriterion"][];
+            scores: components["schemas"]["RubricScore"][];
+            feedback: string | null;
+        };
+        RubricScoreInput: {
+            /** Format: uuid */
+            criterionId: string;
+            points: number;
+        };
+        AssignmentGradeInput: {
+            scores: components["schemas"]["RubricScoreInput"][];
+            feedback?: string;
+        };
+        GradeReleaseResult: {
+            /** Format: uuid */
+            activityId: string;
+            /** @description Grades released by this call (0 when nothing changed since the last release). */
+            releasedCount: number;
+            /** Format: date-time */
+            releasedAt: string | null;
+        };
+        GradebookColumn: {
+            /** Format: uuid */
+            activityId: string;
+            title: string;
+            type: components["schemas"]["GradableType"];
+            /** @description Points of the approved version. */
+            maxPoints: number;
+        };
+        GradebookCell: {
+            /** Format: uuid */
+            activityId: string;
+            status: components["schemas"]["GradeStatus"];
+            points: number | null;
+            maxPoints: number | null;
+            grade20: components["schemas"]["Grade20"] | null;
+            /** Format: date-time */
+            releasedAt: string | null;
+        };
+        /** @description Sum of points over the counted items, converted to the 0–20 scale (null when none). */
+        CourseTotal: {
+            points: number;
+            maxPoints: number;
+            grade20: components["schemas"]["Grade20"] | null;
+            gradedItems: number;
+        };
+        GradebookRow: {
+            student: components["schemas"]["QuizResultStudent"];
+            /** @description One cell per column, in column order. */
+            cells: components["schemas"]["GradebookCell"][];
+            total: components["schemas"]["CourseTotal"];
+        };
+        Gradebook: {
+            /** @constant */
+            scaleMax: 20;
+            columns: components["schemas"]["GradebookColumn"][];
+            items: components["schemas"]["GradebookRow"][];
+            nextCursor: string | null;
+        };
+        StudentGradeItem: {
+            /** Format: uuid */
+            activityId: string;
+            title: string;
+            type: components["schemas"]["GradableType"];
+            status: components["schemas"]["StudentGradeStatus"];
+            grade: components["schemas"]["ReleasedGrade"] | null;
+        };
+        StudentGrades: {
+            /** @constant */
+            scaleMax: 20;
+            items: components["schemas"]["StudentGradeItem"][];
+            total: components["schemas"]["CourseTotal"];
         };
     };
     responses: {
@@ -1214,7 +1608,8 @@ export interface components {
          * @description A uniqueness rule was violated: `PROGRAM_CODE_TAKEN`, `TERM_CODE_TAKEN`, `COURSE_CODE_TAKEN`,
          *     `ENROLLMENT_EXISTS` or `TEMPLATE_VERSION_CONFLICT`; or an invalid review transition:
          *     `ACTIVITY_UNDER_REVIEW`, `INVALID_REVIEW_STATE`; or a quiz rule: `QUIZ_QUESTION_LIMIT`,
-         *     `ATTEMPT_LIMIT_REACHED`, `ATTEMPT_NOT_IN_PROGRESS`, `ATTEMPT_EXPIRED`, `ATTEMPT_CONFLICT`.
+         *     `ATTEMPT_LIMIT_REACHED`, `ATTEMPT_NOT_IN_PROGRESS`, `ATTEMPT_EXPIRED`, `ATTEMPT_CONFLICT`; or an
+         *     assignment rule: `SUBMISSION_EXISTS`, `SUBMISSION_CLOSED`.
          */
         Conflict: {
             headers: {
@@ -1238,7 +1633,7 @@ export interface components {
          *     `PROGRAM_NOT_FOUND`, `PROGRAM_INACTIVE`, `TERM_NOT_FOUND`, `TEMPLATE_NOT_FOUND`,
          *     `TEMPLATE_VERSION_NOT_FOUND`, `TEMPLATE_PROGRAM_MISMATCH`, `USER_NOT_FOUND`, `USER_INACTIVE`,
          *     `INVALID_URL`, `CONTENT_TYPE_MISMATCH`, `REVIEW_COMMENT_REQUIRED`, `QUIZ_HAS_NO_QUESTIONS`,
-         *     `INVALID_ANSWER_KEY` or `INVALID_ANSWER`.
+         *     `INVALID_ANSWER_KEY`, `INVALID_ANSWER`, `INVALID_DUE_DATE` or `INVALID_RUBRIC_SCORES`.
          */
         UnprocessableContent: {
             headers: {
@@ -1268,6 +1663,7 @@ export interface components {
         ActivityId: string;
         QuestionId: string;
         AttemptId: string;
+        SubmissionId: string;
     };
     requestBodies: never;
     headers: {
@@ -2250,6 +2646,238 @@ export interface operations {
                 };
             };
             400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listAssignmentSubmissions: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from the previous page's `nextCursor`. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of submissions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentSubmissionPage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    submitAssignment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignmentSubmissionCreate"];
+            };
+        };
+        responses: {
+            /** @description The recorded submission. No grade is returned until it is released. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentAssignmentSubmission"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getMyAssignmentSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Submission window and the student's own submission. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentAssignmentStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAssignmentSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+                submissionId: components["parameters"]["SubmissionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The submission. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentSubmissionDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    gradeAssignmentSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+                submissionId: components["parameters"]["SubmissionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignmentGradeInput"];
+            };
+        };
+        responses: {
+            /** @description The graded submission. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentSubmissionDetail"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    releaseGrades: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description How many grades were released. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradeReleaseResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getGradebook: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from the previous page's `nextCursor`. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of gradebook rows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Gradebook"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getMyGrades: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The student's grades. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentGrades"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

@@ -155,9 +155,18 @@ function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: 
               The time limit had passed, so the server closed this attempt with the answers saved before the deadline.
             </Alert>
           ) : null}
-          <p className="text-sm text-slate-700">
-            The server has graded your answers. Results have not been released yet; your instructor will publish them later.
-          </p>
+          {attempt.resultsReleased ? (
+            <p className="text-sm text-slate-700">
+              Your grade for this quiz has been released.{' '}
+              <Link href={`/courses/${courseId}/grades`} className="font-medium text-brand-700 hover:underline">
+                See my grades
+              </Link>
+            </p>
+          ) : (
+            <p className="text-sm text-slate-700">
+              The server has graded your answers. Results have not been released yet; your instructor will publish them later.
+            </p>
+          )}
         </Card>
       </div>
     );

@@ -7,6 +7,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SelectField, TextField } from '@/components/ui/Field';
+import { ReleaseGradesButton } from '@/components/grades/ReleaseGradesButton';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { QuizAttemptResult, QuizQuestion, QuizQuestionInput, QuizQuestionType, QuizResult } from '@/lib/api/types';
@@ -304,7 +305,7 @@ function attemptStatusLabel(result: Pick<QuizResult, 'status' | 'closedByTimeLim
 }
 
 /** Student attempts and server-calculated scores, for instructors and administrators. */
-export function QuizResultsPanel({ courseId, quizId }: { courseId: string; quizId: string }) {
+export function QuizResultsPanel({ courseId, quizId, canRelease = false }: { courseId: string; quizId: string; canRelease?: boolean }) {
   const { handleUnauthorized } = useSession();
   const [state, setState] = useState<Load<{ items: QuizResult[]; nextCursor: string | null }>>({ status: 'loading' });
   const [detail, setDetail] = useState<Load<QuizAttemptResult> | null>(null);
@@ -358,7 +359,11 @@ export function QuizResultsPanel({ courseId, quizId }: { courseId: string; quizI
           Refresh
         </Button>
       </div>
-      <p className="text-sm text-slate-600">Scores are calculated by the server. Students cannot see scores or correct answers yet.</p>
+      <p className="text-sm text-slate-600">
+        Scores are calculated by the server. Releasing publishes each student&rsquo;s best attempt score; correct answers are never shown to
+        students.
+      </p>
+      {canRelease ? <ReleaseGradesButton courseId={courseId} activityId={quizId} label="Release quiz grades" /> : null}
       {state.status === 'loading' ? (
         <p role="status" className="text-sm text-slate-600">
           Loading attempts…
