@@ -27,9 +27,9 @@ describe('course role permissions', () => {
       'content.viewUnapproved',
     ];
     const grader = ['grades.grade', 'grades.release', 'grades.view'];
-    assert.deepEqual(granted('student'), ['assignment.submit', 'course.view', 'grades.viewOwn', 'quiz.attempt']);
-    assert.deepEqual(granted('non_editing_instructor'), [...staff, 'quiz.viewResults', ...grader].sort());
-    assert.deepEqual(granted('instructor'), [...staff, 'content.edit', 'content.submit', 'quiz.viewResults', ...grader].sort());
+    assert.deepEqual(granted('student'), ['assignment.submit', 'course.view', 'grades.viewOwn', 'quiz.attempt', 'tutor.use']);
+    assert.deepEqual(granted('non_editing_instructor'), [...staff, 'quiz.viewResults', ...grader, 'tutor.use'].sort());
+    assert.deepEqual(granted('instructor'), [...staff, 'content.edit', 'content.submit', 'quiz.viewResults', ...grader, 'tutor.use'].sort());
     assert.deepEqual(granted('design_team'), [...staff, 'content.edit', 'content.submit', 'content.review'].sort());
     assert.equal(hasCoursePermission('design_team', 'quiz.attempt'), false, 'staff never take quizzes');
     assert.equal(hasCoursePermission('instructor', 'content.review'), false, 'instructors never approve');

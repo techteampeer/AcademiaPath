@@ -14,6 +14,11 @@ export type AppConfig = {
     max: number;
     windowMs: number;
   };
+  /** Tutor requests allowed per user and course within the window (counted in PostgreSQL). */
+  tutorRateLimit: {
+    max: number;
+    windowMinutes: number;
+  };
   /**
    * Fastify `trustProxy`: false, or a comma-separated list of trusted proxy IPs/CIDRs, so
    * X-Forwarded-For is honored only when the connecting peer is a trusted proxy. Never `true`
@@ -97,6 +102,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     loginRateLimit: {
       max: readPositiveInt(env, 'LOGIN_RATE_LIMIT_MAX', 5, 1000),
       windowMs: readPositiveInt(env, 'LOGIN_RATE_LIMIT_WINDOW_MINUTES', 15, 24 * 60) * 60_000,
+    },
+    tutorRateLimit: {
+      max: readPositiveInt(env, 'TUTOR_RATE_LIMIT_MAX', 20, 1000),
+      windowMinutes: readPositiveInt(env, 'TUTOR_RATE_LIMIT_WINDOW_MINUTES', 10, 24 * 60),
     },
     trustProxy: parseTrustProxy(env.TRUST_PROXY),
   };

@@ -31,7 +31,9 @@ export type CoursePermission =
   /** Grade submissions and give feedback (role-only check). */
   | 'grades.grade'
   /** Release grades to students (role-only check). */
-  | 'grades.release';
+  | 'grades.release'
+  /** Use the course tutor (role-only check: students, instructors, non-editing instructors). */
+  | 'tutor.use';
 
 /**
  * Course-level permissions per role. Default deny: a permission not listed here is not granted.
@@ -51,10 +53,10 @@ export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermi
   // Design team reviews (approves/returns) content and can also author it.
   design_team: new Set([...STAFF_READ, 'content.edit', 'content.submit', 'content.review']),
   // Instructors author and submit content but never approve it; they grade and release grades.
-  instructor: new Set([...STAFF_READ, 'content.edit', 'content.submit', 'quiz.viewResults', ...GRADER]),
+  instructor: new Set([...STAFF_READ, 'content.edit', 'content.submit', 'quiz.viewResults', ...GRADER, 'tutor.use']),
   // Non-editing instructors grade and release but never change content.
-  non_editing_instructor: new Set([...STAFF_READ, 'quiz.viewResults', ...GRADER]),
-  student: new Set(['course.view', 'quiz.attempt', 'assignment.submit', 'grades.viewOwn']),
+  non_editing_instructor: new Set([...STAFF_READ, 'quiz.viewResults', ...GRADER, 'tutor.use']),
+  student: new Set(['course.view', 'quiz.attempt', 'assignment.submit', 'grades.viewOwn', 'tutor.use']),
 };
 
 export function hasCoursePermission(role: CourseRole | null, permission: CoursePermission): boolean {

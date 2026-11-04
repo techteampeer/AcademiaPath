@@ -734,6 +734,81 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{id}/tutor/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask the course tutor a question (local mock provider, grounded in approved lessons)
+         * @description Students, instructors and non-editing instructors of the course only (`tutor.use`; the
+         *     administrator and design-team roles never grant it). Students must be enrolled in a published
+         *     course. The answer is built only from approved lesson text this user may read in this course
+         *     (students: visible lessons in visible sections). Draft, submitted or returned revisions,
+         *     quizzes and answer keys, assignments, submissions, grades, review comments and audit entries
+         *     are never used. When a lesson has an unapproved revision, only the approved version is used.
+         *
+         *     Responses come from a local, deterministic mock provider (`provider.mode` = `mock`): it quotes
+         *     the retrieved passages verbatim with citations, uses fixed English or Spanish wording, does
+         *     not translate sources, and does not use a language model. Lesson text is treated as data,
+         *     never as instructions. When nothing relevant is found, `grounding` is `insufficient_material`
+         *     and no citations are returned. Requests are limited per user and course (`RATE_LIMITED`) and
+         *     recorded without the question text.
+         */
+        post: operations["askTutor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/tutor/practice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest practice prompts from approved lessons (local mock provider)
+         * @description Same access, sources, limits and recording as `askTutor`. Returns up to three clearly labelled,
+         *     ungraded practice prompts, each built from a cited approved lesson passage (optionally about
+         *     `topic`). Prompts never contain assessment questions or answer keys.
+         */
+        post: operations["suggestTutorPractice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/tutor/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user's own tutor usage in this course
+         * @description Same access as `askTutor`. Only the caller's own records are returned (most recent first,
+         *     at most 20); other users' usage is never exposed.
+         */
+        get: operations["getMyTutorUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1506,6 +1581,102 @@ export interface components {
             items: components["schemas"]["StudentGradeItem"][];
             total: components["schemas"]["CourseTotal"];
         };
+        /**
+         * @description Response language. Sources are never translated.
+         * @enum {string}
+         */
+        TutorLanguage: "en" | "es";
+        TutorProvider: {
+            /**
+             * @description `mock`: a local, deterministic provider that quotes approved lesson passages. No language model is used.
+             * @enum {string}
+             */
+            mode: "mock";
+            /** @description Notice to display with every response (for example "Mock AI — local demonstration"). */
+            label: string;
+        };
+        /**
+         * @description `grounded` when approved lesson passages support the response; otherwise `insufficient_material`.
+         * @enum {string}
+         */
+        TutorGrounding: "grounded" | "insufficient_material";
+        TutorMessageRequest: {
+            question: string;
+            language: components["schemas"]["TutorLanguage"];
+        };
+        TutorPracticeRequest: {
+            language: components["schemas"]["TutorLanguage"];
+            topic?: string;
+        };
+        TutorCitation: {
+            /** @description Number used in the response text, e.g. [1]. */
+            ref: number;
+            /**
+             * Format: uuid
+             * @description The approved lesson the excerpt comes from.
+             */
+            activityId: string;
+            /** Format: uuid */
+            sectionId: string;
+            /** @description Title of the approved lesson version. */
+            title: string;
+            /** @description Verbatim text from the approved lesson, possibly shortened with "…"; never translated. */
+            excerpt: string;
+            /**
+             * @description Detected language of the source passage (simple word-list heuristic).
+             * @enum {string}
+             */
+            sourceLanguage: "en" | "es" | "unknown";
+            matchesRequestedLanguage: boolean;
+        };
+        TutorUsageSummary: {
+            limit: number;
+            windowMinutes: number;
+            usedInWindow: number;
+        };
+        TutorMessageResponse: {
+            provider: components["schemas"]["TutorProvider"];
+            language: components["schemas"]["TutorLanguage"];
+            grounding: components["schemas"]["TutorGrounding"];
+            /** @description Plain text to render as text, never as HTML. */
+            text: string;
+            citations: components["schemas"]["TutorCitation"][];
+            usage: components["schemas"]["TutorUsageSummary"];
+        };
+        TutorPracticePrompt: {
+            ref: number;
+            /** @enum {string} */
+            kind: "explain" | "key_terms";
+            text: string;
+            citation: components["schemas"]["TutorCitation"];
+        };
+        TutorPracticeResponse: {
+            provider: components["schemas"]["TutorProvider"];
+            language: components["schemas"]["TutorLanguage"];
+            grounding: components["schemas"]["TutorGrounding"];
+            prompts: components["schemas"]["TutorPracticePrompt"][];
+            usage: components["schemas"]["TutorUsageSummary"];
+        };
+        TutorUsageRecord: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "message" | "practice";
+            language: components["schemas"]["TutorLanguage"];
+            outcome: components["schemas"]["TutorGrounding"];
+            /** @enum {string} */
+            providerMode: "mock";
+            sourceActivityIds: string[];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        TutorUsage: {
+            limit: number;
+            windowMinutes: number;
+            usedInWindow: number;
+            totalRequests: number;
+            items: components["schemas"]["TutorUsageRecord"][];
+        };
     };
     responses: {
         /** @description The request body is missing or invalid (`code`: `VALIDATION_ERROR`). */
@@ -1566,7 +1737,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
-        /** @description Too many sign-in attempts (`code`: `RATE_LIMITED`). */
+        /** @description Too many sign-in attempts or tutor requests (`code`: `RATE_LIMITED`). */
         RateLimited: {
             headers: {
                 /** @description Seconds until another attempt is allowed. */
@@ -2876,6 +3047,93 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StudentGrades"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    askTutor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TutorMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description The grounded (or insufficient-material) mock response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorMessageResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    suggestTutorPractice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TutorPracticeRequest"];
+            };
+        };
+        responses: {
+            /** @description Practice prompts (or an insufficient-material response). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorPracticeResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getMyTutorUsage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Usage summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorUsage"];
                 };
             };
             401: components["responses"]["Unauthorized"];
