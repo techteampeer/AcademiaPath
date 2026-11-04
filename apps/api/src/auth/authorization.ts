@@ -17,7 +17,11 @@ export type CoursePermission =
   | 'content.viewUnapproved'
   | 'content.edit'
   | 'content.submit'
-  | 'content.review';
+  | 'content.review'
+  /** Take quizzes (students only). */
+  | 'quiz.attempt'
+  /** See students' quiz attempts and server-computed results. */
+  | 'quiz.viewResults';
 
 /**
  * Course-level permissions per role. Default deny: a permission not listed here is not granted.
@@ -35,9 +39,9 @@ export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermi
   // Design team reviews (approves/returns) content and can also author it.
   design_team: new Set([...STAFF_READ, 'content.edit', 'content.submit', 'content.review']),
   // Instructors author and submit content but never approve it.
-  instructor: new Set([...STAFF_READ, 'content.edit', 'content.submit']),
-  non_editing_instructor: new Set(STAFF_READ),
-  student: new Set(['course.view']),
+  instructor: new Set([...STAFF_READ, 'content.edit', 'content.submit', 'quiz.viewResults']),
+  non_editing_instructor: new Set([...STAFF_READ, 'quiz.viewResults']),
+  student: new Set(['course.view', 'quiz.attempt']),
 };
 
 export function hasCoursePermission(role: CourseRole | null, permission: CoursePermission): boolean {

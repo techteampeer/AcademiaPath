@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.4.0
+  version: 0.5.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -28,6 +28,11 @@ info:
     `returned`. Staff edit a working copy; approval publishes it as the live version, the only one
     students can read. Editing approved content creates a new revision without changing the live
     version until it is approved again.
+
+    Quizzes are activities of type `quiz` that use the same review workflow: approval publishes the
+    settings together with a snapshot of the questions. Students never receive answer keys or
+    scores; grading happens on the server when an attempt is submitted, and results are visible to
+    course staff only until a grade-release feature exists.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -44,6 +49,8 @@ tags:
     description: Courses, their sections and enrollments
   - name: Content
     description: Lessons and external resources in course sections, with review and approval
+  - name: Quizzes
+    description: Quiz questions, student attempts and server-side grading
 paths:
   /api/v1/health:
     get:
@@ -719,6 +726,354 @@ paths:
           $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/activities/{activityId}/questions:
+    get:
+      operationId: listQuizQuestions
+      summary: List a quiz's questions with answer keys (staff only)
+      description: Requires `content.viewUnapproved` (course staff) or the administrator role. Students receive `403`.
+      tags: [Quizzes]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200":
+          description: Working questions in order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizQuestionList"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: addQuizQuestion
+      summary: Add a question to a quiz
+      description: |
+        Requires `content.edit`. Not allowed while the quiz is waiting for review (`409`). Changing an
+        approved quiz starts a draft revision; students keep the approved version until it is
+        approved again. Audited as `quiz.question_added`.
+      tags: [Quizzes]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuizQuestionInput"
+      responses:
+        "201":
+          description: Question added.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizQuestion"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/activities/{activityId}/questions/{questionId}:
+    put:
+      operationId: updateQuizQuestion
+      summary: Replace a quiz question (same rules as adding)
+      description: Audited as `quiz.question_updated`. The question keeps its id.
+      tags: [Quizzes]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+        - $ref: "#/components/parameters/QuestionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuizQuestionInput"
+      responses:
+        "200":
+          description: Question updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizQuestion"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+    delete:
+      operationId: removeQuizQuestion
+      summary: Remove a quiz question (same rules as adding)
+      description: Audited as `quiz.question_removed`. Existing attempts keep their own copy of the question.
+      tags: [Quizzes]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+        - $ref: "#/components/parameters/QuestionId"
+      responses:
+        "204":
+          description: Question removed.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/courses/{id}/activities/{activityId}/attempts:
+    post:
+      operationId: startQuizAttempt
+      summary: Start (or resume) an attempt at an approved quiz
+      description: |
+        Students only (`quiz.attempt`), for approved, visible quizzes in published courses they are
+        enrolled in. Returns the active attempt (`200`) if one exists, otherwise starts a new one
+        (`201`) using the approved quiz version, with question and option order fixed for the
+        attempt. The attempt limit and time limit are enforced by the server and database. No
+        request body. Audited as `quiz.attempt_started`.
+      tags: [Quizzes]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200":
+          description: The attempt already in progress.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentQuizAttempt"
+        "201":
+          description: A new attempt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentQuizAttempt"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/courses/{id}/activities/{activityId}/attempts/mine:
+    get:
+      operationId: getMyQuizAttempts
+      summary: The signed-in student's attempts at a quiz (no scores)
+      tags: [Quizzes]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200":
+          description: Attempt status summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentQuizAttemptSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/attempts/{attemptId}:
+    get:
+      operationId: getMyQuizAttempt
+      summary: One of the signed-in student's attempts, without answer keys or scores
+      description: An attempt past its deadline is submitted automatically with the answers saved in time.
+      tags: [Quizzes]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/AttemptId"
+      responses:
+        "200":
+          description: The attempt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentQuizAttempt"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/attempts/{attemptId}/answers:
+    put:
+      operationId: saveQuizAnswers
+      summary: Save answers of an attempt in progress
+      description: |
+        Replaces the selections for the given questions. After the server-side deadline the attempt is
+        submitted with the answers saved in time and this request is rejected (`ATTEMPT_EXPIRED`).
+      tags: [Quizzes]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/AttemptId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuizAnswersSave"
+      responses:
+        "200":
+          description: Answers saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentQuizAttempt"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/attempts/{attemptId}/submit:
+    post:
+      operationId: submitQuizAttempt
+      summary: Submit an attempt for server-side grading
+      description: |
+        Optionally saves final `answers`, then grades every question on the server and closes the
+        attempt. Scores or results in the request are rejected. After the deadline, only answers
+        saved in time are graded. A submitted attempt cannot be submitted or changed again
+        (`ATTEMPT_NOT_IN_PROGRESS`). The response confirms submission without the score. Audited as
+        `quiz.attempt_submitted` and `quiz.attempt_graded`.
+      tags: [Quizzes]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/AttemptId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuizAttemptSubmit"
+      responses:
+        "200":
+          description: Attempt submitted and graded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentQuizAttempt"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/activities/{activityId}/results:
+    get:
+      operationId: listQuizResults
+      summary: All attempts at a quiz with server-computed scores (staff only)
+      description: Requires `quiz.viewResults` (instructor, non-editing instructor) or the administrator role. Ordered by student email and attempt number.
+      tags: [Quizzes]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of attempts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizResultPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/activities/{activityId}/results/{attemptId}:
+    get:
+      operationId: getQuizAttemptResult
+      summary: One attempt with answers, answer keys and per-question points (staff only)
+      tags: [Quizzes]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+        - $ref: "#/components/parameters/AttemptId"
+      responses:
+        "200":
+          description: The graded attempt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizAttemptResult"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   parameters:
     Limit:
@@ -754,6 +1109,20 @@ components:
         format: uuid
     ActivityId:
       name: activityId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    QuestionId:
+      name: questionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AttemptId:
+      name: attemptId
       in: path
       required: true
       schema:
@@ -849,7 +1218,8 @@ components:
       description: |
         A uniqueness rule was violated: `PROGRAM_CODE_TAKEN`, `TERM_CODE_TAKEN`, `COURSE_CODE_TAKEN`,
         `ENROLLMENT_EXISTS` or `TEMPLATE_VERSION_CONFLICT`; or an invalid review transition:
-        `ACTIVITY_UNDER_REVIEW`, `INVALID_REVIEW_STATE`.
+        `ACTIVITY_UNDER_REVIEW`, `INVALID_REVIEW_STATE`; or a quiz rule: `QUIZ_QUESTION_LIMIT`,
+        `ATTEMPT_LIMIT_REACHED`, `ATTEMPT_NOT_IN_PROGRESS`, `ATTEMPT_EXPIRED`, `ATTEMPT_CONFLICT`.
       content:
         application/problem+json:
           schema:
@@ -865,7 +1235,8 @@ components:
         The request is well-formed but refers to missing or incompatible data: `INVALID_TERM_DATES`,
         `PROGRAM_NOT_FOUND`, `PROGRAM_INACTIVE`, `TERM_NOT_FOUND`, `TEMPLATE_NOT_FOUND`,
         `TEMPLATE_VERSION_NOT_FOUND`, `TEMPLATE_PROGRAM_MISMATCH`, `USER_NOT_FOUND`, `USER_INACTIVE`,
-        `INVALID_URL`, `CONTENT_TYPE_MISMATCH` or `REVIEW_COMMENT_REQUIRED`.
+        `INVALID_URL`, `CONTENT_TYPE_MISMATCH`, `REVIEW_COMMENT_REQUIRED`, `QUIZ_HAS_NO_QUESTIONS`,
+        `INVALID_ANSWER_KEY` or `INVALID_ANSWER`.
       content:
         application/problem+json:
           schema:
@@ -1043,6 +1414,14 @@ components:
             - INVALID_REVIEW_STATE
             - SELF_REVIEW_NOT_ALLOWED
             - REVIEW_COMMENT_REQUIRED
+            - QUIZ_HAS_NO_QUESTIONS
+            - QUIZ_QUESTION_LIMIT
+            - INVALID_ANSWER_KEY
+            - INVALID_ANSWER
+            - ATTEMPT_LIMIT_REACHED
+            - ATTEMPT_NOT_IN_PROGRESS
+            - ATTEMPT_EXPIRED
+            - ATTEMPT_CONFLICT
     Code:
       type: string
       minLength: 1
@@ -1484,7 +1863,7 @@ components:
     ActivityType:
       type: string
       description: Content types supported by the content API.
-      enum: [page, link]
+      enum: [page, link, quiz]
     ReviewStatus:
       type: string
       enum: [draft, submitted, approved, returned]
@@ -1507,10 +1886,32 @@ components:
           format: uri
         description:
           type: [string, "null"]
+    QuizContent:
+      type: object
+      description: Quiz settings and totals. Questions and answer keys are never part of an activity.
+      required: [instructions, attemptLimit, timeLimitMinutes, shuffleQuestions, shuffleOptions, questionCount, totalPoints]
+      additionalProperties: false
+      properties:
+        instructions:
+          type: [string, "null"]
+        attemptLimit:
+          type: integer
+          minimum: 1
+        timeLimitMinutes:
+          type: [integer, "null"]
+        shuffleQuestions:
+          type: boolean
+        shuffleOptions:
+          type: boolean
+        questionCount:
+          type: integer
+        totalPoints:
+          type: integer
     ActivityContent:
       oneOf:
         - $ref: "#/components/schemas/PageContent"
         - $ref: "#/components/schemas/LinkContent"
+        - $ref: "#/components/schemas/QuizContent"
     PageContentInput:
       type: object
       required: [title, body]
@@ -1545,6 +1946,35 @@ components:
         description:
           type: string
           maxLength: 1000
+    QuizSettingsInput:
+      type: object
+      required: [title, attemptLimit]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: "\\S"
+        instructions:
+          type: string
+          maxLength: 5000
+        attemptLimit:
+          type: integer
+          minimum: 1
+          maximum: 10
+        timeLimitMinutes:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 300
+          description: Enforced by the server clock. Omit or null for no time limit.
+        shuffleQuestions:
+          type: boolean
+          default: false
+        shuffleOptions:
+          type: boolean
+          default: false
+          description: Shuffles options of choice questions (not true/false).
     ActivityCreate:
       oneOf:
         - allOf:
@@ -1563,11 +1993,20 @@ components:
                 type:
                   type: string
                   const: link
+        - allOf:
+            - $ref: "#/components/schemas/QuizSettingsInput"
+            - type: object
+              required: [type]
+              properties:
+                type:
+                  type: string
+                  const: quiz
     ActivityUpdate:
       description: Must match the activity's type.
       oneOf:
         - $ref: "#/components/schemas/PageContentInput"
         - $ref: "#/components/schemas/LinkContentInput"
+        - $ref: "#/components/schemas/QuizSettingsInput"
     ActivityReviewDecision:
       type: object
       required: [decision]
@@ -1670,3 +2109,344 @@ components:
             $ref: "#/components/schemas/Activity"
         nextCursor:
           type: [string, "null"]
+
+    QuizQuestionType:
+      type: string
+      description: Supported now. Matching, short answer and essay are not implemented.
+      enum: [single_choice, multiple_choice, true_false]
+    QuizChoiceQuestionInput:
+      type: object
+      required: [type, prompt, points, options]
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum: [single_choice, multiple_choice]
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          pattern: "\\S"
+        points:
+          type: integer
+          minimum: 1
+          maximum: 100
+        options:
+          type: array
+          minItems: 2
+          maxItems: 10
+          description: Single choice needs exactly one correct option; multiple choice at least one.
+          items:
+            type: object
+            required: [text, isCorrect]
+            additionalProperties: false
+            properties:
+              text:
+                type: string
+                minLength: 1
+                maxLength: 500
+                pattern: "\\S"
+              isCorrect:
+                type: boolean
+    QuizTrueFalseQuestionInput:
+      type: object
+      required: [type, prompt, points, correctAnswer]
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          const: true_false
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          pattern: "\\S"
+        points:
+          type: integer
+          minimum: 1
+          maximum: 100
+        correctAnswer:
+          type: boolean
+    QuizQuestionInput:
+      oneOf:
+        - $ref: "#/components/schemas/QuizChoiceQuestionInput"
+        - $ref: "#/components/schemas/QuizTrueFalseQuestionInput"
+    QuizOptionWithKey:
+      type: object
+      required: [id, text, isCorrect]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        isCorrect:
+          type: boolean
+    QuizOption:
+      type: object
+      required: [id, text]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+    QuizQuestion:
+      type: object
+      description: Staff view of a question, including the answer key. True/false questions use the options `true` and `false`.
+      required: [id, position, type, prompt, points, options]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        position:
+          type: integer
+        type:
+          $ref: "#/components/schemas/QuizQuestionType"
+        prompt:
+          type: string
+        points:
+          type: integer
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuizOptionWithKey"
+    QuizQuestionList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuizQuestion"
+    QuizAnswerInput:
+      type: object
+      required: [questionId, selectedOptionIds]
+      additionalProperties: false
+      properties:
+        questionId:
+          type: string
+          format: uuid
+        selectedOptionIds:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+    QuizAnswersSave:
+      type: object
+      required: [answers]
+      additionalProperties: false
+      properties:
+        answers:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/QuizAnswerInput"
+    QuizAttemptSubmit:
+      type: object
+      description: Only answers may be sent. Scores or results are rejected (`400`).
+      additionalProperties: false
+      properties:
+        answers:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/QuizAnswerInput"
+    QuizAttemptStatus:
+      type: string
+      enum: [in_progress, submitted]
+    StudentQuizAttempt:
+      type: object
+      description: A student's own attempt. Never contains answer keys, correctness or scores.
+      required: [id, activityId, attemptNumber, attemptLimit, status, startedAt, deadlineAt, submittedAt, closedByTimeLimit, resultsReleased, questions]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        activityId:
+          type: string
+          format: uuid
+        attemptNumber:
+          type: integer
+        attemptLimit:
+          type: integer
+        status:
+          $ref: "#/components/schemas/QuizAttemptStatus"
+        startedAt:
+          type: string
+          format: date-time
+        deadlineAt:
+          type: [string, "null"]
+          format: date-time
+          description: Server deadline; the server enforces it regardless of the browser clock.
+        submittedAt:
+          type: [string, "null"]
+          format: date-time
+        closedByTimeLimit:
+          type: boolean
+        resultsReleased:
+          type: boolean
+          description: Always false until grade release is implemented.
+        questions:
+          type: array
+          items:
+            type: object
+            required: [questionId, position, type, prompt, points, options, selectedOptionIds]
+            additionalProperties: false
+            properties:
+              questionId:
+                type: string
+                format: uuid
+              position:
+                type: integer
+              type:
+                $ref: "#/components/schemas/QuizQuestionType"
+              prompt:
+                type: string
+              points:
+                type: integer
+              options:
+                type: array
+                description: In the order fixed for this attempt.
+                items:
+                  $ref: "#/components/schemas/QuizOption"
+              selectedOptionIds:
+                type: array
+                items:
+                  type: string
+    QuizAttemptStatusItem:
+      type: object
+      required: [id, attemptNumber, status, startedAt, deadlineAt, submittedAt, closedByTimeLimit]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        attemptNumber:
+          type: integer
+        status:
+          $ref: "#/components/schemas/QuizAttemptStatus"
+        startedAt:
+          type: string
+          format: date-time
+        deadlineAt:
+          type: [string, "null"]
+          format: date-time
+        submittedAt:
+          type: [string, "null"]
+          format: date-time
+        closedByTimeLimit:
+          type: boolean
+    StudentQuizAttemptSummary:
+      type: object
+      required: [attemptLimit, attemptsUsed, timeLimitMinutes, activeAttemptId, items]
+      additionalProperties: false
+      properties:
+        attemptLimit:
+          type: integer
+        attemptsUsed:
+          type: integer
+        timeLimitMinutes:
+          type: [integer, "null"]
+        activeAttemptId:
+          type: [string, "null"]
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuizAttemptStatusItem"
+    QuizResultStudent:
+      type: object
+      required: [id, email, givenName, familyName]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        givenName:
+          type: string
+        familyName:
+          type: string
+    QuizResult:
+      type: object
+      required: [attemptId, attemptNumber, status, startedAt, deadlineAt, submittedAt, closedByTimeLimit, score, maxScore, student]
+      additionalProperties: false
+      properties:
+        attemptId:
+          type: string
+          format: uuid
+        attemptNumber:
+          type: integer
+        status:
+          $ref: "#/components/schemas/QuizAttemptStatus"
+        startedAt:
+          type: string
+          format: date-time
+        deadlineAt:
+          type: [string, "null"]
+          format: date-time
+        submittedAt:
+          type: [string, "null"]
+          format: date-time
+        closedByTimeLimit:
+          type: boolean
+        score:
+          type: [integer, "null"]
+          description: Server-computed; null while in progress.
+        maxScore:
+          type: integer
+        student:
+          $ref: "#/components/schemas/QuizResultStudent"
+    QuizResultPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuizResult"
+        nextCursor:
+          type: [string, "null"]
+    QuizAttemptResult:
+      allOf:
+        - $ref: "#/components/schemas/QuizResult"
+        - type: object
+          required: [questions]
+          properties:
+            questions:
+              type: array
+              items:
+                type: object
+                required: [questionId, position, type, prompt, points, options, selectedOptionIds, awardedPoints, isCorrect]
+                additionalProperties: false
+                properties:
+                  questionId:
+                    type: string
+                    format: uuid
+                  position:
+                    type: integer
+                  type:
+                    $ref: "#/components/schemas/QuizQuestionType"
+                  prompt:
+                    type: string
+                  points:
+                    type: integer
+                  options:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/QuizOptionWithKey"
+                  selectedOptionIds:
+                    type: array
+                    items:
+                      type: string
+                  awardedPoints:
+                    type: [integer, "null"]
+                  isCorrect:
+                    type: [boolean, "null"]

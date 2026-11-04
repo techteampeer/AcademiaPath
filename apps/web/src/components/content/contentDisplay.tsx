@@ -15,6 +15,10 @@ export function contentAbilities(user: CurrentUser, viewerRole: CourseRole | nul
     viewUnapproved: admin || (role !== undefined && STAFF_ROLES.includes(role)),
     edit: admin || (role !== undefined && EDITOR_ROLES.includes(role)),
     review: admin || role === 'design_team',
+    /** Instructors (editing or not) and administrators see quiz attempts and server-calculated scores. */
+    viewResults: admin || role === 'instructor' || role === 'non_editing_instructor',
+    /** Only enrolled students take quizzes. */
+    attempt: role === 'student',
   };
 }
 
@@ -40,6 +44,7 @@ export function ReviewStatusBadge({ status }: { status: ReviewStatus }) {
 export const ACTIVITY_TYPE_LABELS: Record<Activity['type'], string> = {
   page: 'Lesson',
   link: 'External resource',
+  quiz: 'Quiz',
 };
 
 /** Only absolute http(s) URLs are ever rendered as links (the API enforces this too). */

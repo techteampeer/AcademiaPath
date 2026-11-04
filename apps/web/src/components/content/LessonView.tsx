@@ -13,6 +13,9 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { Activity, ActivityCreate, Course, CurrentUser } from '@/lib/api/types';
+import { QuizSummary } from '@/components/quizzes/quizDisplay';
+import { QuizQuestionsPanel, QuizResultsPanel } from '@/components/quizzes/QuizStaffPanels';
+import { QuizStudentPanel } from '@/components/quizzes/QuizStudentPanel';
 import { ActivityForm } from './ActivityForm';
 import { ACTIVITY_TYPE_LABELS, contentAbilities, ReviewStatusBadge, safeHttpUrl, type ContentAbilities } from './contentDisplay';
 
@@ -26,9 +29,10 @@ export function LessonView({ courseId, activityId }: { courseId: string; activit
   return <RequireAuth>{(user) => <LessonContent courseId={courseId} activityId={activityId} user={user} />}</RequireAuth>;
 }
 
-/** Renders lesson text or a link. Text is always rendered as text (React escapes it), never as HTML. */
+/** Renders lesson text, a link or quiz settings. Text is always rendered as text (React escapes it), never as HTML. */
 function ContentBody({ activity }: { activity: Activity }) {
   const content = activity.content;
+  if ('attemptLimit' in content) return <QuizSummary content={content} />;
   if ('body' in content) {
     return <div className="whitespace-pre-wrap break-words text-slate-800">{content.body}</div>;
   }
@@ -96,6 +100,7 @@ function LessonContent({ courseId, activityId, user }: { courseId: string; activ
 
   const { course, activity } = state;
   const abilities = contentAbilities(user, course.viewerRole);
+  const isQuiz = activity.type === 'quiz';
   return (
     <div className="space-y-6">
       <div>
@@ -119,9 +124,21 @@ function LessonContent({ courseId, activityId, user }: { courseId: string; activ
         />
       ) : null}
 
-      <Card as="article" padding="lg" aria-label="Lesson content">
+      <Card as="article" padding="lg" aria-label={isQuiz ? 'Quiz details' : 'Lesson content'}>
         <ContentBody activity={activity} />
       </Card>
+
+      {isQuiz && activity.review && abilities.viewUnapproved ? (
+        <QuizQuestionsPanel
+          courseId={courseId}
+          quizId={activity.id}
+          canEdit={abilities.edit && activity.review.status !== 'submitted'}
+          hasLiveVersion={activity.liveVersion !== null}
+          onChanged={() => void load()}
+        />
+      ) : null}
+      {isQuiz && abilities.viewResults ? <QuizResultsPanel courseId={courseId} quizId={activity.id} /> : null}
+      {isQuiz && abilities.attempt ? <QuizStudentPanel courseId={courseId} quizId={activity.id} /> : null}
     </div>
   );
 }

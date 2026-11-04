@@ -2,7 +2,7 @@ import { activityReviewStatusEnum } from '../db/schema/index.js';
 
 // JSON schemas mirroring the content endpoints in packages/contract/openapi.yaml.
 
-export const CONTENT_TYPES = ['page', 'link'] as const;
+export const CONTENT_TYPES = ['page', 'link', 'quiz'] as const;
 export type ContentType = (typeof CONTENT_TYPES)[number];
 
 const uuid = { type: 'string', format: 'uuid' } as const;
@@ -17,6 +17,15 @@ const linkFields = {
   title: text(200),
   url: { type: 'string', minLength: 1, maxLength: 2048 },
   description: { type: 'string', maxLength: 1000 },
+} as const;
+
+const quizSettingsFields = {
+  title: text(200),
+  instructions: { type: 'string', maxLength: 5000 },
+  attemptLimit: { type: 'integer', minimum: 1, maximum: 10 },
+  timeLimitMinutes: { type: ['integer', 'null'], minimum: 1, maximum: 300 },
+  shuffleQuestions: { type: 'boolean' },
+  shuffleOptions: { type: 'boolean' },
 } as const;
 
 export const courseSectionParamsSchema = {
@@ -47,6 +56,12 @@ export const activityCreateSchema = {
       additionalProperties: false,
       properties: { type: { type: 'string', const: 'link' }, ...linkFields },
     },
+    {
+      type: 'object',
+      required: ['type', 'title', 'attemptLimit'],
+      additionalProperties: false,
+      properties: { type: { type: 'string', const: 'quiz' }, ...quizSettingsFields },
+    },
   ],
 } as const;
 
@@ -54,6 +69,7 @@ export const activityUpdateSchema = {
   oneOf: [
     { type: 'object', required: ['title', 'body'], additionalProperties: false, properties: pageFields },
     { type: 'object', required: ['title', 'url'], additionalProperties: false, properties: linkFields },
+    { type: 'object', required: ['title', 'attemptLimit'], additionalProperties: false, properties: quizSettingsFields },
   ],
 } as const;
 
@@ -70,7 +86,19 @@ export const activityReviewSchema = {
 const contentSchema = {
   type: 'object',
   additionalProperties: false,
-  properties: { body: { type: 'string' }, url: { type: 'string' }, description: { type: ['string', 'null'] } },
+  // Quiz content is a summary only: questions and answer keys are never part of an activity.
+  properties: {
+    body: { type: 'string' },
+    url: { type: 'string' },
+    description: { type: ['string', 'null'] },
+    instructions: { type: ['string', 'null'] },
+    attemptLimit: { type: 'integer' },
+    timeLimitMinutes: { type: ['integer', 'null'] },
+    shuffleQuestions: { type: 'boolean' },
+    shuffleOptions: { type: 'boolean' },
+    questionCount: { type: 'integer' },
+    totalPoints: { type: 'integer' },
+  },
 } as const;
 
 export const activitySchema = {

@@ -97,6 +97,7 @@ describe('database schema (static checks)', () => {
       'course_templates_code_unique(code)',
       'courses_term_id_code_unique(term_id,code)',
       'enrollments_course_id_user_id_unique(course_id,user_id)',
+      'enrollments_id_course_id_user_id_unique(id,course_id,user_id)',
       'programs_code_unique(code)',
       'terms_code_unique(code)',
       'users_email_lower_unique(expression)',

@@ -40,3 +40,16 @@ export type ActivityPage = Schemas['ActivityPage'];
 export type ActivityCreate = Schemas['ActivityCreate'];
 export type ActivityUpdate = Schemas['ActivityUpdate'];
 export type ActivityReviewDecision = Schemas['ActivityReviewDecision'];
+
+export type QuizContent = Schemas['QuizContent'];
+export type QuizQuestion = Schemas['QuizQuestion'];
+export type QuizQuestionInput = Schemas['QuizQuestionInput'];
+export type QuizQuestionList = Schemas['QuizQuestionList'];
+export type QuizAnswersSave = Schemas['QuizAnswersSave'];
+export type QuizAttemptSubmit = Schemas['QuizAttemptSubmit'];
+export type StudentQuizAttempt = Schemas['StudentQuizAttempt'];
+export type StudentQuizAttemptSummary = Schemas['StudentQuizAttemptSummary'];
+export type QuizResultPage = Schemas['QuizResultPage'];
+export type QuizAttemptResult = Schemas['QuizAttemptResult'];
+export type QuizQuestionType = Schemas['QuizQuestionType'];
+export type QuizResult = Schemas['QuizResult'];

@@ -34,6 +34,11 @@ export const activityTypeEnum = pgEnum('activity_type', [
 /** Review workflow for course content. New content always starts as `draft`. */
 export const activityReviewStatusEnum = pgEnum('activity_review_status', ['draft', 'submitted', 'approved', 'returned']);
 
+/** Supported question types. Future types (matching, short answer, essay) can be added as new values. */
+export const quizQuestionTypeEnum = pgEnum('quiz_question_type', ['single_choice', 'multiple_choice', 'true_false']);
+
+export const quizAttemptStatusEnum = pgEnum('quiz_attempt_status', ['in_progress', 'submitted']);
+
 export const localeEnum = pgEnum('locale', ['es', 'en']);
 
 export type SystemRole = (typeof systemRoleEnum.enumValues)[number];
@@ -43,6 +48,8 @@ export type EnrollmentStatus = (typeof enrollmentStatusEnum.enumValues)[number];
 export type ActivityType = (typeof activityTypeEnum.enumValues)[number];
 export type Locale = (typeof localeEnum.enumValues)[number];
 export type ActivityReviewStatus = (typeof activityReviewStatusEnum.enumValues)[number];
+export type QuizQuestionType = (typeof quizQuestionTypeEnum.enumValues)[number];
+export type QuizAttemptStatus = (typeof quizAttemptStatusEnum.enumValues)[number];
 
 /** The five AcademiaPath role categories: one system-level, four course-level. */
 export type RoleCategory = Extract<SystemRole, 'administrator'> | CourseRole;
