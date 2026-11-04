@@ -9,6 +9,10 @@ import { academicRoutes } from './routes/academic.js';
 import { activityRoutes } from './routes/activities.js';
 import { authRoutes } from './routes/auth.js';
 import { courseRoutes } from './routes/courses.js';
+import { documentRoutes, type DocumentRouteOptions } from './routes/documents.js';
+import { noMalwareScanner } from './documents/scanner.js';
+import { LocalDocumentStorage } from './documents/storage.js';
+import { mockSummaryProvider } from './documents/summary.js';
 import { healthRoutes } from './routes/health.js';
 import { meRoutes } from './routes/me.js';
 import { gradingRoutes } from './routes/grading.js';
@@ -33,9 +37,11 @@ export type BuildAppOptions = {
   config: AppConfig;
   database: Database;
   logger?: false | { level: string; stream?: { write(message: string): void } };
+  /** Defaults: private local storage from config, no malware scanner connected, mock summary provider. */
+  documents?: Partial<DocumentRouteOptions>;
 };
 
-export function buildApp({ config, database, logger = false }: BuildAppOptions) {
+export function buildApp({ config, database, logger = false, documents = {} }: BuildAppOptions) {
   const app = Fastify({
     logger: logger === false ? false : { ...logger, redact: { paths: LOG_REDACT_PATHS, censor: '[REDACTED]' } },
     trustProxy: config.trustProxy,
@@ -70,6 +76,12 @@ export function buildApp({ config, database, logger = false }: BuildAppOptions) 
   app.register(quizRoutes, { prefix: API_PREFIX });
   app.register(gradingRoutes, { prefix: API_PREFIX });
   app.register(tutorRoutes, { prefix: API_PREFIX });
+  app.register(documentRoutes, {
+    prefix: API_PREFIX,
+    storage: documents.storage ?? new LocalDocumentStorage(config.documents.storageDir),
+    scanner: documents.scanner ?? noMalwareScanner,
+    provider: documents.provider ?? mockSummaryProvider,
+  });
 
   return app;
 }

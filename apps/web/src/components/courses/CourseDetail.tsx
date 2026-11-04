@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { contentAbilities } from '@/components/content/contentDisplay';
 import { lessonHref, SectionActivities } from '@/components/content/SectionActivities';
+import { DocumentLibrary } from '@/components/documents/DocumentLibrary';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { Alert } from '@/components/ui/Alert';
@@ -176,6 +177,8 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
           )}
         </Card>
       ) : null}
+
+      <DocumentLibrary courseId={course.id} sections={sections} activities={activities} abilities={abilities} onUploaded={refreshActivities} />
 
       <section aria-labelledby="sections-heading">
         <h2 id="sections-heading" className="text-xl font-semibold tracking-tight text-slate-900">

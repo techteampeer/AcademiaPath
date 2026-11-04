@@ -49,3 +49,20 @@ export async function apiRequest<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', p
   if (!response.ok) throw new ApiError(response.status, isProblem(data) ? data : null);
   return data as T;
 }
+
+/**
+ * Same-origin multipart upload (the browser sets the multipart boundary). Like apiRequest, the session
+ * cookie is attached by the browser and the CSRF token comes from memory.
+ */
+export async function apiUpload<T>(path: string, form: FormData, csrfToken: string): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { accept: 'application/json', 'x-csrf-token': csrfToken },
+    credentials: 'same-origin',
+    cache: 'no-store',
+    body: form,
+  });
+  const data: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new ApiError(response.status, isProblem(data) ? data : null);
+  return data as T;
+}

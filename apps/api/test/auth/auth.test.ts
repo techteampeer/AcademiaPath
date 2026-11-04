@@ -172,7 +172,11 @@ describe('authentication API (PostgreSQL)', { skip: testServerUrl ? false : 'TES
   });
 
   it('uses a Secure __Host- session cookie in production', async () => {
-    const prodApp = makeApp({ NODE_ENV: 'production', APP_ORIGINS: 'https://lms.academiapath.example' });
+    const prodApp = makeApp({
+      NODE_ENV: 'production',
+      APP_ORIGINS: 'https://lms.academiapath.example',
+      DOCUMENT_STORAGE_DIR: '/var/lib/academiapath/documents',
+    });
     try {
       const { email } = await createAccount();
       const res = await login(prodApp, email);

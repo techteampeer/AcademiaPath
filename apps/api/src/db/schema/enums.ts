@@ -48,6 +48,14 @@ export const tutorOutcomeEnum = pgEnum('tutor_outcome', ['grounded', 'insufficie
 
 export const localeEnum = pgEnum('locale', ['es', 'en']);
 
+/** Accepted upload formats (verified from the file's signature and container structure). */
+export const documentFormatEnum = pgEnum('document_format', ['pdf', 'docx', 'pptx']);
+/** `no_text`: the file is valid but has no selectable text (for example scanned or image-only pages). */
+export const documentExtractionStatusEnum = pgEnum('document_extraction_status', ['extracted', 'no_text']);
+/** Malware scanning hook result. No scanning service is connected yet, so uploads are `not_scanned`. */
+export const malwareScanStatusEnum = pgEnum('malware_scan_status', ['not_scanned', 'clean']);
+export const documentSummaryStatusEnum = pgEnum('document_summary_status', ['ready', 'insufficient_text']);
+
 export type SystemRole = (typeof systemRoleEnum.enumValues)[number];
 export type CourseRole = (typeof courseRoleEnum.enumValues)[number];
 export type CourseStatus = (typeof courseStatusEnum.enumValues)[number];
@@ -58,6 +66,9 @@ export type ActivityReviewStatus = (typeof activityReviewStatusEnum.enumValues)[
 export type QuizQuestionType = (typeof quizQuestionTypeEnum.enumValues)[number];
 export type QuizAttemptStatus = (typeof quizAttemptStatusEnum.enumValues)[number];
 export type GradeSource = (typeof gradeSourceEnum.enumValues)[number];
+export type DocumentFormat = (typeof documentFormatEnum.enumValues)[number];
+export type DocumentExtractionStatus = (typeof documentExtractionStatusEnum.enumValues)[number];
+export type DocumentSummaryStatus = (typeof documentSummaryStatusEnum.enumValues)[number];
 
 /** The five AcademiaPath role categories: one system-level, four course-level. */
 export type RoleCategory = Extract<SystemRole, 'administrator'> | CourseRole;

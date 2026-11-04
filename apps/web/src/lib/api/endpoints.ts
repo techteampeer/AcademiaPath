@@ -1,4 +1,4 @@
-import { apiRequest } from './client';
+import { API_BASE, apiRequest, apiUpload } from './client';
 import type {
   Activity,
   ActivityCreate,
@@ -16,6 +16,7 @@ import type {
   CourseTemplatePage,
   CourseTemplateVersion,
   CsrfTokenResponse,
+  DocumentDetail,
   Enrollment,
   EnrollmentCreate,
   Gradebook,
@@ -164,6 +165,20 @@ export const api = {
     apiRequest<GradeReleaseResult>('POST', `${activity(courseId, activityId)}/grades/release`, { csrfToken }),
   getGradebook: (courseId: string, page?: PageRequest) => apiRequest<Gradebook>('GET', withPage(`${course(courseId)}/gradebook`, page)),
   myGrades: (courseId: string) => apiRequest<StudentGrades>('GET', `${course(courseId)}/grades/mine`),
+
+  // Documents: uploaded and validated by the API, which extracts the text and creates mock summaries.
+  uploadDocument: (courseId: string, sectionId: string, file: File, title: string, csrfToken: string) => {
+    const form = new FormData();
+    // The title must precede the file part.
+    if (title.trim()) form.append('title', title.trim());
+    form.append('file', file);
+    return apiUpload<DocumentDetail>(`${course(courseId)}/sections/${encodeURIComponent(sectionId)}/documents`, form, csrfToken);
+  },
+  getDocument: (courseId: string, activityId: string) => apiRequest<DocumentDetail>('GET', `${activity(courseId, activityId)}/document`),
+  refreshDocumentSummary: (courseId: string, activityId: string, csrfToken: string) =>
+    apiRequest<DocumentDetail>('POST', `${activity(courseId, activityId)}/document/summaries`, { csrfToken }),
+  /** Same-origin download link; the API checks the session and course access before sending the file. */
+  documentFileHref: (courseId: string, activityId: string) => `${API_BASE}${activity(courseId, activityId)}/document/file`,
 
   // Course tutor (local mock provider on the API; nothing is sent to external services).
   askTutor: (courseId: string, question: string, language: TutorLanguage, csrfToken: string) =>
