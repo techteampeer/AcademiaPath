@@ -122,6 +122,20 @@ function toResponse(row: ActivityRecord, courseId: string, staffView: boolean, w
 
 const snapshot = (row: ActivityRecord) => ({ title: row.title, content: row.config, reviewStatus: row.reviewStatus });
 
+/**
+ * Approved version for the audit log. A quiz snapshot contains answer keys, which are never written to the
+ * append-only audit log: only its settings, totals and question ids are recorded.
+ */
+function auditLiveVersion(type: ActivityRecord['type'], title: string | null, config: ActivityConfig | null) {
+  if (!title) return null;
+  if (type !== 'quiz') return { title, content: config };
+  return {
+    title,
+    content: presentContent(type, config, snapshotStats(config)),
+    questionIds: readSnapshotQuestions(config).map((question) => question.id),
+  };
+}
+
 export const activityRoutes: FastifyPluginAsync = async (app) => {
   const { db } = app;
   // Guards run before body/params validation so unauthenticated or forged requests are rejected first.
@@ -387,12 +401,12 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
           entityId: row.id,
           before: {
             reviewStatus: current.reviewStatus,
-            liveVersion: current.approvedTitle ? { title: current.approvedTitle, content: current.approvedConfig } : null,
+            liveVersion: auditLiveVersion(current.type, current.approvedTitle, current.approvedConfig),
           },
           after: {
             reviewStatus: row.reviewStatus,
             comment,
-            liveVersion: row.approvedTitle ? { title: row.approvedTitle, content: row.approvedConfig } : null,
+            liveVersion: auditLiveVersion(row.type, row.approvedTitle, row.approvedConfig),
           },
         });
         return row;

@@ -470,6 +470,18 @@ describe('quizzes and server-side grading (PostgreSQL)', { skip: testServerUrl ?
       [0, 6],
     );
     assert.ok(graded.every((e) => e.actorUserId === session('student').userId));
+    // Answer keys never reach the append-only audit log (question changes or approval snapshots).
+    const draft = await createQuiz({ title: 'Audit key quiz', attemptLimit: 1 });
+    const tf = await addQuestion(draft.id, { type: 'true_false', prompt: 'Key change?', points: 1, correctAnswer: true });
+    expectStatus(await call('instructor', 'PUT', `${quizUrl(draft.id)}/questions/${tf.id}`, { payload: { type: 'true_false', prompt: 'Key change?', points: 1, correctAnswer: false } }), 200);
+    const [keyChange] = await database.db.select().from(auditLog).where(and(eq(auditLog.action, 'quiz.question_updated'), eq(auditLog.entityId, draft.id)));
+    assert.equal((keyChange?.metadata.after as { answerKeyChanged: boolean }).answerKeyChanged, true);
+    const approvals = await database.db.select().from(auditLog).where(and(eq(auditLog.action, 'activity.approved'), eq(auditLog.entityId, id('quiz'))));
+    assert.ok(approvals.length >= 1);
+    assert.deepEqual((approvals[0]!.metadata.after as { liveVersion: { questionIds: string[] } }).liveVersion.questionIds.length, 3);
+    for (const entry of await database.db.select().from(auditLog)) {
+      assert.doesNotMatch(JSON.stringify(entry.metadata), /correctAnswer|isCorrect/, `${entry.action} must not contain answer keys`);
+    }
     const secrets = [PASSWORD, ...[...sessions.values()].flatMap((s) => [s.token, s.csrfToken])];
     const all = await database.db.select().from(auditLog);
     assert.ok(all.every((e) => secrets.every((secret) => !JSON.stringify(e.metadata).includes(secret))), 'no secrets in audit data');

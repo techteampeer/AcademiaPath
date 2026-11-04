@@ -45,6 +45,25 @@ const notInProgress = () => new ApiProblem(409, 'ATTEMPT_NOT_IN_PROGRESS', 'This
 const expiredSql = sql<boolean>`(${quizAttempts.deadlineAt} IS NOT NULL AND now() > ${quizAttempts.deadlineAt} + make_interval(secs => ${DEADLINE_GRACE_SECONDS}))`;
 
 /** Staff view of a question, including its answer key. */
+/**
+ * Audit view of a question: only what students see while answering. Answer keys are never written to
+ * the append-only audit log (attempts snapshot their own keys); updates record whether the key changed.
+ */
+function toAuditQuestion(question: QuestionRecord) {
+  return {
+    questionId: question.id,
+    type: question.type,
+    prompt: question.prompt,
+    points: question.points,
+    options: question.options.map(({ id, text }) => ({ id, text })),
+  };
+}
+
+function sameAnswerKey(a: QuestionRecord['correctAnswer'], b: QuestionRecord['correctAnswer']) {
+  const left = new Set(a.optionIds);
+  return left.size === new Set(b.optionIds).size && b.optionIds.every((id) => left.has(id));
+}
+
 function toStaffQuestion(question: QuestionRecord) {
   const correct = new Set(question.correctAnswer.optionIds);
   return {
@@ -153,7 +172,7 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
           entityType: 'activity',
           entityId: quiz.id,
           before: null,
-          after: { questionId: row.id, ...question },
+          after: toAuditQuestion(row),
         });
         return row;
       });
@@ -181,8 +200,8 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
           action: 'quiz.question_updated',
           entityType: 'activity',
           entityId: quiz.id,
-          before: toStaffQuestion(current),
-          after: toStaffQuestion(row),
+          before: toAuditQuestion(current),
+          after: { ...toAuditQuestion(row), answerKeyChanged: !sameAnswerKey(current.correctAnswer, row.correctAnswer) },
         });
         return row;
       });
@@ -207,7 +226,7 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
           action: 'quiz.question_removed',
           entityType: 'activity',
           entityId: quiz.id,
-          before: toStaffQuestion(removed),
+          before: toAuditQuestion(removed),
           after: null,
         });
       });
