@@ -10,12 +10,13 @@ const statusDisplay: Record<CourseStatus, { label: string; tone: BadgeTone }> = 
   archived: { label: 'Archived', tone: 'neutral' },
 };
 
-export function CourseStatusBadge({ status }: { status: CourseStatus }) {
+/** `label` and `statusLabel` let localized screens pass translated text; defaults are English. */
+export function CourseStatusBadge({ status, label, statusLabel = 'Status' }: { status: CourseStatus; label?: string; statusLabel?: string }) {
   const display = statusDisplay[status];
   return (
     <Badge tone={display.tone}>
-      <span className="sr-only">Status: </span>
-      {display.label}
+      <span className="sr-only">{statusLabel}: </span>
+      {label ?? display.label}
     </Badge>
   );
 }

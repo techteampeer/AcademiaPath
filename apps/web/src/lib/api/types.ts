@@ -84,3 +84,4 @@ export type DocumentSummary = Schemas['DocumentSummary'];
 export type ProgramUpdate = Schemas['ProgramUpdate'];
 export type TermUpdate = Schemas['TermUpdate'];
 export type CourseTemplateDetail = Schemas['CourseTemplateDetail'];
+export type EnrollmentPage = Schemas['EnrollmentPage'];

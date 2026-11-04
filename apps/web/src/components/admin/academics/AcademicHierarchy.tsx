@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError } from '@/components/session/useCsrfAction';
@@ -35,6 +36,7 @@ function countBy(offerings: Course[] | null, key: 'programId' | 'templateId') {
 
 function HierarchyContent() {
   const { handleUnauthorized } = useSession();
+  const { t } = useLocale();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -104,7 +106,7 @@ function HierarchyContent() {
   if (data.status === 'loading') {
     return (
       <p role="status" className="text-sm text-slate-600">
-        Loading academic structure…
+        {t.common.loading}
       </p>
     );
   }
@@ -113,7 +115,7 @@ function HierarchyContent() {
       <Alert tone="error">
         {data.message}{' '}
         <button type="button" className="font-medium underline" onClick={() => void reload()}>
-          Try again
+          {t.common.retry}
         </button>
       </Alert>
     );
@@ -121,7 +123,7 @@ function HierarchyContent() {
 
   const programCounts = countBy(offerings, 'programId');
   const subjectCounts = countBy(offerings, 'templateId');
-  const crumbs: Array<{ label: string; target: Selection }> = [{ label: 'Academic structure', target: {} }];
+  const crumbs: Array<{ label: string; target: Selection }> = [{ label: t.academics.title, target: {} }];
   if (activeYear) crumbs.push({ label: String(activeYear), target: { year: String(activeYear) } });
   if (term) crumbs.push({ label: term.code, target: { year: String(term.academicYear), term: term.id } });
   if (term && program) crumbs.push({ label: program.name, target: { year: String(term.academicYear), term: term.id, program: program.id } });
@@ -139,7 +141,7 @@ function HierarchyContent() {
   return (
     <div className="space-y-6">
       <div>
-        <nav aria-label="Breadcrumb">
+        <nav aria-label={t.common.breadcrumb}>
           <ol className="flex flex-wrap items-center gap-1 text-sm text-slate-500">
             {crumbs.map((crumb, index) => (
               <li key={crumb.label + index} className="flex items-center gap-1">
@@ -159,14 +161,11 @@ function HierarchyContent() {
         </nav>
         <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Academic structure</h1>
-            <p className="mt-1 max-w-3xl text-sm text-slate-600">
-              Academic year → term → program → subject. Programs and subjects are reusable across years; each course is one offering of a
-              subject in a term.
-            </p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{t.academics.title}</h1>
+            <p className="mt-1 max-w-3xl text-sm text-slate-600">{t.academics.intro}</p>
           </div>
           <Link href="/admin/setup" className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
-            Course setup &amp; enrollments
+            {t.academics.courseSetup}
           </Link>
         </div>
       </div>
@@ -174,12 +173,12 @@ function HierarchyContent() {
       <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
         <Card as="section" aria-labelledby="hierarchy-heading" className="space-y-4 lg:self-start">
           <h2 id="hierarchy-heading" className="text-sm font-semibold tracking-wide text-slate-500 uppercase">
-            Hierarchy
+            {t.academics.hierarchy}
           </h2>
           {yearOptions.length ? (
             <div>
               <label htmlFor="academic-year" className="block text-sm font-medium text-slate-800">
-                Academic year
+                {t.academics.academicYear}
               </label>
               <select
                 id="academic-year"
@@ -190,7 +189,7 @@ function HierarchyContent() {
                 {yearOptions.map((year) => (
                   <option key={year} value={year}>
                     {year}
-                    {years.includes(year) ? '' : ' (no terms yet)'}
+                    {years.includes(year) ? '' : ` ${t.academics.noTermsLabel}`}
                   </option>
                 ))}
               </select>
@@ -199,7 +198,7 @@ function HierarchyContent() {
           <div className="flex items-end gap-2">
             <div className="min-w-0 flex-1">
               <label htmlFor="new-year" className="block text-sm font-medium text-slate-800">
-                New academic year
+                {t.academics.newAcademicYear}
               </label>
               <input
                 id="new-year"
@@ -211,45 +210,45 @@ function HierarchyContent() {
               />
             </div>
             <Button variant="secondary" size="sm" onClick={startYear}>
-              Open
+              {t.common.open}
             </Button>
           </div>
           <div className="max-h-[28rem] overflow-y-auto lg:max-h-none">
             {activeYear ? (
-              <nav aria-label="Academic hierarchy">
+              <nav aria-label={t.academics.treeLabel}>
                 <ul className="space-y-1 text-sm">
                   <li>
-                    <TreeItem depth={0} label={String(activeYear)} meta="Academic year" selected={!term} expanded onSelect={() => navigate({ year: String(activeYear) })} />
+                    <TreeItem depth={0} label={String(activeYear)} meta={t.academics.academicYear} selected={!term} expanded onSelect={() => navigate({ year: String(activeYear) })} />
                     <ul className="space-y-1">
-                      {termsOfYear.length === 0 ? <li className="py-1 pl-6 text-xs text-slate-500">No terms yet</li> : null}
-                      {termsOfYear.map((t) => (
-                        <li key={t.id}>
+                      {termsOfYear.length === 0 ? <li className="py-1 pl-6 text-xs text-slate-500">{t.academics.noTerms}</li> : null}
+                      {termsOfYear.map((tm) => (
+                        <li key={tm.id}>
                           <TreeItem
                             depth={1}
-                            label={t.code}
-                            meta={t.name}
-                            selected={t.id === term?.id && !program}
-                            expanded={t.id === term?.id}
-                            onSelect={() => navigate({ year: String(t.academicYear), term: t.id })}
+                            label={tm.code}
+                            meta={tm.name}
+                            selected={tm.id === term?.id && !program}
+                            expanded={tm.id === term?.id}
+                            onSelect={() => navigate({ year: String(tm.academicYear), term: tm.id })}
                           />
-                          {t.id === term?.id ? (
+                          {tm.id === term?.id ? (
                             <ul className="space-y-1">
-                              {(value?.programs ?? []).length === 0 ? <li className="py-1 pl-10 text-xs text-slate-500">No programs yet</li> : null}
+                              {(value?.programs ?? []).length === 0 ? <li className="py-1 pl-10 text-xs text-slate-500">{t.academics.noPrograms}</li> : null}
                               {(value?.programs ?? []).map((p) => (
                                 <li key={p.id}>
                                   <TreeItem
                                     depth={2}
                                     label={p.name}
                                     meta={p.code}
-                                    badge={p.isActive ? `${programCounts.get(p.id) ?? 0}` : 'Inactive'}
-                                    badgeLabel={p.isActive ? 'offerings in this term' : undefined}
+                                    badge={p.isActive ? `${programCounts.get(p.id) ?? 0}` : t.status.inactive}
+                                    badgeLabel={p.isActive ? t.academics.offeringsInTerm : undefined}
                                     selected={p.id === program?.id && !subject}
                                     expanded={p.id === program?.id}
-                                    onSelect={() => navigate({ year: String(t.academicYear), term: t.id, program: p.id })}
+                                    onSelect={() => navigate({ year: String(tm.academicYear), term: tm.id, program: p.id })}
                                   />
                                   {p.id === program?.id ? (
                                     <ul className="space-y-1">
-                                      {subjectsOf(p.id).length === 0 ? <li className="py-1 pl-14 text-xs text-slate-500">No subjects yet</li> : null}
+                                      {subjectsOf(p.id).length === 0 ? <li className="py-1 pl-14 text-xs text-slate-500">{t.academics.noSubjects}</li> : null}
                                       {subjectsOf(p.id).map((s) => (
                                         <li key={s.id}>
                                           <TreeItem
@@ -257,9 +256,9 @@ function HierarchyContent() {
                                             label={s.title}
                                             meta={s.code}
                                             badge={`${subjectCounts.get(s.id) ?? 0}`}
-                                            badgeLabel="offerings in this term"
+                                            badgeLabel={t.academics.offeringsInTerm}
                                             selected={s.id === subject?.id}
-                                            onSelect={() => navigate({ year: String(t.academicYear), term: t.id, program: p.id, subject: s.id })}
+                                            onSelect={() => navigate({ year: String(tm.academicYear), term: tm.id, program: p.id, subject: s.id })}
                                           />
                                         </li>
                                       ))}
@@ -276,14 +275,14 @@ function HierarchyContent() {
                 </ul>
               </nav>
             ) : (
-              <p className="text-sm text-slate-600">No academic years yet. Open a new academic year to create its first term.</p>
+              <p className="text-sm text-slate-600">{t.academics.noYears}</p>
             )}
           </div>
         </Card>
 
         <div className="min-w-0">
           {!activeYear ? (
-            <PanelPlaceholder title="Start with an academic year" description="Enter a year such as 2026 under “New academic year”, then create its first term (for example 2026-1)." />
+            <PanelPlaceholder title={t.academics.startTitle} description={t.academics.startDescription} />
           ) : term && program && subject ? (
             <SubjectPanel
               key={subject.id}
