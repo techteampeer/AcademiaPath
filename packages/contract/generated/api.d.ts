@@ -370,6 +370,199 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{id}/activities/{activityId}/questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a quiz's questions with answer keys (staff only)
+         * @description Requires `content.viewUnapproved` (course staff) or the administrator role. Students receive `403`.
+         */
+        get: operations["listQuizQuestions"];
+        put?: never;
+        /**
+         * Add a question to a quiz
+         * @description Requires `content.edit`. Not allowed while the quiz is waiting for review (`409`). Changing an
+         *     approved quiz starts a draft revision; students keep the approved version until it is
+         *     approved again. Audited as `quiz.question_added`.
+         */
+        post: operations["addQuizQuestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/activities/{activityId}/questions/{questionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace a quiz question (same rules as adding)
+         * @description Audited as `quiz.question_updated`. The question keeps its id.
+         */
+        put: operations["updateQuizQuestion"];
+        post?: never;
+        /**
+         * Remove a quiz question (same rules as adding)
+         * @description Audited as `quiz.question_removed`. Existing attempts keep their own copy of the question.
+         */
+        delete: operations["removeQuizQuestion"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/activities/{activityId}/attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start (or resume) an attempt at an approved quiz
+         * @description Students only (`quiz.attempt`), for approved, visible quizzes in published courses they are
+         *     enrolled in. Returns the active attempt (`200`) if one exists, otherwise starts a new one
+         *     (`201`) using the approved quiz version, with question and option order fixed for the
+         *     attempt. The attempt limit and time limit are enforced by the server and database. No
+         *     request body. Audited as `quiz.attempt_started`.
+         */
+        post: operations["startQuizAttempt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/activities/{activityId}/attempts/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The signed-in student's attempts at a quiz (no scores) */
+        get: operations["getMyQuizAttempts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/attempts/{attemptId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One of the signed-in student's attempts, without answer keys or scores
+         * @description An attempt past its deadline is submitted automatically with the answers saved in time.
+         */
+        get: operations["getMyQuizAttempt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/attempts/{attemptId}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save answers of an attempt in progress
+         * @description Replaces the selections for the given questions. After the server-side deadline the attempt is
+         *     submitted with the answers saved in time and this request is rejected (`ATTEMPT_EXPIRED`).
+         */
+        put: operations["saveQuizAnswers"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/attempts/{attemptId}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit an attempt for server-side grading
+         * @description Optionally saves final `answers`, then grades every question on the server and closes the
+         *     attempt. Scores or results in the request are rejected. After the deadline, only answers
+         *     saved in time are graded. A submitted attempt cannot be submitted or changed again
+         *     (`ATTEMPT_NOT_IN_PROGRESS`). The response confirms submission without the score. Audited as
+         *     `quiz.attempt_submitted` and `quiz.attempt_graded`.
+         */
+        post: operations["submitQuizAttempt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/activities/{activityId}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * All attempts at a quiz with server-computed scores (staff only)
+         * @description Requires `quiz.viewResults` (instructor, non-editing instructor) or the administrator role. Ordered by student email and attempt number.
+         */
+        get: operations["listQuizResults"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/activities/{activityId}/results/{attemptId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One attempt with answers, answer keys and per-question points (staff only) */
+        get: operations["getQuizAttemptResult"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -435,7 +628,7 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT";
         };
         Code: string;
         /**
@@ -649,7 +842,7 @@ export interface components {
          * @description Content types supported by the content API.
          * @enum {string}
          */
-        ActivityType: "page" | "link";
+        ActivityType: "page" | "link" | "quiz";
         /** @enum {string} */
         ReviewStatus: "draft" | "submitted" | "approved" | "returned";
         /** @description Plain-text lesson. Clients must render `body` as text, never as HTML. */
@@ -662,7 +855,17 @@ export interface components {
             url: string;
             description: string | null;
         };
-        ActivityContent: components["schemas"]["PageContent"] | components["schemas"]["LinkContent"];
+        /** @description Quiz settings and totals. Questions and answer keys are never part of an activity. */
+        QuizContent: {
+            instructions: string | null;
+            attemptLimit: number;
+            timeLimitMinutes: number | null;
+            shuffleQuestions: boolean;
+            shuffleOptions: boolean;
+            questionCount: number;
+            totalPoints: number;
+        };
+        ActivityContent: components["schemas"]["PageContent"] | components["schemas"]["LinkContent"] | components["schemas"]["QuizContent"];
         PageContentInput: {
             title: string;
             /** @description Plain text; line breaks are preserved. HTML is not interpreted. */
@@ -674,15 +877,32 @@ export interface components {
             url: string;
             description?: string;
         };
+        QuizSettingsInput: {
+            title: string;
+            instructions?: string;
+            attemptLimit: number;
+            /** @description Enforced by the server clock. Omit or null for no time limit. */
+            timeLimitMinutes?: number | null;
+            /** @default false */
+            shuffleQuestions: boolean;
+            /**
+             * @description Shuffles options of choice questions (not true/false).
+             * @default false
+             */
+            shuffleOptions: boolean;
+        };
         ActivityCreate: (components["schemas"]["PageContentInput"] & {
             /** @constant */
             type: "page";
         }) | (components["schemas"]["LinkContentInput"] & {
             /** @constant */
             type: "link";
+        }) | (components["schemas"]["QuizSettingsInput"] & {
+            /** @constant */
+            type: "quiz";
         });
         /** @description Must match the activity's type. */
-        ActivityUpdate: components["schemas"]["PageContentInput"] | components["schemas"]["LinkContentInput"];
+        ActivityUpdate: components["schemas"]["PageContentInput"] | components["schemas"]["LinkContentInput"] | components["schemas"]["QuizSettingsInput"];
         ActivityReviewDecision: {
             /** @enum {string} */
             decision: "approve" | "return";
@@ -735,6 +955,162 @@ export interface components {
         ActivityPage: {
             items: components["schemas"]["Activity"][];
             nextCursor: string | null;
+        };
+        /**
+         * @description Supported now. Matching, short answer and essay are not implemented.
+         * @enum {string}
+         */
+        QuizQuestionType: "single_choice" | "multiple_choice" | "true_false";
+        QuizChoiceQuestionInput: {
+            /** @enum {string} */
+            type: "single_choice" | "multiple_choice";
+            prompt: string;
+            points: number;
+            /** @description Single choice needs exactly one correct option; multiple choice at least one. */
+            options: {
+                text: string;
+                isCorrect: boolean;
+            }[];
+        };
+        QuizTrueFalseQuestionInput: {
+            /** @constant */
+            type: "true_false";
+            prompt: string;
+            points: number;
+            correctAnswer: boolean;
+        };
+        QuizQuestionInput: components["schemas"]["QuizChoiceQuestionInput"] | components["schemas"]["QuizTrueFalseQuestionInput"];
+        QuizOptionWithKey: {
+            id: string;
+            text: string;
+            isCorrect: boolean;
+        };
+        QuizOption: {
+            id: string;
+            text: string;
+        };
+        /** @description Staff view of a question, including the answer key. True/false questions use the options `true` and `false`. */
+        QuizQuestion: {
+            /** Format: uuid */
+            id: string;
+            position: number;
+            type: components["schemas"]["QuizQuestionType"];
+            prompt: string;
+            points: number;
+            options: components["schemas"]["QuizOptionWithKey"][];
+        };
+        QuizQuestionList: {
+            items: components["schemas"]["QuizQuestion"][];
+        };
+        QuizAnswerInput: {
+            /** Format: uuid */
+            questionId: string;
+            selectedOptionIds: string[];
+        };
+        QuizAnswersSave: {
+            answers: components["schemas"]["QuizAnswerInput"][];
+        };
+        /** @description Only answers may be sent. Scores or results are rejected (`400`). */
+        QuizAttemptSubmit: {
+            answers?: components["schemas"]["QuizAnswerInput"][];
+        };
+        /** @enum {string} */
+        QuizAttemptStatus: "in_progress" | "submitted";
+        /** @description A student's own attempt. Never contains answer keys, correctness or scores. */
+        StudentQuizAttempt: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            activityId: string;
+            attemptNumber: number;
+            attemptLimit: number;
+            status: components["schemas"]["QuizAttemptStatus"];
+            /** Format: date-time */
+            startedAt: string;
+            /**
+             * Format: date-time
+             * @description Server deadline; the server enforces it regardless of the browser clock.
+             */
+            deadlineAt: string | null;
+            /** Format: date-time */
+            submittedAt: string | null;
+            closedByTimeLimit: boolean;
+            /** @description Always false until grade release is implemented. */
+            resultsReleased: boolean;
+            questions: {
+                /** Format: uuid */
+                questionId: string;
+                position: number;
+                type: components["schemas"]["QuizQuestionType"];
+                prompt: string;
+                points: number;
+                /** @description In the order fixed for this attempt. */
+                options: components["schemas"]["QuizOption"][];
+                selectedOptionIds: string[];
+            }[];
+        };
+        QuizAttemptStatusItem: {
+            /** Format: uuid */
+            id: string;
+            attemptNumber: number;
+            status: components["schemas"]["QuizAttemptStatus"];
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            deadlineAt: string | null;
+            /** Format: date-time */
+            submittedAt: string | null;
+            closedByTimeLimit: boolean;
+        };
+        StudentQuizAttemptSummary: {
+            attemptLimit: number;
+            attemptsUsed: number;
+            timeLimitMinutes: number | null;
+            /** Format: uuid */
+            activeAttemptId: string | null;
+            items: components["schemas"]["QuizAttemptStatusItem"][];
+        };
+        QuizResultStudent: {
+            /** Format: uuid */
+            id: string;
+            email: string;
+            givenName: string;
+            familyName: string;
+        };
+        QuizResult: {
+            /** Format: uuid */
+            attemptId: string;
+            attemptNumber: number;
+            status: components["schemas"]["QuizAttemptStatus"];
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            deadlineAt: string | null;
+            /** Format: date-time */
+            submittedAt: string | null;
+            closedByTimeLimit: boolean;
+            /** @description Server-computed; null while in progress. */
+            score: number | null;
+            maxScore: number;
+            student: components["schemas"]["QuizResultStudent"];
+        };
+        QuizResultPage: {
+            items: components["schemas"]["QuizResult"][];
+            nextCursor: string | null;
+        };
+        QuizAttemptResult: components["schemas"]["QuizResult"] & {
+            questions: {
+                /** Format: uuid */
+                questionId: string;
+                position: number;
+                type: components["schemas"]["QuizQuestionType"];
+                prompt: string;
+                points: number;
+                options: components["schemas"]["QuizOptionWithKey"][];
+                selectedOptionIds: string[];
+                awardedPoints: number | null;
+                isCorrect: boolean | null;
+            }[];
         };
     };
     responses: {
@@ -837,7 +1213,8 @@ export interface components {
         /**
          * @description A uniqueness rule was violated: `PROGRAM_CODE_TAKEN`, `TERM_CODE_TAKEN`, `COURSE_CODE_TAKEN`,
          *     `ENROLLMENT_EXISTS` or `TEMPLATE_VERSION_CONFLICT`; or an invalid review transition:
-         *     `ACTIVITY_UNDER_REVIEW`, `INVALID_REVIEW_STATE`.
+         *     `ACTIVITY_UNDER_REVIEW`, `INVALID_REVIEW_STATE`; or a quiz rule: `QUIZ_QUESTION_LIMIT`,
+         *     `ATTEMPT_LIMIT_REACHED`, `ATTEMPT_NOT_IN_PROGRESS`, `ATTEMPT_EXPIRED`, `ATTEMPT_CONFLICT`.
          */
         Conflict: {
             headers: {
@@ -860,7 +1237,8 @@ export interface components {
          * @description The request is well-formed but refers to missing or incompatible data: `INVALID_TERM_DATES`,
          *     `PROGRAM_NOT_FOUND`, `PROGRAM_INACTIVE`, `TERM_NOT_FOUND`, `TEMPLATE_NOT_FOUND`,
          *     `TEMPLATE_VERSION_NOT_FOUND`, `TEMPLATE_PROGRAM_MISMATCH`, `USER_NOT_FOUND`, `USER_INACTIVE`,
-         *     `INVALID_URL`, `CONTENT_TYPE_MISMATCH` or `REVIEW_COMMENT_REQUIRED`.
+         *     `INVALID_URL`, `CONTENT_TYPE_MISMATCH`, `REVIEW_COMMENT_REQUIRED`, `QUIZ_HAS_NO_QUESTIONS`,
+         *     `INVALID_ANSWER_KEY` or `INVALID_ANSWER`.
          */
         UnprocessableContent: {
             headers: {
@@ -888,6 +1266,8 @@ export interface components {
         CourseId: string;
         SectionId: string;
         ActivityId: string;
+        QuestionId: string;
+        AttemptId: string;
     };
     requestBodies: never;
     headers: {
@@ -1538,6 +1918,341 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    listQuizQuestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Working questions in order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizQuestionList"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    addQuizQuestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuizQuestionInput"];
+            };
+        };
+        responses: {
+            /** @description Question added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizQuestion"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    updateQuizQuestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+                questionId: components["parameters"]["QuestionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuizQuestionInput"];
+            };
+        };
+        responses: {
+            /** @description Question updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizQuestion"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    removeQuizQuestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+                questionId: components["parameters"]["QuestionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Question removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    startQuizAttempt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The attempt already in progress. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentQuizAttempt"];
+                };
+            };
+            /** @description A new attempt. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentQuizAttempt"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getMyQuizAttempts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attempt status summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentQuizAttemptSummary"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getMyQuizAttempt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                attemptId: components["parameters"]["AttemptId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The attempt. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentQuizAttempt"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    saveQuizAnswers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                attemptId: components["parameters"]["AttemptId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuizAnswersSave"];
+            };
+        };
+        responses: {
+            /** @description Answers saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentQuizAttempt"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    submitQuizAttempt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                attemptId: components["parameters"]["AttemptId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuizAttemptSubmit"];
+            };
+        };
+        responses: {
+            /** @description Attempt submitted and graded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentQuizAttempt"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    listQuizResults: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from the previous page's `nextCursor`. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of attempts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizResultPage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getQuizAttemptResult: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+                attemptId: components["parameters"]["AttemptId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The graded attempt. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizAttemptResult"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
 }

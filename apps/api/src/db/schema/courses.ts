@@ -121,6 +121,8 @@ export const enrollments = pgTable(
   },
   (t) => [
     unique('enrollments_course_id_user_id_unique').on(t.courseId, t.userId),
+    // Target of the composite foreign key that ties quiz attempts to the student's enrollment.
+    unique('enrollments_id_course_id_user_id_unique').on(t.id, t.courseId, t.userId),
     index('enrollments_user_id_idx').on(t.userId),
     index('enrollments_course_id_role_idx').on(t.courseId, t.role),
   ],

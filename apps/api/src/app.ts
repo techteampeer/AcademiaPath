@@ -11,6 +11,7 @@ import { authRoutes } from './routes/auth.js';
 import { courseRoutes } from './routes/courses.js';
 import { healthRoutes } from './routes/health.js';
 import { meRoutes } from './routes/me.js';
+import { quizRoutes } from './routes/quizzes.js';
 
 export const API_PREFIX = '/api/v1';
 
@@ -64,6 +65,7 @@ export function buildApp({ config, database, logger = false }: BuildAppOptions) 
   app.register(academicRoutes, { prefix: API_PREFIX });
   app.register(courseRoutes, { prefix: API_PREFIX });
   app.register(activityRoutes, { prefix: API_PREFIX });
+  app.register(quizRoutes, { prefix: API_PREFIX });
 
   return app;
 }

@@ -1,11 +1,11 @@
-import { and, asc, eq, inArray, isNotNull, max, sql } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNotNull, max, sql, sum } from 'drizzle-orm';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { recordAudit } from '../audit.js';
 import { canInCourse, getCourseAccess, type CourseAccess, type CoursePermission } from '../auth/authorization.js';
 import { getAuth } from '../auth/hooks.js';
 import { normalizeSafeHttpUrl } from '../content/urls.js';
 import type { Database } from '../db/client.js';
-import { activities, sections, type ActivityConfig } from '../db/schema/index.js';
+import { activities, quizQuestions, sections, type ActivityConfig } from '../db/schema/index.js';
 import { ApiProblem } from '../http/errors.js';
 import { decodeCursor, paginationQuerySchema, toPage, type PaginationQuery } from '../http/pagination.js';
 import {
@@ -19,13 +19,15 @@ import {
   type ContentType,
 } from './activity-schemas.js';
 import { pageSchema } from './course-schemas.js';
+import { readSettings, readSnapshotQuestions, settingsFromInput, type QuizSettingsInput, type QuizSnapshot } from '../quizzes/model.js';
 
 type SectionParams = { id: string; sectionId: string };
 type ActivityParams = { id: string; activityId: string };
 type PageInput = { title: string; body: string };
 type LinkInput = { title: string; url: string; description?: string };
-type CreateBody = ({ type: 'page' } & PageInput) | ({ type: 'link' } & LinkInput);
-type UpdateBody = PageInput | LinkInput;
+type CreateBody = ({ type: 'page' } & PageInput) | ({ type: 'link' } & LinkInput) | ({ type: 'quiz' } & QuizSettingsInput);
+type UpdateBody = PageInput | LinkInput | QuizSettingsInput;
+type QuizStats = { questionCount: number; totalPoints: number };
 type ReviewBody = { decision: 'approve' | 'return'; comment?: string };
 
 type ActivityRecord = typeof activities.$inferSelect;
@@ -36,11 +38,12 @@ const forbidden = () => new ApiProblem(403, 'FORBIDDEN', 'You do not have permis
 
 /** Validated, type-specific content stored in `config`. Lesson text is stored as plain text. */
 function buildContent(type: ContentType, input: UpdateBody): ActivityConfig {
-  const isPage = 'body' in input;
-  if ((type === 'page') !== isPage) {
+  const kind: ContentType = 'body' in input ? 'page' : 'url' in input ? 'link' : 'quiz';
+  if (kind !== type) {
     throw new ApiProblem(422, 'CONTENT_TYPE_MISMATCH', `The request body does not match this ${type} activity.`);
   }
   if ('body' in input) return { body: input.body };
+  if (!('url' in input)) return settingsFromInput(input);
   const url = normalizeSafeHttpUrl(input.url);
   if (!url) {
     throw new ApiProblem(422, 'INVALID_URL', 'Only absolute http or https URLs without embedded credentials are allowed.');
@@ -48,11 +51,36 @@ function buildContent(type: ContentType, input: UpdateBody): ActivityConfig {
   return { url, description: input.description?.trim() || null };
 }
 
+const snapshotStats = (config: ActivityConfig | null): QuizStats => {
+  const questions = readSnapshotQuestions(config);
+  return { questionCount: questions.length, totalPoints: questions.reduce((total, q) => total + q.points, 0) };
+};
+
+/** Content as exposed by the API. Quizzes expose only settings and totals, never questions or answer keys. */
+function presentContent(type: ActivityRecord['type'], config: ActivityConfig | null, stats: QuizStats): ActivityConfig | null {
+  if (type !== 'quiz') return config;
+  return { ...readSettings(config), ...stats };
+}
+
+/** Question counts and points of the working question bank, per quiz. */
+async function workingQuizStats(executor: Executor, rows: ActivityRecord[]): Promise<Map<string, QuizStats>> {
+  const quizIds = rows.filter((row) => row.type === 'quiz').map((row) => row.id);
+  if (!quizIds.length) return new Map();
+  const stats = await executor
+    .select({ activityId: quizQuestions.activityId, questionCount: count(), totalPoints: sum(quizQuestions.points).mapWith(Number) })
+    .from(quizQuestions)
+    .where(inArray(quizQuestions.activityId, quizIds))
+    .groupBy(quizQuestions.activityId);
+  return new Map(stats.map(({ activityId, ...rest }) => [activityId, rest]));
+}
+
+const NO_QUESTIONS: QuizStats = { questionCount: 0, totalPoints: 0 };
+
 /**
  * Staff see the working copy plus review metadata and the live (approved) version.
  * Students only ever see the approved live version, without review metadata.
  */
-function toResponse(row: ActivityRecord, courseId: string, staffView: boolean) {
+function toResponse(row: ActivityRecord, courseId: string, staffView: boolean, working: QuizStats = NO_QUESTIONS) {
   const base = {
     id: row.id,
     courseId,
@@ -63,12 +91,19 @@ function toResponse(row: ActivityRecord, courseId: string, staffView: boolean) {
     createdAt: row.createdAt,
   };
   if (!staffView) {
-    return { ...base, title: row.approvedTitle, content: row.approvedConfig, review: null, liveVersion: null, updatedAt: row.approvedAt };
+    return {
+      ...base,
+      title: row.approvedTitle,
+      content: presentContent(row.type, row.approvedConfig, snapshotStats(row.approvedConfig)),
+      review: null,
+      liveVersion: null,
+      updatedAt: row.approvedAt,
+    };
   }
   return {
     ...base,
     title: row.title,
-    content: row.config,
+    content: presentContent(row.type, row.config, working),
     review: {
       status: row.reviewStatus,
       comment: row.reviewComment,
@@ -79,13 +114,27 @@ function toResponse(row: ActivityRecord, courseId: string, staffView: boolean) {
     },
     liveVersion:
       row.approvedConfig && row.approvedTitle && row.approvedAt
-        ? { title: row.approvedTitle, content: row.approvedConfig, approvedAt: row.approvedAt }
+        ? { title: row.approvedTitle, content: presentContent(row.type, row.approvedConfig, snapshotStats(row.approvedConfig)), approvedAt: row.approvedAt }
         : null,
     updatedAt: row.updatedAt,
   };
 }
 
 const snapshot = (row: ActivityRecord) => ({ title: row.title, content: row.config, reviewStatus: row.reviewStatus });
+
+/**
+ * Approved version for the audit log. A quiz snapshot contains answer keys, which are never written to the
+ * append-only audit log: only its settings, totals and question ids are recorded.
+ */
+function auditLiveVersion(type: ActivityRecord['type'], title: string | null, config: ActivityConfig | null) {
+  if (!title) return null;
+  if (type !== 'quiz') return { title, content: config };
+  return {
+    title,
+    content: presentContent(type, config, snapshotStats(config)),
+    questionIds: readSnapshotQuestions(config).map((question) => question.id),
+  };
+}
 
 export const activityRoutes: FastifyPluginAsync = async (app) => {
   const { db } = app;
@@ -161,7 +210,11 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
         .orderBy(asc(activities.position), asc(activities.id))
         .limit(limit + 1);
       const page = toPage(rows, limit, (row) => [row.position, row.id]);
-      return { items: page.items.map((row) => toResponse(row, access.course.id, staffView)), nextCursor: page.nextCursor };
+      const stats = staffView ? await workingQuizStats(db, page.items) : new Map<string, QuizStats>();
+      return {
+        items: page.items.map((row) => toResponse(row, access.course.id, staffView, stats.get(row.id))),
+        nextCursor: page.nextCursor,
+      };
     },
   );
 
@@ -210,7 +263,9 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const access = await courseAccess(request, request.params.id);
       const row = await findActivity(db, access, request.params.activityId, false);
-      return toResponse(row, access.course.id, canInCourse(access, 'content.viewUnapproved'));
+      const staffView = canInCourse(access, 'content.viewUnapproved');
+      const stats = staffView ? await workingQuizStats(db, [row]) : new Map<string, QuizStats>();
+      return toResponse(row, access.course.id, staffView, stats.get(row.id));
     },
   );
 
@@ -244,7 +299,7 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
         });
         return row;
       });
-      return toResponse(updated, access.course.id, true);
+      return toResponse(updated, access.course.id, true, (await workingQuizStats(db, [updated])).get(updated.id));
     },
   );
 
@@ -261,6 +316,9 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
         if (current.reviewStatus !== 'draft' && current.reviewStatus !== 'returned') {
           throw new ApiProblem(409, 'INVALID_REVIEW_STATE', `Only draft or returned content can be submitted (current status: ${current.reviewStatus}).`);
         }
+        if (current.type === 'quiz' && !(await workingQuizStats(tx, [current])).get(current.id)?.questionCount) {
+          throw new ApiProblem(422, 'QUIZ_HAS_NO_QUESTIONS', 'Add at least one question before submitting the quiz for review.');
+        }
         const [row] = await tx
           .update(activities)
           .set({ reviewStatus: 'submitted', submittedAt: sql`now()`, submittedByUserId: user.id })
@@ -276,7 +334,7 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
         });
         return row;
       });
-      return toResponse(submitted, access.course.id, true);
+      return toResponse(submitted, access.course.id, true, (await workingQuizStats(db, [submitted])).get(submitted.id));
     },
   );
 
@@ -302,6 +360,23 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
           throw new ApiProblem(403, 'SELF_REVIEW_NOT_ALLOWED', 'Content must be approved by someone other than the person who submitted it.');
         }
         const reviewFields = { reviewComment: comment, reviewedAt: sql`now()`, reviewedByUserId: user.id };
+        // Quizzes publish their settings together with a snapshot of the reviewed questions.
+        let approvedConfig: ActivityConfig = current.config;
+        if (current.type === 'quiz' && decision === 'approve') {
+          const questions = await tx
+            .select()
+            .from(quizQuestions)
+            .where(eq(quizQuestions.activityId, current.id))
+            .orderBy(asc(quizQuestions.position), asc(quizQuestions.id));
+          if (!questions.length) {
+            throw new ApiProblem(422, 'QUIZ_HAS_NO_QUESTIONS', 'A quiz without questions cannot be approved.');
+          }
+          const snapshot: QuizSnapshot = {
+            ...readSettings(current.config),
+            questions: questions.map(({ id, type, prompt, options, correctAnswer, points }) => ({ id, type, prompt, options, correctAnswer, points })),
+          };
+          approvedConfig = snapshot;
+        }
         const [row] = await tx
           .update(activities)
           .set(
@@ -311,7 +386,7 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
                   reviewStatus: 'approved' as const,
                   // Publish exactly what was reviewed (editing is blocked while submitted).
                   approvedTitle: current.title,
-                  approvedConfig: current.config,
+                  approvedConfig,
                   approvedAt: sql`now()`,
                   approvedByUserId: user.id,
                 }
@@ -326,17 +401,17 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
           entityId: row.id,
           before: {
             reviewStatus: current.reviewStatus,
-            liveVersion: current.approvedTitle ? { title: current.approvedTitle, content: current.approvedConfig } : null,
+            liveVersion: auditLiveVersion(current.type, current.approvedTitle, current.approvedConfig),
           },
           after: {
             reviewStatus: row.reviewStatus,
             comment,
-            liveVersion: row.approvedTitle ? { title: row.approvedTitle, content: row.approvedConfig } : null,
+            liveVersion: auditLiveVersion(row.type, row.approvedTitle, row.approvedConfig),
           },
         });
         return row;
       });
-      return toResponse(reviewed, access.course.id, true);
+      return toResponse(reviewed, access.course.id, true, (await workingQuizStats(db, [reviewed])).get(reviewed.id));
     },
   );
 };
