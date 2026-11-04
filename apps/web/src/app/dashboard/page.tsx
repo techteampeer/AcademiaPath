@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
-import { CourseDashboard } from '@/components/courses/CourseDashboard';
+import { RoleDashboard } from '@/components/dashboard/RoleDashboard';
 
 export const metadata: Metadata = {
   title: 'Dashboard',
 };
 
 export default function DashboardPage() {
-  return <CourseDashboard />;
+  return <RoleDashboard />;
 }

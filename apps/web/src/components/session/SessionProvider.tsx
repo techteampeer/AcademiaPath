@@ -7,12 +7,13 @@ import type { CurrentUser, LoginRequest } from '@/lib/api/types';
 
 export type SessionState =
   | { status: 'loading' }
-  | { status: 'unauthenticated' }
+  /** `expired`: a signed-in session ended (401 from the API), so the login page can say so. */
+  | { status: 'unauthenticated'; reason?: 'expired' | 'signedOut' }
   | { status: 'authenticated'; user: CurrentUser };
 
 type SessionContextValue = {
   session: SessionState;
-  signIn: (credentials: LoginRequest) => Promise<void>;
+  signIn: (credentials: LoginRequest) => Promise<CurrentUser>;
   signOut: () => Promise<void>;
   /** CSRF token for the current session. Kept in memory only; fetched from the API after a reload. */
   getCsrfToken: () => Promise<string>;
@@ -51,11 +52,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const result = await api.login(credentials);
     csrfToken.current = result.csrfToken;
     setSession({ status: 'authenticated', user: result.user });
+    return result.user;
   }, []);
 
   const handleUnauthorized = useCallback(() => {
     csrfToken.current = null;
-    setSession({ status: 'unauthenticated' });
+    setSession((current) => ({ status: 'unauthenticated', reason: current.status === 'authenticated' ? 'expired' : undefined }));
   }, []);
 
   const getCsrfToken = useCallback(async () => {
@@ -72,8 +74,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // A 401 means the session already ended; anything else is reported to the caller.
       if (!isApiError(error, 401)) throw error;
     }
-    handleUnauthorized();
-  }, [getCsrfToken, handleUnauthorized]);
+    csrfToken.current = null;
+    setSession({ status: 'unauthenticated', reason: 'signedOut' });
+  }, [getCsrfToken]);
 
   const value = useMemo(
     () => ({ session, signIn, signOut, getCsrfToken, handleUnauthorized }),

@@ -1,57 +1,76 @@
-import type { CurrentUser } from '@/lib/api/types';
-
-/** Who sees a link. Hiding links is only a convenience; the API enforces every permission. */
-export type NavAccess = 'public' | 'authenticated' | 'administrator';
+import type { CourseRole, CurrentUser } from '@/lib/api/types';
+import type { Messages } from '@/lib/i18n/messages';
 
 export type NavItem = {
   href: string;
   label: string;
-  access?: NavAccess;
-  /** Other path prefixes that mark this item as current (e.g. course detail pages). */
+  /** Other path prefixes that mark this item as current. */
   activeFor?: string[];
+  /** Match the path exactly (used for course overview links). */
+  exact?: boolean;
 };
 
-export type NavSection = {
-  title: string;
-  items: NavItem[];
-};
+export type NavSection = { id: string; title: string; items: NavItem[] };
 
-/** Single source of truth for sidebar and mobile navigation. Only list routes that exist. */
-export const navSections: NavSection[] = [
-  {
-    title: 'Overview',
-    items: [
-      { href: '/', label: 'Home' },
-      { href: '/dashboard', label: 'Dashboard', access: 'authenticated', activeFor: ['/courses'] },
-    ],
-  },
-  {
-    title: 'Administration',
-    items: [
-      { href: '/admin/academics', label: 'Academic structure', access: 'administrator' },
-      { href: '/admin/setup', label: 'Academic setup', access: 'administrator' },
-    ],
-  },
-  {
-    title: 'Previews',
-    items: [{ href: '/preview/courses', label: 'Course components' }],
-  },
-];
+const COURSE_PATH = /^\/courses\/([0-9a-f-]{36})(?:\/|$)/i;
 
-export function isNavItemVisible(item: NavItem, user: Pick<CurrentUser, 'systemRole'> | null): boolean {
-  switch (item.access ?? 'public') {
-    case 'public':
-      return true;
-    case 'authenticated':
-      return user !== null;
-    case 'administrator':
-      return user?.systemRole === 'administrator';
+/** The course id when the current page belongs to one course. */
+export const currentCourseId = (pathname: string) => COURSE_PATH.exec(pathname)?.[1] ?? null;
+
+/**
+ * Navigation built from the real session: system role (administrator) plus the course role the user
+ * holds in the course being viewed. Hiding links is only a convenience; the API enforces every
+ * permission and pages check access before loading protected data.
+ */
+export function buildNavigation(
+  t: Messages,
+  user: Pick<CurrentUser, 'systemRole'> | null,
+  pathname: string,
+  roleByCourse: Map<string, CourseRole | null>,
+): NavSection[] {
+  if (!user) {
+    return [{ id: 'public', title: t.nav.main, items: [{ href: '/', label: t.nav.home }, { href: '/login', label: t.common.signIn }] }];
   }
+  const isAdmin = user.systemRole === 'administrator';
+  const sections: NavSection[] = [
+    {
+      id: 'workspace',
+      title: t.nav.workspace,
+      items: [
+        { href: '/dashboard', label: t.nav.dashboard },
+        { href: '/courses', label: t.nav.myCourses, exact: true },
+      ],
+    },
+  ];
+  if (isAdmin) {
+    sections.push({
+      id: 'administration',
+      title: t.nav.administration,
+      items: [
+        { href: '/admin', label: t.nav.adminOverview, exact: true },
+        { href: '/admin/academics', label: t.nav.academicStructure },
+        { href: '/admin/programs', label: t.nav.programsSubjects },
+        { href: '/admin/courses', label: t.nav.coursesEnrollments },
+        { href: '/admin/setup', label: t.nav.courseSetup },
+      ],
+    });
+  }
+  const courseId = currentCourseId(pathname);
+  if (courseId && (roleByCourse.has(courseId) || isAdmin)) {
+    const role = roleByCourse.get(courseId) ?? null;
+    const base = `/courses/${courseId}`;
+    const items: NavItem[] = [{ href: base, label: t.nav.courseContent, exact: true, activeFor: [`${base}/activities`, `${base}/attempts`] }];
+    if (role === 'instructor' || role === 'non_editing_instructor' || (isAdmin && role === null)) items.push({ href: `${base}/grades`, label: t.nav.gradebook });
+    if (role === 'student') items.push({ href: `${base}/grades`, label: t.nav.myGrades });
+    if (role === 'student' || role === 'instructor' || role === 'non_editing_instructor') items.push({ href: `${base}/tutor`, label: t.nav.tutor });
+    sections.push({ id: 'course', title: t.nav.currentCourse, items });
+  }
+  return sections;
 }
 
 const matches = (pathname: string, prefix: string) => pathname === prefix || pathname.startsWith(`${prefix}/`);
 
-export function isActivePath(pathname: string, item: Pick<NavItem, 'href' | 'activeFor'>): boolean {
-  if (item.href === '/') return pathname === '/';
+export function isActivePath(pathname: string, item: Pick<NavItem, 'href' | 'activeFor' | 'exact'>): boolean {
+  if (item.href === '/' || item.exact) return pathname === item.href || (item.activeFor ?? []).some((prefix) => matches(pathname, prefix));
   return matches(pathname, item.href) || (item.activeFor ?? []).some((prefix) => matches(pathname, prefix));
 }
