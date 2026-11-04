@@ -67,7 +67,7 @@ describe('database migrations (PostgreSQL)', { skip: testServerUrl ? false : 'TE
     first(
       await db()
         .insert(terms)
-        .values({ code: `T${++seq}`, name: 'Term', startsOn: '2026-08-17', endsOn: '2026-12-11' })
+        .values({ code: `T${++seq}`, name: 'Term', academicYear: 2026, startsOn: '2026-08-17', endsOn: '2026-12-11' })
         .returning(),
     );
   const createCourse = async (termId: string, code = `C${++seq}`) =>
@@ -172,7 +172,7 @@ describe('database migrations (PostgreSQL)', { skip: testServerUrl ? false : 'TE
 
   it('rejects terms that end before they start', async () => {
     await rejectsWith(
-      db().insert(terms).values({ code: 'BAD', name: 'Bad', startsOn: '2026-12-01', endsOn: '2026-08-01' }),
+      db().insert(terms).values({ code: 'BAD', name: 'Bad', academicYear: 2026, startsOn: '2026-12-01', endsOn: '2026-08-01' }),
       PG.check,
     );
   });

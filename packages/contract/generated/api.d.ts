@@ -179,6 +179,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/programs/{programId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update a program (administrators only)
+         * @description Changes the name, description and active flag. The code is the program's stable identifier
+         *     and cannot change. Programs are shared across academic years and terms. Audited as
+         *     `program.updated`.
+         */
+        put: operations["updateProgram"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/terms/{termId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update a term (administrators only)
+         * @description Changes the name and dates. The code (for example `2026-2`) and academic year are the term's
+         *     stable identity and cannot change. Courses offered in the term are not affected.
+         *     `INVALID_TERM_DATES` when the term would end before it starts. Audited as `term.updated`.
+         */
+        put: operations["updateTerm"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/course-templates/{templateId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A subject (course template) with its latest version and sections (administrators only) */
+        get: operations["getCourseTemplate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses": {
         parameters: {
             query?: never;
@@ -874,7 +935,7 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN";
         };
         Code: string;
         /**
@@ -910,6 +971,8 @@ export interface components {
             id: string;
             code: components["schemas"]["Code"];
             name: string;
+            /** @description Academic year the term belongs to (for example 2026 for `2026-2`). */
+            academicYear: number;
             /** Format: date */
             startsOn: string;
             /** Format: date */
@@ -920,8 +983,14 @@ export interface components {
             updatedAt: string;
         };
         TermCreate: {
+            /** @description Peru-style labels such as `2026-1` and `2026-2` are recommended. */
             code: components["schemas"]["Code"];
             name: string;
+            /**
+             * @description Defaults to the year in a `YYYY-…` code, otherwise to the year of `startsOn`. When the code
+             *     starts with a year, it must match (`TERM_YEAR_MISMATCH`).
+             */
+            academicYear?: number;
             /** Format: date */
             startsOn: string;
             /** Format: date */
@@ -946,6 +1015,12 @@ export interface components {
             programId?: string | null;
             title: string;
             description?: string;
+            /**
+             * @description Optional guard. `0`: create a new subject only (`TEMPLATE_CODE_TAKEN` if the code exists).
+             *     `n`: create version `n + 1` only if `n` is still the latest (`TEMPLATE_VERSION_CONFLICT`
+             *     otherwise). Omit for the original behaviour (create or add a version).
+             */
+            baseVersion?: number;
             /** @description Ordered sections; positions are assigned from array order. */
             sections: components["schemas"]["TemplateSectionInput"][];
         };
@@ -1677,6 +1752,36 @@ export interface components {
             totalRequests: number;
             items: components["schemas"]["TutorUsageRecord"][];
         };
+        ProgramUpdate: {
+            name: string;
+            /** @description Omit, null or blank to clear. */
+            description?: string | null;
+            /** @description Inactive programs keep their subjects and courses but cannot receive new courses. */
+            isActive: boolean;
+        };
+        TermUpdate: {
+            name: string;
+            /** Format: date */
+            startsOn: string;
+            /** Format: date */
+            endsOn: string;
+        };
+        /** @description A reusable subject (course template) with its latest version, including sections. */
+        CourseTemplateDetail: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            programId: string | null;
+            code: components["schemas"]["Code"];
+            title: string;
+            description: string | null;
+            versionCount: number;
+            latestVersion: components["schemas"]["CourseTemplateVersion"] | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
     };
     responses: {
         /** @description The request body is missing or invalid (`code`: `VALIDATION_ERROR`). */
@@ -1777,7 +1882,7 @@ export interface components {
         };
         /**
          * @description A uniqueness rule was violated: `PROGRAM_CODE_TAKEN`, `TERM_CODE_TAKEN`, `COURSE_CODE_TAKEN`,
-         *     `ENROLLMENT_EXISTS` or `TEMPLATE_VERSION_CONFLICT`; or an invalid review transition:
+         *     `ENROLLMENT_EXISTS`, `TEMPLATE_CODE_TAKEN` or `TEMPLATE_VERSION_CONFLICT`; or an invalid review transition:
          *     `ACTIVITY_UNDER_REVIEW`, `INVALID_REVIEW_STATE`; or a quiz rule: `QUIZ_QUESTION_LIMIT`,
          *     `ATTEMPT_LIMIT_REACHED`, `ATTEMPT_NOT_IN_PROGRESS`, `ATTEMPT_EXPIRED`, `ATTEMPT_CONFLICT`; or an
          *     assignment rule: `SUBMISSION_EXISTS`, `SUBMISSION_CLOSED`.
@@ -1801,6 +1906,7 @@ export interface components {
         };
         /**
          * @description The request is well-formed but refers to missing or incompatible data: `INVALID_TERM_DATES`,
+         *     `TERM_YEAR_MISMATCH`,
          *     `PROGRAM_NOT_FOUND`, `PROGRAM_INACTIVE`, `TERM_NOT_FOUND`, `TEMPLATE_NOT_FOUND`,
          *     `TEMPLATE_VERSION_NOT_FOUND`, `TEMPLATE_PROGRAM_MISMATCH`, `USER_NOT_FOUND`, `USER_INACTIVE`,
          *     `INVALID_URL`, `CONTENT_TYPE_MISMATCH`, `REVIEW_COMMENT_REQUIRED`, `QUIZ_HAS_NO_QUESTIONS`,
@@ -1833,6 +1939,9 @@ export interface components {
         SectionId: string;
         ActivityId: string;
         QuestionId: string;
+        ProgramId: string;
+        TermId: string;
+        TemplateId: string;
         AttemptId: string;
         SubmissionId: string;
     };
@@ -2132,6 +2241,92 @@ export interface operations {
             422: components["responses"]["UnprocessableContent"];
         };
     };
+    updateProgram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                programId: components["parameters"]["ProgramId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgramUpdate"];
+            };
+        };
+        responses: {
+            /** @description The updated program. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Program"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateTerm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                termId: components["parameters"]["TermId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TermUpdate"];
+            };
+        };
+        responses: {
+            /** @description The updated term. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Term"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    getCourseTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                templateId: components["parameters"]["TemplateId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The template. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseTemplateDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listCourses: {
         parameters: {
             query?: {
@@ -2139,6 +2334,12 @@ export interface operations {
                 limit?: components["parameters"]["Limit"];
                 /** @description Opaque cursor from the previous page's `nextCursor`. */
                 cursor?: components["parameters"]["Cursor"];
+                /** @description Only courses offered in this term. */
+                termId?: string;
+                /** @description Only courses of this program. */
+                programId?: string;
+                /** @description Only offerings of this subject (course template). */
+                templateId?: string;
             };
             header?: never;
             path?: never;

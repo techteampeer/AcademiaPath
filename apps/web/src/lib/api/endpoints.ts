@@ -12,6 +12,7 @@ import type {
   CourseCreate,
   CoursePage,
   CourseTemplateCreate,
+  CourseTemplateDetail,
   CourseTemplatePage,
   CourseTemplateVersion,
   CsrfTokenResponse,
@@ -25,6 +26,7 @@ import type {
   Program,
   ProgramCreate,
   ProgramPage,
+  ProgramUpdate,
   QuizAnswersSave,
   QuizAttemptResult,
   QuizAttemptSubmit,
@@ -45,6 +47,7 @@ import type {
   Term,
   TermCreate,
   TermPage,
+  TermUpdate,
 } from './types';
 
 export type PageRequest = { cursor?: string | null; limit?: number };
@@ -58,6 +61,29 @@ function withPage(path: string, page?: PageRequest): string {
 }
 
 const course = (id: string) => `/courses/${encodeURIComponent(id)}`;
+
+export type CourseFilters = { termId?: string; programId?: string; templateId?: string };
+
+function withFilters(path: string, filters: CourseFilters): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
+  const query = params.toString();
+  if (!query) return path;
+  return path.includes('?') ? `${path}&${query}` : `${path}?${query}`;
+}
+
+/** Follows `nextCursor` until every page is loaded (bounded, for administration screens). */
+export async function loadAll<T>(fetchPage: (page: PageRequest) => Promise<{ items: T[]; nextCursor: string | null }>, maxPages = 50): Promise<T[]> {
+  const items: T[] = [];
+  let cursor: string | null = null;
+  for (let i = 0; i < maxPages; i += 1) {
+    const page = await fetchPage({ limit: 100, cursor });
+    items.push(...page.items);
+    if (!page.nextCursor) break;
+    cursor = page.nextCursor;
+  }
+  return items;
+}
 const activity = (courseId: string, activityId: string) => `${course(courseId)}/activities/${encodeURIComponent(activityId)}`;
 const attempt = (courseId: string, attemptId: string) => `${course(courseId)}/attempts/${encodeURIComponent(attemptId)}`;
 const sectionActivities = (courseId: string, sectionId: string) =>
@@ -70,14 +96,18 @@ export const api = {
   csrfToken: () => apiRequest<CsrfTokenResponse>('GET', '/auth/csrf'),
   me: () => apiRequest<MeResponse>('GET', '/me'),
 
-  listCourses: (page?: PageRequest) => apiRequest<CoursePage>('GET', withPage('/courses', page)),
+  listCourses: (page?: PageRequest, filters: CourseFilters = {}) => apiRequest<CoursePage>('GET', withFilters(withPage('/courses', page), filters)),
   getCourse: (id: string) => apiRequest<Course>('GET', course(id)),
   listSections: (id: string, page?: PageRequest) => apiRequest<SectionPage>('GET', withPage(`${course(id)}/sections`, page)),
 
   listPrograms: (page?: PageRequest) => apiRequest<ProgramPage>('GET', withPage('/programs', page)),
   createProgram: (body: ProgramCreate, csrfToken: string) => apiRequest<Program>('POST', '/programs', { body, csrfToken }),
+  updateProgram: (id: string, body: ProgramUpdate, csrfToken: string) =>
+    apiRequest<Program>('PUT', `/programs/${encodeURIComponent(id)}`, { body, csrfToken }),
   listTerms: (page?: PageRequest) => apiRequest<TermPage>('GET', withPage('/terms', page)),
   createTerm: (body: TermCreate, csrfToken: string) => apiRequest<Term>('POST', '/terms', { body, csrfToken }),
+  updateTerm: (id: string, body: TermUpdate, csrfToken: string) => apiRequest<Term>('PUT', `/terms/${encodeURIComponent(id)}`, { body, csrfToken }),
+  getCourseTemplate: (id: string) => apiRequest<CourseTemplateDetail>('GET', `/course-templates/${encodeURIComponent(id)}`),
   listCourseTemplates: (page?: PageRequest) => apiRequest<CourseTemplatePage>('GET', withPage('/course-templates', page)),
   createCourseTemplate: (body: CourseTemplateCreate, csrfToken: string) =>
     apiRequest<CourseTemplateVersion>('POST', '/course-templates', { body, csrfToken }),

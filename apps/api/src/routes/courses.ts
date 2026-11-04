@@ -28,6 +28,7 @@ import { decodeCursor, paginationQuerySchema, toPage, type PaginationQuery } fro
 import {
   courseCreateSchema,
   courseIdParamsSchema,
+  courseListQuerySchema,
   courseSchema,
   courseSectionSchema,
   enrollmentCreateSchema,
@@ -83,12 +84,12 @@ export const courseRoutes: FastifyPluginAsync = async (app) => {
 
   // ---- Courses ----
 
-  app.get<{ Querystring: PaginationQuery }>(
+  app.get<{ Querystring: PaginationQuery & { termId?: string; programId?: string; templateId?: string } }>(
     '/courses',
-    { ...authenticated, schema: { querystring: paginationQuerySchema, response: { 200: pageSchema(courseSchema) } } },
+    { ...authenticated, schema: { querystring: courseListQuerySchema, response: { 200: pageSchema(courseSchema) } } },
     async (request) => {
       const { user } = getAuth(request);
-      const { limit } = request.query;
+      const { limit, termId, programId, templateId } = request.query;
       const after = decodeCursor(request.query.cursor, 'string');
       const visibility = isAdministrator(user)
         ? undefined
@@ -107,6 +108,10 @@ export const courseRoutes: FastifyPluginAsync = async (app) => {
         .where(
           and(
             visibility,
+            // Optional hierarchy filters; they only narrow what the caller may already see.
+            termId ? eq(courses.termId, termId) : undefined,
+            programId ? eq(courses.programId, programId) : undefined,
+            templateId ? eq(courses.templateId, templateId) : undefined,
             after ? sql`(${courses.code}, ${courses.id}) > (${after.key}, ${after.id}::uuid)` : undefined,
           ),
         )

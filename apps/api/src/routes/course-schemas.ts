@@ -1,4 +1,5 @@
 import { courseRoleEnum, courseStatusEnum, enrollmentStatusEnum } from '../db/schema/index.js';
+import { paginationQuerySchema } from '../http/pagination.js';
 
 // JSON schemas mirroring packages/contract/openapi.yaml. Response schemas list every allowed
 // property with additionalProperties: false, so serialization drops anything not declared here.
@@ -51,12 +52,13 @@ export const programCreateSchema = {
 
 export const termSchema = {
   type: 'object',
-  required: ['id', 'code', 'name', 'startsOn', 'endsOn', 'createdAt', 'updatedAt'],
+  required: ['id', 'code', 'name', 'academicYear', 'startsOn', 'endsOn', 'createdAt', 'updatedAt'],
   additionalProperties: false,
   properties: {
     id: uuid,
     code: { type: 'string' },
     name: { type: 'string' },
+    academicYear: { type: 'integer' },
     startsOn: { type: 'string' },
     endsOn: { type: 'string' },
     createdAt: dateTime,
@@ -71,10 +73,31 @@ export const termCreateSchema = {
   properties: {
     code: codeSchema,
     name,
+    academicYear: { type: 'integer', minimum: 2000, maximum: 2100 },
     startsOn: { type: 'string', format: 'date' },
     endsOn: { type: 'string', format: 'date' },
   },
 } as const;
+
+const requiredText = { type: 'string', minLength: 1, maxLength: 200, pattern: '\\S' } as const;
+
+export const termUpdateSchema = {
+  type: 'object',
+  required: ['name', 'startsOn', 'endsOn'],
+  additionalProperties: false,
+  properties: { name: requiredText, startsOn: { type: 'string', format: 'date' }, endsOn: { type: 'string', format: 'date' } },
+} as const;
+
+export const programUpdateSchema = {
+  type: 'object',
+  required: ['name', 'isActive'],
+  additionalProperties: false,
+  properties: { name: requiredText, description: { type: ['string', 'null'], maxLength: 2000 }, isActive: { type: 'boolean' } },
+} as const;
+
+export const programParamsSchema = { type: 'object', required: ['programId'], additionalProperties: false, properties: { programId: uuid } } as const;
+export const termParamsSchema = { type: 'object', required: ['termId'], additionalProperties: false, properties: { termId: uuid } } as const;
+export const templateParamsSchema = { type: 'object', required: ['templateId'], additionalProperties: false, properties: { templateId: uuid } } as const;
 
 export const courseTemplateCreateSchema = {
   type: 'object',
@@ -85,6 +108,7 @@ export const courseTemplateCreateSchema = {
     programId: nullableUuid,
     title: name,
     description: longText,
+    baseVersion: { type: 'integer', minimum: 0 },
     sections: {
       type: 'array',
       maxItems: 100,
@@ -229,4 +253,28 @@ export const enrollmentSchema = {
     },
     createdAt: dateTime,
   },
+} as const;
+
+export const courseTemplateDetailSchema = {
+  type: 'object',
+  required: ['id', 'programId', 'code', 'title', 'description', 'versionCount', 'latestVersion', 'createdAt', 'updatedAt'],
+  additionalProperties: false,
+  properties: {
+    id: uuid,
+    programId: nullableUuid,
+    code: { type: 'string' },
+    title: { type: 'string' },
+    description: nullableString,
+    versionCount: { type: 'integer' },
+    latestVersion: { ...courseTemplateVersionSchema, type: ['object', 'null'] },
+    createdAt: dateTime,
+    updatedAt: dateTime,
+  },
+} as const;
+
+/** GET /courses: pagination plus optional hierarchy filters. */
+export const courseListQuerySchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: { ...paginationQuerySchema.properties, termId: uuid, programId: uuid, templateId: uuid },
 } as const;

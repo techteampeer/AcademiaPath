@@ -505,7 +505,7 @@ describe('authentication API (PostgreSQL)', { skip: testServerUrl ? false : 'TES
     const instructor = await createAccount();
     const [term] = await database.db
       .insert(terms)
-      .values({ code: 'AUTH-T1', name: 'Auth term', startsOn: '2026-08-17', endsOn: '2026-12-11' })
+      .values({ code: 'AUTH-T1', name: 'Auth term', academicYear: 2026, startsOn: '2026-08-17', endsOn: '2026-12-11' })
       .returning();
     assert.ok(term);
     const [course] = await database.db.insert(courses).values({ termId: term.id, code: 'AUTH-101', title: 'Auth course' }).returning();

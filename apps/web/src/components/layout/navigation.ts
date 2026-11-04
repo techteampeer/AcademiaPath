@@ -27,7 +27,10 @@ export const navSections: NavSection[] = [
   },
   {
     title: 'Administration',
-    items: [{ href: '/admin/setup', label: 'Academic setup', access: 'administrator' }],
+    items: [
+      { href: '/admin/academics', label: 'Academic structure', access: 'administrator' },
+      { href: '/admin/setup', label: 'Academic setup', access: 'administrator' },
+    ],
   },
   {
     title: 'Previews',
