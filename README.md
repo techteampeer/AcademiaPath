@@ -58,13 +58,15 @@ After changing the schema, run `pnpm db:generate`, review the generated SQL and 
 
 Email/password sign-in with server-side sessions stored in PostgreSQL (`POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/csrf`, `GET /api/v1/me`; see `packages/contract/openapi.yaml`). The session token lives only in an HttpOnly cookie; state-changing requests must send the `X-CSRF-Token` returned at sign-in. Authentication settings are listed in `.env.example`.
 
-For local testing, `pnpm db:seed:dev` creates synthetic users (`admin@`, `instructor@` and `student@academiapath.example`) with the password from `DEV_SEED_PASSWORD`. It refuses to run in production or against a non-local database.
+For local testing, `pnpm db:seed:dev` creates synthetic users (`admin@`, `instructor@`, `student@` and `reviewer@academiapath.example`) with the password from `DEV_SEED_PASSWORD`. Course roles (for example design team for `reviewer@`) are assigned per course in Academic setup. It refuses to run in production or against a non-local database.
 
 ## Frontend and API integration
 
 The browser only calls `/api/*` on the web origin; Next.js forwards it to the API (`apps/web/next.config.ts`, target `API_ORIGIN`, default `http://127.0.0.1:4000`). The session stays in the HttpOnly cookie, and the web app keeps the CSRF token in memory only.
 
 API types for the web app are generated from the contract: after changing `packages/contract/openapi.yaml`, run `pnpm contract:types` and commit `packages/contract/generated/api.d.ts`.
+
+Course content: instructors add plain-text lessons and links to a course's sections and submit them for review; the design team approves or returns them with comments. Students only see approved versions; editing approved content creates a revision that stays hidden until it is approved.
 
 Local demo: start PostgreSQL, run `pnpm db:migrate` and `pnpm db:seed:dev`, then `pnpm dev` and open http://localhost:3000/login. Administrators get **Academic setup** (`/admin/setup`); everyone gets **Dashboard** (`/dashboard`).
 

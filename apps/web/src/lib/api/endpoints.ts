@@ -1,5 +1,10 @@
 import { apiRequest } from './client';
 import type {
+  Activity,
+  ActivityCreate,
+  ActivityPage,
+  ActivityReviewDecision,
+  ActivityUpdate,
   Course,
   CourseCreate,
   CoursePage,
@@ -32,6 +37,9 @@ function withPage(path: string, page?: PageRequest): string {
 }
 
 const course = (id: string) => `/courses/${encodeURIComponent(id)}`;
+const activity = (courseId: string, activityId: string) => `${course(courseId)}/activities/${encodeURIComponent(activityId)}`;
+const sectionActivities = (courseId: string, sectionId: string) =>
+  `${course(courseId)}/sections/${encodeURIComponent(sectionId)}/activities`;
 
 /** Typed calls for the endpoints in packages/contract/openapi.yaml. POSTs require the session's CSRF token. */
 export const api = {
@@ -54,4 +62,16 @@ export const api = {
   createCourse: (body: CourseCreate, csrfToken: string) => apiRequest<Course>('POST', '/courses', { body, csrfToken }),
   createEnrollment: (courseId: string, body: EnrollmentCreate, csrfToken: string) =>
     apiRequest<Enrollment>('POST', `${course(courseId)}/enrollments`, { body, csrfToken }),
+
+  listActivities: (courseId: string, sectionId: string, page?: PageRequest) =>
+    apiRequest<ActivityPage>('GET', withPage(sectionActivities(courseId, sectionId), page)),
+  createActivity: (courseId: string, sectionId: string, body: ActivityCreate, csrfToken: string) =>
+    apiRequest<Activity>('POST', sectionActivities(courseId, sectionId), { body, csrfToken }),
+  getActivity: (courseId: string, activityId: string) => apiRequest<Activity>('GET', activity(courseId, activityId)),
+  updateActivity: (courseId: string, activityId: string, body: ActivityUpdate, csrfToken: string) =>
+    apiRequest<Activity>('PUT', activity(courseId, activityId), { body, csrfToken }),
+  submitActivity: (courseId: string, activityId: string, csrfToken: string) =>
+    apiRequest<Activity>('POST', `${activity(courseId, activityId)}/submit`, { csrfToken }),
+  reviewActivity: (courseId: string, activityId: string, body: ActivityReviewDecision, csrfToken: string) =>
+    apiRequest<Activity>('POST', `${activity(courseId, activityId)}/review`, { body, csrfToken }),
 };

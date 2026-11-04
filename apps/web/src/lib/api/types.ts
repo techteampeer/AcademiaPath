@@ -33,3 +33,10 @@ export type CourseTemplateVersion = Schemas['CourseTemplateVersion'];
 export type CourseTemplatePage = Schemas['CourseTemplatePage'];
 export type Enrollment = Schemas['Enrollment'];
 export type EnrollmentCreate = Schemas['EnrollmentCreate'];
+
+export type ReviewStatus = Schemas['ReviewStatus'];
+export type Activity = Schemas['Activity'];
+export type ActivityPage = Schemas['ActivityPage'];
+export type ActivityCreate = Schemas['ActivityCreate'];
+export type ActivityUpdate = Schemas['ActivityUpdate'];
+export type ActivityReviewDecision = Schemas['ActivityReviewDecision'];

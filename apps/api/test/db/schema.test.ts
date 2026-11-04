@@ -70,7 +70,10 @@ describe('database schema (static checks)', () => {
       }),
     );
     assert.deepEqual(fks.sort(), [
+      'activities.approved_by_user_id -> users (restrict)',
+      'activities.reviewed_by_user_id -> users (restrict)',
       'activities.section_id -> sections (cascade)',
+      'activities.submitted_by_user_id -> users (restrict)',
       'audit_log.actor_user_id -> users (restrict)',
       'course_templates.program_id -> programs (restrict)',
       'courses.program_id -> programs (restrict)',

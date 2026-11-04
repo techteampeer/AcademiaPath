@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.3.0
+  version: 0.4.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -23,6 +23,11 @@ info:
     system-level role. Course access comes from the caller's active enrollment in that course:
     staff roles (`design_team`, `instructor`, `non_editing_instructor`) see their assigned courses,
     and students see only their published courses. Courses the caller cannot access respond `404`.
+
+    Course content (activities) follows a review workflow: `draft` → `submitted` → `approved` or
+    `returned`. Staff edit a working copy; approval publishes it as the live version, the only one
+    students can read. Editing approved content creates a new revision without changing the live
+    version until it is approved again.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -37,6 +42,8 @@ tags:
     description: Programs, terms and versioned course templates (administrators only)
   - name: Courses
     description: Courses, their sections and enrollments
+  - name: Content
+    description: Lessons and external resources in course sections, with review and approval
 paths:
   /api/v1/health:
     get:
@@ -504,6 +511,214 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/sections/{sectionId}/activities:
+    get:
+      operationId: listSectionActivities
+      summary: List a section's content in order
+      description: |
+        Course staff and administrators see the working copy and review status of every item.
+        Students see only approved, visible content in visible sections of published courses
+        they are enrolled in (the live version), without review metadata.
+      tags:
+        - Content
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SectionId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of activities ordered by `position`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createSectionActivity
+      summary: Add a text lesson or external link to a section
+      description: |
+        Requires `content.edit` in the course (instructor, design team) or the administrator role.
+        New content is always a `draft` and is appended after the section's existing content.
+        Link URLs must be absolute `http`/`https` URLs without credentials; they are never fetched
+        by the server. Audited as `activity.created`.
+      tags:
+        - Content
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SectionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityCreate"
+      responses:
+        "201":
+          description: Draft created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/activities/{activityId}:
+    get:
+      operationId: getActivity
+      summary: Read one activity
+      description: |
+        Staff receive the working copy, review status and live version. Students receive only the
+        approved live version; anything else responds `404`.
+      tags:
+        - Content
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200":
+          description: The activity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateActivity
+      summary: Replace the working copy of draft, returned or approved content
+      description: |
+        Requires `content.edit`. Content waiting for review cannot be edited (`409`). Editing
+        approved content sets the status back to `draft`; students keep seeing the previously
+        approved live version until the revision is approved. Returned content stays `returned`
+        until it is resubmitted. The body must match the activity's type. Audited as
+        `activity.updated`.
+      tags:
+        - Content
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityUpdate"
+      responses:
+        "200":
+          description: Working copy updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/activities/{activityId}/submit:
+    post:
+      operationId: submitActivityForReview
+      summary: Submit draft or returned content for review
+      description: Requires `content.submit` (instructor, design team) or the administrator role. Send no request body. Audited as `activity.submitted`.
+      tags:
+        - Content
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200":
+          description: Submitted for review.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/courses/{id}/activities/{activityId}/review:
+    post:
+      operationId: reviewActivity
+      summary: Approve or return submitted content
+      description: |
+        Requires `content.review` (design team) or the administrator role; instructors cannot
+        approve. The person who submitted the content cannot approve it
+        (`SELF_REVIEW_NOT_ALLOWED`). Approving publishes the working copy as the live version;
+        returning requires a `comment`. Audited as `activity.approved` or `activity.returned`.
+      tags:
+        - Content
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityReviewDecision"
+      responses:
+        "200":
+          description: Review decision recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
 components:
   parameters:
     Limit:
@@ -525,6 +740,20 @@ components:
         maxLength: 512
     CourseId:
       name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SectionId:
+      name: sectionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ActivityId:
+      name: activityId
       in: path
       required: true
       schema:
@@ -576,7 +805,7 @@ components:
             detail: Invalid email or password.
             code: INVALID_CREDENTIALS
     Forbidden:
-      description: "`code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED` or `FORBIDDEN`."
+      description: "`code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` or `SELF_REVIEW_NOT_ALLOWED`."
       content:
         application/problem+json:
           schema:
@@ -619,7 +848,8 @@ components:
     Conflict:
       description: |
         A uniqueness rule was violated: `PROGRAM_CODE_TAKEN`, `TERM_CODE_TAKEN`, `COURSE_CODE_TAKEN`,
-        `ENROLLMENT_EXISTS` or `TEMPLATE_VERSION_CONFLICT`.
+        `ENROLLMENT_EXISTS` or `TEMPLATE_VERSION_CONFLICT`; or an invalid review transition:
+        `ACTIVITY_UNDER_REVIEW`, `INVALID_REVIEW_STATE`.
       content:
         application/problem+json:
           schema:
@@ -634,7 +864,8 @@ components:
       description: |
         The request is well-formed but refers to missing or incompatible data: `INVALID_TERM_DATES`,
         `PROGRAM_NOT_FOUND`, `PROGRAM_INACTIVE`, `TERM_NOT_FOUND`, `TEMPLATE_NOT_FOUND`,
-        `TEMPLATE_VERSION_NOT_FOUND`, `TEMPLATE_PROGRAM_MISMATCH`, `USER_NOT_FOUND` or `USER_INACTIVE`.
+        `TEMPLATE_VERSION_NOT_FOUND`, `TEMPLATE_PROGRAM_MISMATCH`, `USER_NOT_FOUND`, `USER_INACTIVE`,
+        `INVALID_URL`, `CONTENT_TYPE_MISMATCH` or `REVIEW_COMMENT_REQUIRED`.
       content:
         application/problem+json:
           schema:
@@ -806,6 +1037,12 @@ components:
             - TEMPLATE_PROGRAM_MISMATCH
             - USER_NOT_FOUND
             - USER_INACTIVE
+            - INVALID_URL
+            - CONTENT_TYPE_MISMATCH
+            - ACTIVITY_UNDER_REVIEW
+            - INVALID_REVIEW_STATE
+            - SELF_REVIEW_NOT_ALLOWED
+            - REVIEW_COMMENT_REQUIRED
     Code:
       type: string
       minLength: 1
@@ -1242,5 +1479,194 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Enrollment"
+        nextCursor:
+          type: [string, "null"]
+    ActivityType:
+      type: string
+      description: Content types supported by the content API.
+      enum: [page, link]
+    ReviewStatus:
+      type: string
+      enum: [draft, submitted, approved, returned]
+    PageContent:
+      type: object
+      description: Plain-text lesson. Clients must render `body` as text, never as HTML.
+      required: [body]
+      additionalProperties: false
+      properties:
+        body:
+          type: string
+    LinkContent:
+      type: object
+      description: External resource. `url` is an absolute http(s) URL.
+      required: [url, description]
+      additionalProperties: false
+      properties:
+        url:
+          type: string
+          format: uri
+        description:
+          type: [string, "null"]
+    ActivityContent:
+      oneOf:
+        - $ref: "#/components/schemas/PageContent"
+        - $ref: "#/components/schemas/LinkContent"
+    PageContentInput:
+      type: object
+      required: [title, body]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: "\\S"
+        body:
+          type: string
+          minLength: 1
+          maxLength: 20000
+          pattern: "\\S"
+          description: Plain text; line breaks are preserved. HTML is not interpreted.
+    LinkContentInput:
+      type: object
+      required: [title, url]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: "\\S"
+        url:
+          type: string
+          minLength: 1
+          maxLength: 2048
+          description: Absolute http or https URL without embedded credentials.
+        description:
+          type: string
+          maxLength: 1000
+    ActivityCreate:
+      oneOf:
+        - allOf:
+            - $ref: "#/components/schemas/PageContentInput"
+            - type: object
+              required: [type]
+              properties:
+                type:
+                  type: string
+                  const: page
+        - allOf:
+            - $ref: "#/components/schemas/LinkContentInput"
+            - type: object
+              required: [type]
+              properties:
+                type:
+                  type: string
+                  const: link
+    ActivityUpdate:
+      description: Must match the activity's type.
+      oneOf:
+        - $ref: "#/components/schemas/PageContentInput"
+        - $ref: "#/components/schemas/LinkContentInput"
+    ActivityReviewDecision:
+      type: object
+      required: [decision]
+      additionalProperties: false
+      properties:
+        decision:
+          type: string
+          enum: [approve, return]
+        comment:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          pattern: "\\S"
+          description: Required when returning content.
+    ActivityReview:
+      type: object
+      description: Review metadata (staff only).
+      required: [status, comment, submittedAt, submittedByUserId, reviewedAt, reviewedByUserId]
+      additionalProperties: false
+      properties:
+        status:
+          $ref: "#/components/schemas/ReviewStatus"
+        comment:
+          type: [string, "null"]
+        submittedAt:
+          type: [string, "null"]
+          format: date-time
+        submittedByUserId:
+          type: [string, "null"]
+          format: uuid
+        reviewedAt:
+          type: [string, "null"]
+          format: date-time
+        reviewedByUserId:
+          type: [string, "null"]
+          format: uuid
+    ActivityLiveVersion:
+      type: object
+      description: The approved version students currently see (staff only).
+      required: [title, content, approvedAt]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+        content:
+          $ref: "#/components/schemas/ActivityContent"
+        approvedAt:
+          type: string
+          format: date-time
+    Activity:
+      type: object
+      description: |
+        For staff, `title`/`content` are the working copy and `review`/`liveVersion` are present.
+        For students, `title`/`content` are the approved live version and `review`/`liveVersion` are null.
+      required: [id, courseId, sectionId, type, position, isVisible, title, content, review, liveVersion, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        courseId:
+          type: string
+          format: uuid
+        sectionId:
+          type: string
+          format: uuid
+        type:
+          $ref: "#/components/schemas/ActivityType"
+        position:
+          type: integer
+          minimum: 0
+        isVisible:
+          type: boolean
+        title:
+          type: string
+        content:
+          $ref: "#/components/schemas/ActivityContent"
+        review:
+          oneOf:
+            - $ref: "#/components/schemas/ActivityReview"
+            - type: "null"
+        liveVersion:
+          oneOf:
+            - $ref: "#/components/schemas/ActivityLiveVersion"
+            - type: "null"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ActivityPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Activity"
         nextCursor:
           type: [string, "null"]
