@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { contentAbilities } from '@/components/content/contentDisplay';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { lessonHref, SectionActivities } from '@/components/content/SectionActivities';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
@@ -14,8 +15,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { Activity, Course, CurrentUser, Section } from '@/lib/api/types';
-import { CourseStatusBadge } from './CourseCard';
-import { COURSE_ROLE_LABELS } from './courseDisplay';
+import { LocalizedCourseStatusBadge as CourseStatusBadge } from '@/components/courses/LocalizedCourseStatusBadge';
 
 /** Upper bound on pages fetched per list (100 items per page). */
 const MAX_PAGES = 10;
@@ -53,6 +53,7 @@ export function CourseDetail({ courseId }: { courseId: string }) {
 
 function CourseDetailContent({ courseId, user }: { courseId: string; user: CurrentUser }) {
   const { handleUnauthorized } = useSession();
+  const { t } = useLocale();
   const [state, setState] = useState<DetailState>({ status: 'loading' });
 
   const load = useCallback(async () => {
@@ -86,33 +87,26 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
 
   const backLink = (
     <Link href="/dashboard" className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
-      Back to dashboard
+      {t.courses.backToDashboard}
     </Link>
   );
 
   if (state.status === 'loading') {
     return (
       <p role="status" className="text-sm text-slate-600">
-        Loading course…
+        {t.courses.loadingCourse}
       </p>
     );
   }
   if (state.status === 'not-found') {
-    return (
-      <EmptyState
-        titleAs="h1"
-        title="Course not available"
-        description="This course does not exist or you do not have access to it."
-        action={backLink}
-      />
-    );
+    return <EmptyState titleAs="h1" title={t.courses.notAvailableTitle} description={t.courses.notAvailableDescription} action={backLink} />;
   }
   if (state.status === 'error') {
     return (
       <Alert tone="error">
-        The course could not be loaded.{' '}
+        {t.courses.loadErrorCourse}{' '}
         <button type="button" className="font-medium underline" onClick={() => void load()}>
-          Try again
+          {t.common.retry}
         </button>
       </Alert>
     );
@@ -138,18 +132,18 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
         </div>
         <p className="mt-1 text-sm text-slate-500">
           {course.code}
-          {course.viewerRole ? ` · Your role: ${COURSE_ROLE_LABELS[course.viewerRole]}` : ''}
+          {course.viewerRole ? ` · ${t.courses.yourRoleLabel(t.roles[course.viewerRole])}` : ''}
         </p>
         {course.description ? <p className="mt-3 max-w-3xl text-slate-600">{course.description}</p> : null}
         <div className="mt-4 flex flex-wrap gap-3">
           {abilities.viewGrades || abilities.attempt ? (
             <Link href={`/courses/${course.id}/grades`} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
-              {abilities.viewGrades ? 'Gradebook' : 'My grades'}
+              {abilities.viewGrades ? t.nav.gradebook : t.nav.myGrades}
             </Link>
           ) : null}
           {abilities.tutor ? (
             <Link href={`/courses/${course.id}/tutor`} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
-              Tutor
+              {t.nav.tutor}
             </Link>
           ) : null}
         </div>
@@ -158,7 +152,7 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
       {abilities.review ? (
         <Card as="section" aria-labelledby="review-queue-heading">
           <h2 id="review-queue-heading" className="text-lg font-semibold text-slate-900">
-            Waiting for review
+            {t.courses.waitingForReview}
           </h2>
           {waitingForReview.length ? (
             <ul className="mt-3 space-y-2">
@@ -172,17 +166,17 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
               ))}
             </ul>
           ) : (
-            <p className="mt-2 text-sm text-slate-600">Nothing is waiting for review.</p>
+            <p className="mt-2 text-sm text-slate-600">{t.courses.nothingWaiting}</p>
           )}
         </Card>
       ) : null}
 
       <section aria-labelledby="sections-heading">
         <h2 id="sections-heading" className="text-xl font-semibold tracking-tight text-slate-900">
-          Sections
+          {t.courses.sections}
         </h2>
         {sections.length === 0 ? (
-          <EmptyState className="mt-4" title="No sections yet" description="This course has no sections you can view." />
+          <EmptyState className="mt-4" title={t.courses.noSections} description={t.courses.noSectionsDescription} />
         ) : (
           <ol className="mt-4 space-y-3">
             {sections.map((section, index) => (
@@ -192,7 +186,7 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
                     <span className="mr-2 text-slate-400">{index + 1}.</span>
                     {section.title}
                   </h3>
-                  {section.isVisible ? null : <Badge tone="warning">Hidden from students</Badge>}
+                  {section.isVisible ? null : <Badge tone="warning">{t.courses.hiddenFromStudents}</Badge>}
                 </div>
                 {section.summary ? <p className="mt-2 text-sm text-slate-600">{section.summary}</p> : null}
                 <SectionActivities

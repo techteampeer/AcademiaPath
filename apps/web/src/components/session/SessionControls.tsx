@@ -3,22 +3,36 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { Button, buttonClasses } from '@/components/ui/Button';
-import { SYSTEM_ROLE_LABELS, useSession } from './SessionProvider';
+import type { CourseRole } from '@/lib/api/types';
+import type { Messages } from '@/lib/i18n/messages';
+import { useSession } from './SessionProvider';
+import { useWorkspace } from './WorkspaceProvider';
 
-/** Header sign-in / sign-out controls with the signed-in user's name and system role. */
+const ROLE_ORDER: CourseRole[] = ['design_team', 'instructor', 'non_editing_instructor', 'student'];
+
+/** System role for administrators, otherwise the course roles actually held (they differ per course). */
+export function roleSummary(t: Messages, systemRole: 'administrator' | 'user', rolesHeld: Set<CourseRole>): string {
+  if (systemRole === 'administrator') return t.roles.administrator;
+  const held = ROLE_ORDER.filter((role) => rolesHeld.has(role)).map((role) => t.roles[role]);
+  return held.length ? held.join(' · ') : t.roles.user;
+}
+
+/** Header identity and sign-out. Signing out ends the server session (HttpOnly cookie) and returns to login. */
 export function SessionControls() {
   const { session, signOut } = useSession();
+  const { rolesHeld } = useWorkspace();
+  const { t } = useLocale();
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
 
   if (session.status === 'loading') return null;
-
   if (session.status === 'unauthenticated') {
     return (
       <Link href="/login" className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
-        Sign in
+        {t.common.signIn}
       </Link>
     );
   }
@@ -39,35 +53,37 @@ export function SessionControls() {
 
   return (
     <div className="flex items-center gap-3">
-      <div className="hidden text-right text-sm leading-tight sm:block">
+      <div className="hidden text-right text-sm leading-tight md:block">
         <p className="font-medium text-slate-900">
           {user.givenName} {user.familyName}
         </p>
-        <p className="text-xs text-slate-500">{SYSTEM_ROLE_LABELS[user.systemRole]}</p>
+        <p className="text-xs text-slate-500">{roleSummary(t, user.systemRole, rolesHeld)}</p>
       </div>
-      <Button variant="secondary" size="sm" onClick={onSignOut} disabled={pending}>
-        {pending ? 'Signing out…' : 'Sign out'}
+      <Button variant="secondary" size="sm" className="whitespace-nowrap" onClick={onSignOut} disabled={pending}>
+        {pending ? t.common.signingOut : t.common.signOut}
       </Button>
       {failed ? (
         <span role="alert" className="sr-only">
-          Sign-out failed. Please try again.
+          {t.common.loadError}
         </span>
       ) : null}
     </div>
   );
 }
 
-/** Compact identity line for the mobile navigation panel. */
+/** Identity line for the mobile navigation panel. */
 export function SessionSummary() {
   const { session } = useSession();
+  const { rolesHeld } = useWorkspace();
+  const { t } = useLocale();
   if (session.status !== 'authenticated') return null;
   return (
     <p className="mb-4 border-b border-slate-200 px-3 pb-3 text-sm text-slate-600">
-      Signed in as{' '}
+      {t.session.signedInAs}{' '}
       <span className="font-medium text-slate-900">
         {session.user.givenName} {session.user.familyName}
       </span>{' '}
-      ({SYSTEM_ROLE_LABELS[session.user.systemRole]})
+      ({roleSummary(t, session.user.systemRole, rolesHeld)})
     </p>
   );
 }

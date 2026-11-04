@@ -58,7 +58,7 @@ After changing the schema, run `pnpm db:generate`, review the generated SQL and 
 
 Email/password sign-in with server-side sessions stored in PostgreSQL (`POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/csrf`, `GET /api/v1/me`; see `packages/contract/openapi.yaml`). The session token lives only in an HttpOnly cookie; state-changing requests must send the `X-CSRF-Token` returned at sign-in. Authentication settings are listed in `.env.example`.
 
-For local testing, `pnpm db:seed:dev` creates synthetic users (`admin@`, `instructor@`, `student@` and `reviewer@academiapath.example`) with the password from `DEV_SEED_PASSWORD`. Course roles (for example design team for `reviewer@`) are assigned per course in Academic setup. It refuses to run in production or against a non-local database.
+For local testing, `pnpm db:seed:dev` creates synthetic users (`admin@`, `instructor@`, `student@`, `reviewer@` and `ta@academiapath.example`) with the password from `DEV_SEED_PASSWORD`. Course roles (for example design team for `reviewer@`) are assigned per course in Academic setup. It refuses to run in production or against a non-local database.
 
 ## Frontend and API integration
 

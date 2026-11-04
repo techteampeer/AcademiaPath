@@ -24,6 +24,8 @@ export const DEV_USERS: ReadonlyArray<{
   { email: 'student@academiapath.example', givenName: 'Demo', familyName: 'Student', systemRole: 'user' },
   // Course roles (e.g. design team) are assigned per course through enrollments.
   { email: 'reviewer@academiapath.example', givenName: 'Demo', familyName: 'Reviewer', systemRole: 'user' },
+  // Synthetic account for demonstrating the non-editing instructor course role (assigned per course).
+  { email: 'ta@academiapath.example', givenName: 'Demo', familyName: 'Teaching Assistant', systemRole: 'user' },
 ];
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);

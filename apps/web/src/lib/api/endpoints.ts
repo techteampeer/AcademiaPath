@@ -18,6 +18,7 @@ import type {
   CsrfTokenResponse,
   Enrollment,
   EnrollmentCreate,
+  EnrollmentPage,
   Gradebook,
   GradeReleaseResult,
   LoginRequest,
@@ -112,6 +113,7 @@ export const api = {
   createCourseTemplate: (body: CourseTemplateCreate, csrfToken: string) =>
     apiRequest<CourseTemplateVersion>('POST', '/course-templates', { body, csrfToken }),
   createCourse: (body: CourseCreate, csrfToken: string) => apiRequest<Course>('POST', '/courses', { body, csrfToken }),
+  listEnrollments: (courseId: string, page?: PageRequest) => apiRequest<EnrollmentPage>('GET', withPage(`${course(courseId)}/enrollments`, page)),
   createEnrollment: (courseId: string, body: EnrollmentCreate, csrfToken: string) =>
     apiRequest<Enrollment>('POST', `${course(courseId)}/enrollments`, { body, csrfToken }),
 
