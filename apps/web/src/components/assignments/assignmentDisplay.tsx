@@ -1,5 +1,9 @@
+'use client';
+
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import type { AssignmentContent, GradeStatus, ReleasedGrade } from '@/lib/api/types';
+import { formatDateTimeOrDash } from '@/lib/i18n/messages';
 
 /** `datetime-local` value (browser time zone) for an ISO timestamp. */
 export function toLocalInput(iso: string | null): string {
@@ -16,57 +20,59 @@ export function fromLocalInput(value: string): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-export function formatDateTime(value: string | null): string {
-  return value ? new Date(value).toLocaleString() : '—';
-}
-
 /** Displays a server-calculated 0–20 grade. Formatting only: grades are never calculated in the browser. */
 export function formatGrade20(value: number | null): string {
   return value === null ? '—' : `${value.toFixed(1)} / 20`;
 }
 
-const STATUS_DISPLAY: Record<GradeStatus, { label: string; tone: BadgeTone }> = {
-  not_submitted: { label: 'Not submitted', tone: 'neutral' },
-  needs_grading: { label: 'Needs grading', tone: 'warning' },
-  unreleased: { label: 'Graded, not released', tone: 'brand' },
-  released: { label: 'Released', tone: 'success' },
-  changed_since_release: { label: 'Changed since release', tone: 'warning' },
+const STATUS_TONES: Record<GradeStatus, BadgeTone> = {
+  not_submitted: 'neutral',
+  needs_grading: 'warning',
+  unreleased: 'brand',
+  released: 'success',
+  changed_since_release: 'warning',
 };
 
 export function GradeStatusBadge({ status }: { status: GradeStatus }) {
-  const display = STATUS_DISPLAY[status];
+  const { t } = useLocale();
   return (
-    <Badge tone={display.tone}>
-      <span className="sr-only">Grade status: </span>
-      {display.label}
+    <Badge tone={STATUS_TONES[status]}>
+      <span className="sr-only">{t.assignments.gradeStatusLabel}: </span>
+      {t.assignments.gradeStatus[status]}
     </Badge>
   );
 }
 
 /** Instructions, deadline, late policy and rubric. Text is rendered as text, never HTML. */
 export function AssignmentSummary({ content }: { content: AssignmentContent }) {
+  const { t, locale } = useLocale();
+  const s = t.assignments.summary;
   return (
     <div className="space-y-4">
       <p className="whitespace-pre-wrap break-words text-slate-800">{content.instructions}</p>
       <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
         <div>
-          <dt className="text-slate-500">Due</dt>
-          <dd className="font-medium text-slate-900">{formatDateTime(content.dueAt)}</dd>
+          <dt className="text-slate-500">{s.due}</dt>
+          <dd className="font-medium text-slate-900">{formatDateTimeOrDash(content.dueAt, locale)}</dd>
         </div>
         <div>
-          <dt className="text-slate-500">Late submissions</dt>
+          <dt className="text-slate-500">{s.late}</dt>
           <dd className="font-medium text-slate-900">
-            {content.lateUntil ? `Accepted until ${formatDateTime(content.lateUntil)} and marked late` : 'Not accepted'}
+            {content.lateUntil ? s.lateAccepted(formatDateTimeOrDash(content.lateUntil, locale)) : s.lateNotAccepted}
           </dd>
         </div>
       </dl>
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <caption className="mb-2 text-left font-semibold text-slate-900">Rubric ({content.totalPoints} points)</caption>
+          <caption className="mb-2 text-left font-semibold text-slate-900">{s.rubricCaption(content.totalPoints)}</caption>
           <thead className="border-b border-slate-200 text-slate-500">
             <tr>
-              <th scope="col" className="py-2 pr-4 font-medium">Criterion</th>
-              <th scope="col" className="py-2 font-medium">Points</th>
+              <th scope="col" className="py-2 pr-4 font-medium">
+                {s.criterion}
+              </th>
+              <th scope="col" className="py-2 font-medium">
+                {s.points}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -88,12 +94,13 @@ export function AssignmentSummary({ content }: { content: AssignmentContent }) {
 
 /** A grade exactly as released to the student. */
 export function ReleasedGradeView({ grade }: { grade: ReleasedGrade }) {
+  const { t, locale } = useLocale();
   return (
     <div className="space-y-3">
       <p className="text-lg font-semibold text-slate-900">
         {formatGrade20(grade.grade20)}{' '}
         <span className="text-sm font-normal text-slate-600">
-          ({grade.points} of {grade.maxPoints} points · released {formatDateTime(grade.releasedAt)})
+          {t.assignments.released.detail(grade.points, grade.maxPoints, formatDateTimeOrDash(grade.releasedAt, locale))}
         </span>
       </p>
       {grade.criteria.length ? (
@@ -107,7 +114,7 @@ export function ReleasedGradeView({ grade }: { grade: ReleasedGrade }) {
       ) : null}
       {grade.feedback ? (
         <div>
-          <h3 className="text-sm font-semibold text-slate-900">Feedback</h3>
+          <h3 className="text-sm font-semibold text-slate-900">{t.assignments.released.feedback}</h3>
           <p className="whitespace-pre-wrap break-words text-sm text-slate-800">{grade.feedback}</p>
         </div>
       ) : null}

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { useCsrfAction } from '@/components/session/useCsrfAction';
@@ -12,7 +13,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { StudentQuizAttempt } from '@/lib/api/types';
-import { formatDateTime } from './quizDisplay';
+import { formatDateTimeOrDash } from '@/lib/i18n/messages';
 
 type ViewState = { status: 'loading' } | { status: 'not-found' } | { status: 'error' } | { status: 'ready'; attempt: StudentQuizAttempt };
 type Selections = Record<string, string[]>;
@@ -27,6 +28,8 @@ function selectionsOf(attempt: StudentQuizAttempt): Selections {
 
 /** Display-only countdown. The server enforces the deadline regardless of the browser clock. */
 function TimeRemaining({ deadlineAt }: { deadlineAt: string }) {
+  const { t, locale } = useLocale();
+  const a = t.quiz.attempt;
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -36,14 +39,15 @@ function TimeRemaining({ deadlineAt }: { deadlineAt: string }) {
   const display = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   return (
     <p className="text-sm text-slate-700">
-      Submit before {formatDateTime(deadlineAt)}. Time remaining (approximate): <span role="timer">{display}</span>. The server closes the
-      attempt at the deadline and keeps only answers saved before it.
+      {a.submitBefore(formatDateTimeOrDash(deadlineAt, locale))} {a.remaining} <span role="timer">{display}</span>. {a.serverCloses}
     </p>
   );
 }
 
 function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: string }) {
   const { handleUnauthorized } = useSession();
+  const { t, locale } = useLocale();
+  const a = t.quiz.attempt;
   const [state, setState] = useState<ViewState>({ status: 'loading' });
   const [selections, setSelections] = useState<Selections>({});
   const [confirming, setConfirming] = useState(false);
@@ -71,26 +75,24 @@ function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: 
   if (state.status === 'loading') {
     return (
       <p role="status" className="text-sm text-slate-600">
-        Loading quiz attempt…
+        {a.loading}
       </p>
     );
   }
   if (state.status === 'not-found') {
     const back = (
       <Link href={`/courses/${courseId}`} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
-        Back to course
+        {a.backToCourse}
       </Link>
     );
-    return (
-      <EmptyState titleAs="h1" title="Attempt not available" description="This attempt does not exist or is not yours." action={back} />
-    );
+    return <EmptyState titleAs="h1" title={a.notAvailableTitle} description={a.notAvailableDescription} action={back} />;
   }
   if (state.status === 'error') {
     return (
       <Alert tone="error">
-        The attempt could not be loaded.{' '}
+        {a.loadError}{' '}
         <button type="button" className="font-medium underline" onClick={() => void load()}>
-          Try again
+          {t.common.retry}
         </button>
       </Alert>
     );
@@ -117,7 +119,7 @@ function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: 
   const save = async () => {
     const saved = await run(
       (csrf) => api.saveQuizAnswers(courseId, attempt.id, { answers }, csrf),
-      () => 'Answers saved.',
+      () => a.saved,
     );
     if (saved) show(saved);
     else void load(); // e.g. the time limit passed: the server has closed the attempt.
@@ -133,11 +135,9 @@ function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: 
   const header = (
     <div>
       <Link href={quizHref} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
-        Back to quiz
+        {a.backToQuiz}
       </Link>
-      <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-        Attempt {attempt.attemptNumber} of {attempt.attemptLimit}
-      </h1>
+      <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{a.title(attempt.attemptNumber, attempt.attemptLimit)}</h1>
     </div>
   );
 
@@ -147,24 +147,24 @@ function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: 
         {header}
         <Card as="section" aria-labelledby="recorded-heading" className="space-y-3">
           <h2 id="recorded-heading" className="text-lg font-semibold text-emerald-800">
-            Your attempt was recorded
+            {a.recordedHeading}
           </h2>
-          <p className="text-sm text-slate-700">Recorded {formatDateTime(attempt.submittedAt)}.</p>
+          <p className="text-sm text-slate-700">{a.recordedAt(formatDateTimeOrDash(attempt.submittedAt, locale))}</p>
           {attempt.closedByTimeLimit ? (
             <Alert tone="info">
-              The time limit had passed, so the server closed this attempt with the answers saved before the deadline.
+              {a.closedByLimit}
             </Alert>
           ) : null}
           {attempt.resultsReleased ? (
             <p className="text-sm text-slate-700">
-              Your grade for this quiz has been released.{' '}
+              {a.released}{' '}
               <Link href={`/courses/${courseId}/grades`} className="font-medium text-brand-700 hover:underline">
-                See my grades
+                {a.seeGrades}
               </Link>
             </p>
           ) : (
             <p className="text-sm text-slate-700">
-              The server has graded your answers. Results have not been released yet; your instructor will publish them later.
+              {a.graded}
             </p>
           )}
         </Card>
@@ -195,8 +195,8 @@ function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: 
                   {index + 1}. {question.prompt}
                 </legend>
                 <p className="text-xs text-slate-500">
-                  {question.points} {question.points === 1 ? 'point' : 'points'}
-                  {multiple ? ' · select all that apply' : ''}
+                  {t.quiz.points(question.points)}
+                  {multiple ? ` · ${a.selectAll}` : ''}
                 </p>
                 {question.options.map((option) => {
                   const inputId = `q-${question.questionId}-${option.id}`;
@@ -222,23 +222,23 @@ function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: 
         })}
         {confirming ? (
           <Alert tone="info" className="space-y-3">
-            <p>Submit this attempt now? You cannot change your answers afterwards.</p>
+            <p>{a.confirm}</p>
             <div className="flex flex-wrap gap-3">
               <Button onClick={() => void submit()} disabled={pending}>
-                Confirm submission
+                {a.confirmSubmit}
               </Button>
               <Button variant="secondary" onClick={() => setConfirming(false)} disabled={pending}>
-                Keep working
+                {a.keepWorking}
               </Button>
             </div>
           </Alert>
         ) : (
           <div className="flex flex-wrap gap-3">
             <Button variant="secondary" onClick={() => void save()} disabled={pending}>
-              {pending ? 'Saving…' : 'Save answers'}
+              {pending ? a.saving : a.save}
             </Button>
             <Button type="submit" disabled={pending}>
-              Submit attempt
+              {a.submit}
             </Button>
           </div>
         )}

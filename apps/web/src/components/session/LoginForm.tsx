@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
-import { LanguageSwitcher, useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { BrandMark } from '@/components/layout/Header';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
@@ -93,14 +93,11 @@ export function LoginForm() {
         <p className="text-xs text-brand-100">{t.common.devPreview}</p>
       </section>
       <div className="p-6 sm:p-8">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 md:hidden">
-            <BrandMark />
-            <span className="font-semibold text-brand-900">AcademiaPath</span>
-          </div>
-          <LanguageSwitcher className="ml-auto" />
+        <div className="flex items-center gap-2 md:hidden">
+          <BrandMark />
+          <span className="font-semibold text-brand-900">AcademiaPath</span>
         </div>
-        <h1 className="mt-6 text-2xl font-bold tracking-tight text-slate-900">{t.login.title}</h1>
+        <h1 className="mt-6 text-2xl font-bold tracking-tight text-slate-900 md:mt-0">{t.login.title}</h1>
         <p className="mt-1 text-sm text-slate-600">{t.login.subtitle}</p>
         {notice.expired ? (
           <Alert tone="info" className="mt-4">

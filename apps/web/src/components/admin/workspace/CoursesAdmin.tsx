@@ -164,7 +164,7 @@ function CoursesContent() {
 
 /** Existing enrollment API: list the roster and enroll an existing account by email with a course role. */
 function EnrollmentPanel({ course }: { course: Course }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { handleUnauthorized } = useSession();
   const [roster, setRoster] = useState<{ status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; items: Enrollment[] }>({ status: 'loading' });
   const [email, setEmail] = useState('');
@@ -177,9 +177,9 @@ function EnrollmentPanel({ course }: { course: Course }) {
       setRoster({ status: 'ready', items: await loadAll((page) => api.listEnrollments(course.id, page)) });
     } catch (error) {
       if (isApiError(error, 401)) handleUnauthorized();
-      setRoster({ status: 'error', message: describeApiError(error) });
+      setRoster({ status: 'error', message: describeApiError(error, locale) });
     }
-  }, [course.id, handleUnauthorized]);
+  }, [course.id, handleUnauthorized, locale]);
 
   useEffect(() => {
     void load();

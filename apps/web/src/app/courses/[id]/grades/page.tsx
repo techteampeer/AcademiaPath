@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
+import { localizedTitle } from '@/lib/i18n/server';
 import { GradesView } from '@/components/grades/GradesView';
 
-export const metadata: Metadata = {
-  title: 'Grades',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return localizedTitle('grades');
+}
 
 export default async function GradesPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

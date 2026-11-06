@@ -1,5 +1,8 @@
+'use client';
+
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
-import type { Activity, CourseRole, CurrentUser, ReviewStatus } from '@/lib/api/types';
+import type { CourseRole, CurrentUser, ReviewStatus } from '@/lib/api/types';
 
 const STAFF_ROLES: CourseRole[] = ['design_team', 'instructor', 'non_editing_instructor'];
 const EDITOR_ROLES: CourseRole[] = ['design_team', 'instructor'];
@@ -30,30 +33,17 @@ export function contentAbilities(user: CurrentUser, viewerRole: CourseRole | nul
 
 export type ContentAbilities = ReturnType<typeof contentAbilities>;
 
-const STATUS_DISPLAY: Record<ReviewStatus, { label: string; tone: BadgeTone }> = {
-  draft: { label: 'Draft', tone: 'neutral' },
-  submitted: { label: 'In review', tone: 'brand' },
-  approved: { label: 'Approved', tone: 'success' },
-  returned: { label: 'Returned', tone: 'warning' },
-};
+const STATUS_TONES: Record<ReviewStatus, BadgeTone> = { draft: 'neutral', submitted: 'brand', approved: 'success', returned: 'warning' };
 
 export function ReviewStatusBadge({ status }: { status: ReviewStatus }) {
-  const display = STATUS_DISPLAY[status];
+  const { t } = useLocale();
   return (
-    <Badge tone={display.tone}>
-      <span className="sr-only">Review status: </span>
-      {display.label}
+    <Badge tone={STATUS_TONES[status]}>
+      <span className="sr-only">{t.content.reviewStatusLabel}: </span>
+      {t.content.reviewStatus[status]}
     </Badge>
   );
 }
-
-export const ACTIVITY_TYPE_LABELS: Record<Activity['type'], string> = {
-  page: 'Lesson',
-  link: 'External resource',
-  quiz: 'Quiz',
-  assignment: 'Assignment',
-  file: 'Document',
-};
 
 /** Only absolute http(s) URLs are ever rendered as links (the API enforces this too). */
 export function safeHttpUrl(value: string): string | null {

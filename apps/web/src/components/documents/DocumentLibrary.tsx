@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRef, useState, type FormEvent } from 'react';
 import { ReviewStatusBadge, type ContentAbilities } from '@/components/content/contentDisplay';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { lessonHref } from '@/components/content/SectionActivities';
 import { useCsrfAction } from '@/components/session/useCsrfAction';
 import { Alert } from '@/components/ui/Alert';
@@ -12,7 +13,7 @@ import { Card } from '@/components/ui/Card';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { api } from '@/lib/api/endpoints';
 import type { Activity, DocumentDetail, Section } from '@/lib/api/types';
-import { FORMAT_LABELS, segmentNoun } from './documentDisplay';
+import { segmentCount } from './documentDisplay';
 
 const ACCEPTED = /\.(pdf|docx|pptx)$/i;
 
@@ -33,6 +34,8 @@ export function DocumentLibrary({
   abilities: ContentAbilities;
   onUploaded: () => Promise<void>;
 }) {
+  const { t } = useLocale();
+  const l = t.documents.library;
   const documents = sections.flatMap((section) =>
     (activities[section.id] ?? []).filter((activity) => activity.type === 'file').map((activity) => ({ activity, section })),
   );
@@ -41,16 +44,12 @@ export function DocumentLibrary({
     <Card as="section" aria-labelledby="documents-heading" className="space-y-4">
       <div>
         <h2 id="documents-heading" className="text-lg font-semibold text-slate-900">
-          Document library
+          {l.heading}
         </h2>
-        <p className="mt-1 text-sm text-slate-600">
-          {abilities.viewUnapproved
-            ? 'PDF, Word and PowerPoint documents with extracted text and a mock AI summary. Students see a document only after it is approved.'
-            : 'Approved course documents with their extracted text and summary.'}
-        </p>
+        <p className="mt-1 text-sm text-slate-600">{abilities.viewUnapproved ? l.staffIntro : l.studentIntro}</p>
       </div>
       {documents.length ? (
-        <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200" aria-label="Documents">
+        <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200" aria-label={l.listLabel}>
           {documents.map(({ activity, section }) => {
             const content = 'documentId' in activity.content ? activity.content : null;
             return (
@@ -60,13 +59,13 @@ export function DocumentLibrary({
                     {activity.title}
                   </Link>
                   <p className="text-xs break-all text-slate-500">
-                    {content ? `${FORMAT_LABELS[content.format]} · ${content.fileName} · ` : ''}
+                    {content ? `${t.documents.formats[content.format]} · ${content.fileName} · ` : ''}
                     {section.title}
                   </p>
                 </div>
                 {activity.review ? (
                   <div className="flex items-center gap-2">
-                    {activity.liveVersion && activity.review.status !== 'approved' ? <Badge tone="success">Live version published</Badge> : null}
+                    {activity.liveVersion && activity.review.status !== 'approved' ? <Badge tone="success">{t.content.section.livePublished}</Badge> : null}
                     <ReviewStatusBadge status={activity.review.status} />
                   </div>
                 ) : null}
@@ -75,7 +74,7 @@ export function DocumentLibrary({
           })}
         </ul>
       ) : (
-        <p className="text-sm text-slate-500">No documents yet.</p>
+        <p className="text-sm text-slate-500">{l.empty}</p>
       )}
       {abilities.edit && sections.length ? <UploadForm courseId={courseId} sections={sections} onUploaded={onUploaded} /> : null}
     </Card>
@@ -90,14 +89,16 @@ function UploadForm({ courseId, sections, onUploaded }: { courseId: string; sect
   const [uploaded, setUploaded] = useState<{ detail: DocumentDetail; title: string } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const { run, pending, result, clearResult } = useCsrfAction();
+  const { t } = useLocale();
+  const l = t.documents.library;
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setUploaded(null);
     clearResult();
-    if (!file) return setFileError('Choose a PDF, DOCX or PPTX file.');
+    if (!file) return setFileError(l.chooseFile);
     // Convenience only: the API verifies the file's real content and enforces the size limit.
-    if (!ACCEPTED.test(file.name)) return setFileError('Only .pdf, .docx and .pptx files are accepted.');
+    if (!ACCEPTED.test(file.name)) return setFileError(l.onlyAccepted);
     setFileError(undefined);
     const chosenTitle = title.trim() || file.name.replace(ACCEPTED, '');
     const detail = await run((csrf) => api.uploadDocument(courseId, sectionId, file, title, csrf));
@@ -113,28 +114,28 @@ function UploadForm({ courseId, sections, onUploaded }: { courseId: string; sect
   return (
     <form noValidate onSubmit={submit} aria-labelledby="upload-heading" className="space-y-4 border-t border-slate-200 pt-4">
       <h3 id="upload-heading" className="font-semibold text-slate-900">
-        Upload a document
+        {l.uploadHeading}
       </h3>
       <div className="grid gap-4 sm:grid-cols-2">
         <SelectField
           id="document-section"
-          label="Section"
+          label={l.section}
           value={sectionId}
           onChange={(event) => setSectionId(event.target.value)}
-          options={sections.map((section) => ({ value: section.id, label: section.isVisible ? section.title : `${section.title} (hidden from students)` }))}
+          options={sections.map((section) => ({ value: section.id, label: section.isVisible ? section.title : l.hiddenSection(section.title) }))}
         />
         <TextField
           id="document-title"
-          label="Title (optional)"
+          label={l.title}
           value={title}
           maxLength={200}
           onChange={(event) => setTitle(event.target.value)}
-          hint="Defaults to the file name."
+          hint={l.titleHint}
         />
       </div>
       <div>
         <label htmlFor="document-file" className="block text-sm font-medium text-slate-800">
-          File
+          {l.file}
         </label>
         <input
           ref={fileInput}
@@ -147,8 +148,7 @@ function UploadForm({ courseId, sections, onUploaded }: { courseId: string; sect
           className="mt-1 block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border file:border-slate-300 file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-800 hover:file:bg-slate-50"
         />
         <p id="document-file-hint" className="mt-1 text-xs text-slate-500">
-          PDF, Word (.docx) or PowerPoint (.pptx), up to 10 MB unless configured otherwise. Encrypted and macro-enabled files are refused;
-          scanned pages have no extractable text (no OCR).
+          {l.fileHint}
         </p>
         {fileError ? (
           <p id="document-file-error" className="mt-1 text-sm text-red-700">
@@ -157,16 +157,15 @@ function UploadForm({ courseId, sections, onUploaded }: { courseId: string; sect
         ) : null}
       </div>
       <p className="text-xs text-slate-500">
-        Local demonstration: files are stored privately on this server and no malware scanning service is connected. Upload only synthetic or
-        trusted test documents.
+        {l.notice}
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={pending}>
-          {pending ? 'Uploading…' : 'Upload and extract text'}
+          {pending ? l.uploading : l.upload}
         </Button>
         {pending ? (
           <p role="status" className="text-sm text-slate-600">
-            Uploading, validating and extracting text…
+            {l.progress}
           </p>
         ) : null}
       </div>
@@ -177,18 +176,17 @@ function UploadForm({ courseId, sections, onUploaded }: { courseId: string; sect
 }
 
 function UploadResult({ courseId, detail, title }: { courseId: string; detail: DocumentDetail; title: string }) {
+  const { t } = useLocale();
+  const l = t.documents.library;
   const { extraction, format } = detail.document;
   const extracted = extraction.status === 'extracted';
   return (
     <Alert tone={extracted ? 'success' : 'info'}>
       <p>
-        &ldquo;{title}&rdquo; was uploaded as a draft.{' '}
-        {extracted
-          ? `Text extracted from ${extraction.segmentCount} ${segmentNoun(format, extraction.segmentCount)}; summary revision ${detail.summary?.revision ?? 1} created.`
-          : 'No selectable text was found, so no summary could be created.'}
+        {l.uploadedDraft(title)} {extracted ? l.extracted(segmentCount(t, format, extraction.segmentCount), detail.summary?.revision ?? 1) : l.noText}
       </p>
       <Link href={lessonHref(courseId, detail.activityId)} className="mt-1 inline-block font-medium underline">
-        Open the document
+        {l.openDocument}
       </Link>
     </Alert>
   );

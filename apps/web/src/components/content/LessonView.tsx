@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { useCsrfAction } from '@/components/session/useCsrfAction';
@@ -10,6 +11,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button, buttonClasses } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Breadcrumbs } from '@/components/ui/PageHeader';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { Activity, ActivityCreate, Course, CurrentUser } from '@/lib/api/types';
@@ -21,7 +23,7 @@ import { QuizQuestionsPanel, QuizResultsPanel } from '@/components/quizzes/QuizS
 import { QuizStudentPanel } from '@/components/quizzes/QuizStudentPanel';
 import { DocumentPanel } from '@/components/documents/DocumentPanel';
 import { ActivityForm } from './ActivityForm';
-import { ACTIVITY_TYPE_LABELS, contentAbilities, ReviewStatusBadge, safeHttpUrl, type ContentAbilities } from './contentDisplay';
+import { contentAbilities, ReviewStatusBadge, safeHttpUrl, type ContentAbilities } from './contentDisplay';
 
 type ViewState =
   | { status: 'loading' }
@@ -35,6 +37,7 @@ export function LessonView({ courseId, activityId }: { courseId: string; activit
 
 /** Renders lesson text, a link or quiz settings. Text is always rendered as text (React escapes it), never as HTML. */
 function ContentBody({ activity }: { activity: Activity }) {
+  const { t } = useLocale();
   const content = activity.content;
   if ('attemptLimit' in content) return <QuizSummary content={content} />;
   if ('rubric' in content) return <AssignmentSummary content={content} />;
@@ -49,8 +52,8 @@ function ContentBody({ activity }: { activity: Activity }) {
       {content.description ? <p className="text-slate-700">{content.description}</p> : null}
       {href ? (
         <a href={href} target="_blank" rel="noopener noreferrer" className={buttonClasses({ variant: 'secondary' })}>
-          Open resource
-          <span className="sr-only"> (opens in a new tab)</span>
+          {t.content.view.openResource}
+          <span className="sr-only"> {t.content.view.newTab}</span>
         </a>
       ) : null}
       <p className="break-all text-xs text-slate-500">{content.url}</p>
@@ -60,6 +63,8 @@ function ContentBody({ activity }: { activity: Activity }) {
 
 function LessonContent({ courseId, activityId, user }: { courseId: string; activityId: string; user: CurrentUser }) {
   const { handleUnauthorized } = useSession();
+  const { t } = useLocale();
+  const v = t.content.view;
   const [state, setState] = useState<ViewState>({ status: 'loading' });
 
   const load = useCallback(async () => {
@@ -80,26 +85,26 @@ function LessonContent({ courseId, activityId, user }: { courseId: string; activ
 
   const backLink = (
     <Link href={`/courses/${courseId}`} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
-      Back to course
+      {v.backToCourse}
     </Link>
   );
 
   if (state.status === 'loading') {
     return (
       <p role="status" className="text-sm text-slate-600">
-        Loading lesson…
+        {v.loading}
       </p>
     );
   }
   if (state.status === 'not-found') {
-    return <EmptyState titleAs="h1" title="Content not available" description="This content does not exist or is not available to you." action={backLink} />;
+    return <EmptyState titleAs="h1" title={v.notAvailableTitle} description={v.notAvailableDescription} action={backLink} />;
   }
   if (state.status === 'error') {
     return (
       <Alert tone="error">
-        The lesson could not be loaded.{' '}
+        {v.loadError}{' '}
         <button type="button" className="font-medium underline" onClick={() => void load()}>
-          Try again
+          {t.common.retry}
         </button>
       </Alert>
     );
@@ -111,9 +116,12 @@ function LessonContent({ courseId, activityId, user }: { courseId: string; activ
   return (
     <div className="space-y-6">
       <div>
-        {backLink}
+        <Breadcrumbs
+          label={t.common.breadcrumb}
+          items={[{ label: t.nav.myCourses, href: '/courses' }, { label: course.title, href: `/courses/${course.id}` }, { label: activity.title }]}
+        />
         <p className="mt-4 text-sm text-slate-500">
-          {course.code} · {ACTIVITY_TYPE_LABELS[activity.type]}
+          {course.code} · {t.activityType[activity.type]}
         </p>
         <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
           <h1 className="text-2xl font-bold tracking-tight break-words text-slate-900 sm:text-3xl">{activity.title}</h1>
@@ -139,7 +147,7 @@ function LessonContent({ courseId, activityId, user }: { courseId: string; activ
           onChanged={() => void load()}
         />
       ) : (
-        <Card as="article" padding="lg" aria-label={isQuiz ? 'Quiz details' : 'Lesson content'}>
+        <Card as="article" padding="lg" aria-label={isQuiz ? v.quizDetails : v.lessonContent}>
           <ContentBody activity={activity} />
         </Card>
       )}
@@ -178,6 +186,8 @@ function StaffPanel({
   onChanged: (activity: Activity) => void;
 }) {
   const review = activity.review!;
+  const { t } = useLocale();
+  const r = t.content.review;
   const [editing, setEditing] = useState(false);
   const [comment, setComment] = useState('');
   const [commentError, setCommentError] = useState<string | null>(null);
@@ -194,7 +204,7 @@ function StaffPanel({
     const { type: _type, ...content } = value;
     const updated = await run(
       (csrf) => api.updateActivity(courseId, activity.id, content, csrf),
-      (saved) => (saved.liveVersion ? 'Revision saved. Students keep seeing the approved version until this revision is approved.' : 'Changes saved.'),
+      (saved) => (saved.liveVersion ? r.revisionSaved : r.changesSaved),
     );
     if (updated) {
       setEditing(false);
@@ -204,20 +214,20 @@ function StaffPanel({
   };
 
   const submit = async () => {
-    const updated = await run((csrf) => api.submitActivity(courseId, activity.id, csrf), () => 'Submitted for review.');
+    const updated = await run((csrf) => api.submitActivity(courseId, activity.id, csrf), () => r.submitted);
     if (updated) onChanged(updated);
   };
 
   const decide = async (decision: 'approve' | 'return') => {
     const trimmed = comment.trim();
     if (decision === 'return' && !trimmed) {
-      setCommentError('Explain what needs to change before returning the content.');
+      setCommentError(r.commentRequired);
       return;
     }
     setCommentError(null);
     const updated = await run(
       (csrf) => api.reviewActivity(courseId, activity.id, { decision, ...(trimmed ? { comment: trimmed } : {}) }, csrf),
-      () => (decision === 'approve' ? 'Approved. Students can now read this content.' : 'Returned to the author with your comment.'),
+      () => (decision === 'approve' ? r.approved : r.returned),
     );
     if (updated) {
       setComment('');
@@ -228,17 +238,13 @@ function StaffPanel({
   return (
     <Card as="section" aria-labelledby="review-heading" className="space-y-4">
       <h2 id="review-heading" className="text-lg font-semibold text-slate-900">
-        Review
+        {r.heading}
       </h2>
-      {status === 'returned' && review.comment ? <Alert tone="error">Returned for changes: {review.comment}</Alert> : null}
-      {status !== 'returned' && review.comment ? <Alert tone="info">Reviewer comment: {review.comment}</Alert> : null}
-      {activity.liveVersion && status !== 'approved' ? (
-        <Alert tone="info">
-          Students currently see the approved version &ldquo;{activity.liveVersion.title}&rdquo;. This revision is not visible to them until it is
-          approved.
-        </Alert>
-      ) : null}
-      {!activity.liveVersion ? <p className="text-sm text-slate-600">Not visible to students until approved.</p> : null}
+      {status === 'returned' && review.comment ? <Alert tone="error">{r.returnedFor(review.comment)}</Alert> : null}
+      {status !== 'returned' && review.comment ? <Alert tone="info">{r.reviewerComment(review.comment)}</Alert> : null}
+      {activity.liveVersion && status !== 'approved' ? <Alert tone="info">{r.liveVersionNote(activity.liveVersion.title)}</Alert> : null}
+      {!activity.liveVersion ? <p className="text-sm text-slate-600">{r.notVisible}</p> : null}
+      {status === 'approved' ? <p className="text-sm text-slate-600">{r.liveNow}</p> : null}
       {result ? <Alert tone={result.tone}>{result.message}</Alert> : null}
 
       {editing ? (
@@ -246,7 +252,7 @@ function StaffPanel({
           idPrefix="edit"
           initial={activity}
           fixedType={activity.type}
-          submitLabel={status === 'approved' ? 'Save as new revision' : 'Save changes'}
+          submitLabel={status === 'approved' ? r.saveRevision : r.saveChanges}
           pending={pending}
           onSubmit={save}
           onCancel={() => setEditing(false)}
@@ -255,12 +261,12 @@ function StaffPanel({
         <div className="flex flex-wrap gap-3">
           {canEdit ? (
             <Button variant="secondary" onClick={() => setEditing(true)} disabled={pending}>
-              Edit
+              {r.edit}
             </Button>
           ) : null}
           {canSubmit ? (
             <Button onClick={() => void submit()} disabled={pending}>
-              Submit for review
+              {r.submit}
             </Button>
           ) : null}
         </div>
@@ -268,13 +274,11 @@ function StaffPanel({
 
       {canReview ? (
         <div className="space-y-3 border-t border-slate-200 pt-4">
-          <h3 className="font-semibold text-slate-900">Review decision</h3>
-          {ownSubmission ? (
-            <p className="text-sm text-slate-600">You submitted this content, so another reviewer must approve it. You can still return it.</p>
-          ) : null}
+          <h3 className="font-semibold text-slate-900">{r.decision}</h3>
+          {ownSubmission ? <p className="text-sm text-slate-600">{r.ownSubmission}</p> : null}
           <div>
             <label htmlFor="review-comment" className="block text-sm font-medium text-slate-800">
-              Comment (required to return)
+              {r.comment}
             </label>
             <textarea
               id="review-comment"
@@ -294,15 +298,15 @@ function StaffPanel({
           </div>
           <div className="flex flex-wrap gap-3">
             <Button onClick={() => void decide('approve')} disabled={pending || ownSubmission}>
-              Approve
+              {r.approve}
             </Button>
             <Button variant="secondary" onClick={() => void decide('return')} disabled={pending}>
-              Return with comments
+              {r.returnWithComments}
             </Button>
           </div>
         </div>
       ) : null}
-      {status === 'submitted' && !abilities.review ? <Badge tone="brand">Waiting for the design team&rsquo;s review</Badge> : null}
+      {status === 'submitted' && !abilities.review ? <Badge tone="brand">{r.waiting}</Badge> : null}
     </Card>
   );
 }

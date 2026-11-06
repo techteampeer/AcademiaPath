@@ -26,7 +26,8 @@ export function Header() {
       <div className="relative flex h-16 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
         <Link href={home} className="flex min-w-0 items-center gap-2.5 rounded-lg" aria-label={`${t.common.appName} — ${t.nav.home}`}>
           <BrandMark />
-          <span className="text-lg font-semibold tracking-tight text-brand-900">
+          {/* Wordmark hidden on very narrow screens so the language toggle, sign-out and menu fit. */}
+          <span className="hidden text-lg font-semibold tracking-tight text-brand-900 min-[420px]:inline">
             Academia<span className="text-brand-600">Path</span>
           </span>
         </Link>
@@ -34,9 +35,7 @@ export function Header() {
           <span className="hidden xl:block">
             <Badge tone="brand">{t.common.devPreview}</Badge>
           </span>
-          <div className="hidden sm:block">
-            <LanguageSwitcher />
-          </div>
+          <LanguageSwitcher />
           <SessionControls />
           <MobileNav />
         </div>

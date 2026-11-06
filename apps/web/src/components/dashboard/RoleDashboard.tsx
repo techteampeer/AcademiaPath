@@ -219,9 +219,12 @@ function CardShell({ course, role, children, actions }: { course: Course; role: 
   );
 }
 
+/** Column count follows the number of figures so rows stay even (literal classes for Tailwind). */
+const FIGURE_COLUMNS: Record<number, string> = { 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4', 5: 'sm:grid-cols-3' };
+
 function Figures({ items }: { items: Array<{ label: string; value: number; tone?: 'warn' }> }) {
   return (
-    <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <dl className={`grid grid-cols-2 gap-2 ${FIGURE_COLUMNS[items.length] ?? 'sm:grid-cols-4'}`}>
       {items.map((item) => (
         <div key={item.label} className={`rounded-lg px-3 py-2 ${item.tone === 'warn' && item.value > 0 ? 'bg-amber-50' : 'bg-slate-50'}`}>
           <dt className="text-xs text-slate-500">{item.label}</dt>
@@ -336,6 +339,7 @@ function TeachingCard({ course, role }: { course: Course; role: 'instructor' | '
             { label: t.dashboard.resources, value: byType('link') },
             { label: t.dashboard.quizzes, value: byType('quiz') },
             { label: t.dashboard.assignments, value: byType('assignment') },
+            { label: t.dashboard.documents, value: byType('file') },
           ]}
         />
       )}

@@ -1,24 +1,26 @@
 'use client';
 
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { Button } from '@/components/ui/Button';
+import type { Messages } from '@/lib/i18n/messages';
 
 export type CriterionDraft = { title: string; maxPoints: string; description: string };
 export const RUBRIC_LIMITS = { criteria: 20, title: 200, description: 1000, maxPoints: 100 } as const;
 export const emptyCriterion = (): CriterionDraft => ({ title: '', maxPoints: '', description: '' });
 
-/** Returns an error message, or null when every criterion is valid. */
-export function validateRubric(criteria: CriterionDraft[]): string | null {
-  if (!criteria.length) return 'Add at least one rubric criterion.';
-  if (criteria.length > RUBRIC_LIMITS.criteria) return `Use at most ${RUBRIC_LIMITS.criteria} criteria.`;
+/** Returns an error message (in the interface language), or null when every criterion is valid. */
+export function validateRubric(criteria: CriterionDraft[], r: Messages['assignments']['rubric']): string | null {
+  if (!criteria.length) return r.atLeastOne;
+  if (criteria.length > RUBRIC_LIMITS.criteria) return r.atMost(RUBRIC_LIMITS.criteria);
   for (const [index, criterion] of criteria.entries()) {
-    const label = `Criterion ${index + 1}`;
-    if (!criterion.title.trim()) return `${label}: enter a title.`;
-    if (criterion.title.length > RUBRIC_LIMITS.title) return `${label}: use at most ${RUBRIC_LIMITS.title} characters.`;
+    const n = index + 1;
+    if (!criterion.title.trim()) return r.enterTitle(n);
+    if (criterion.title.length > RUBRIC_LIMITS.title) return r.titleLength(n, RUBRIC_LIMITS.title);
     const points = Number(criterion.maxPoints);
     if (!/^\d+$/.test(criterion.maxPoints.trim()) || points < 1 || points > RUBRIC_LIMITS.maxPoints) {
-      return `${label}: maximum points must be a whole number from 1 to ${RUBRIC_LIMITS.maxPoints}.`;
+      return r.pointsRange(n, RUBRIC_LIMITS.maxPoints);
     }
-    if (criterion.description.length > RUBRIC_LIMITS.description) return `${label}: use at most ${RUBRIC_LIMITS.description} characters in the description.`;
+    if (criterion.description.length > RUBRIC_LIMITS.description) return r.descriptionLength(n, RUBRIC_LIMITS.description);
   }
   return null;
 }
@@ -35,16 +37,18 @@ export function RubricEditor({
   onChange: (criteria: CriterionDraft[]) => void;
   error?: string;
 }) {
+  const { t } = useLocale();
+  const r = t.assignments.rubric;
   const update = (index: number, change: Partial<CriterionDraft>) =>
     onChange(criteria.map((criterion, i) => (i === index ? { ...criterion, ...change } : criterion)));
   return (
     <fieldset className="space-y-3" aria-describedby={error ? `${idPrefix}-rubric-error` : undefined}>
-      <legend className="text-sm font-medium text-slate-800">Rubric criteria (points)</legend>
+      <legend className="text-sm font-medium text-slate-800">{r.legend}</legend>
       {criteria.map((criterion, index) => (
         <div key={index} className="grid gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-[1fr_8rem]">
           <div>
             <label htmlFor={`${idPrefix}-criterion-${index}-title`} className="block text-xs font-medium text-slate-700">
-              Criterion {index + 1} title
+              {r.criterionTitle(index + 1)}
             </label>
             <input
               id={`${idPrefix}-criterion-${index}-title`}
@@ -56,7 +60,7 @@ export function RubricEditor({
           </div>
           <div>
             <label htmlFor={`${idPrefix}-criterion-${index}-points`} className="block text-xs font-medium text-slate-700">
-              Criterion {index + 1} max points
+              {r.criterionPoints(index + 1)}
             </label>
             <input
               id={`${idPrefix}-criterion-${index}-points`}
@@ -68,7 +72,7 @@ export function RubricEditor({
           </div>
           <div className="sm:col-span-2">
             <label htmlFor={`${idPrefix}-criterion-${index}-description`} className="block text-xs font-medium text-slate-700">
-              Criterion {index + 1} description (optional)
+              {r.criterionDescription(index + 1)}
             </label>
             <input
               id={`${idPrefix}-criterion-${index}-description`}
@@ -81,7 +85,8 @@ export function RubricEditor({
           {criteria.length > 1 ? (
             <div className="sm:col-span-2">
               <Button variant="ghost" size="sm" onClick={() => onChange(criteria.filter((_, i) => i !== index))}>
-                Remove<span className="sr-only"> criterion {index + 1}</span>
+                {r.remove}
+                <span className="sr-only"> {r.criterionN(index + 1)}</span>
               </Button>
             </div>
           ) : null}
@@ -89,7 +94,7 @@ export function RubricEditor({
       ))}
       {criteria.length < RUBRIC_LIMITS.criteria ? (
         <Button variant="secondary" size="sm" onClick={() => onChange([...criteria, emptyCriterion()])}>
-          Add criterion
+          {r.add}
         </Button>
       ) : null}
       {error ? (

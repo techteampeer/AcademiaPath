@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/Badge';
 import { buttonClasses } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Breadcrumbs } from '@/components/ui/PageHeader';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { Activity, Course, CurrentUser, Section } from '@/lib/api/types';
@@ -126,9 +127,9 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
   return (
     <div className="space-y-8">
       <div>
-        {backLink}
+        <Breadcrumbs label={t.common.breadcrumb} items={[{ label: t.nav.myCourses, href: '/courses' }, { label: course.title }]} />
         <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{course.title}</h1>
+          <h1 className="text-2xl font-bold tracking-tight break-words text-slate-900 sm:text-3xl">{course.title}</h1>
           <CourseStatusBadge status={course.status} />
         </div>
         <p className="mt-1 text-sm text-slate-500">

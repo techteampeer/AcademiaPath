@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError, useCsrfAction } from '@/components/session/useCsrfAction';
 import { Alert } from '@/components/ui/Alert';
@@ -11,7 +12,7 @@ import { Card } from '@/components/ui/Card';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { StudentQuizAttemptSummary } from '@/lib/api/types';
-import { formatDateTime } from './quizDisplay';
+import { formatDateTimeOrDash } from '@/lib/i18n/messages';
 
 type State = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; summary: StudentQuizAttemptSummary };
 
@@ -19,6 +20,8 @@ type State = { status: 'loading' } | { status: 'error'; message: string } | { st
 export function QuizStudentPanel({ courseId, quizId }: { courseId: string; quizId: string }) {
   const router = useRouter();
   const { handleUnauthorized } = useSession();
+  const { t, locale } = useLocale();
+  const q = t.quiz.student;
   const [state, setState] = useState<State>({ status: 'loading' });
   const { run, pending, result } = useCsrfAction();
 
@@ -27,9 +30,9 @@ export function QuizStudentPanel({ courseId, quizId }: { courseId: string; quizI
       setState({ status: 'ready', summary: await api.myQuizAttempts(courseId, quizId) });
     } catch (error) {
       if (isApiError(error, 401)) handleUnauthorized();
-      setState({ status: 'error', message: describeApiError(error) });
+      setState({ status: 'error', message: describeApiError(error, locale) });
     }
-  }, [courseId, quizId, handleUnauthorized]);
+  }, [courseId, quizId, handleUnauthorized, locale]);
 
   useEffect(() => {
     void load();
@@ -44,60 +47,60 @@ export function QuizStudentPanel({ courseId, quizId }: { courseId: string; quizI
   return (
     <Card as="section" aria-labelledby="my-attempts-heading" className="space-y-4">
       <h2 id="my-attempts-heading" className="text-lg font-semibold text-slate-900">
-        Your attempts
+        {q.heading}
       </h2>
       {result ? <Alert tone={result.tone}>{result.message}</Alert> : null}
       {state.status === 'loading' ? (
         <p role="status" className="text-sm text-slate-600">
-          Loading your attempts…
+          {q.loading}
         </p>
       ) : state.status === 'error' ? (
         <Alert tone="error">{state.message}</Alert>
       ) : (
         <>
           <p className="text-sm text-slate-700">
-            Attempts used: {state.summary.attemptsUsed} of {state.summary.attemptLimit}
+            {q.used(state.summary.attemptsUsed, state.summary.attemptLimit)}
           </p>
           {state.summary.activeAttemptId ? (
             <Link href={`/courses/${courseId}/attempts/${state.summary.activeAttemptId}`} className={buttonClasses({})}>
-              Resume attempt
+              {q.resume}
             </Link>
           ) : state.summary.attemptsUsed < state.summary.attemptLimit ? (
             <div className="space-y-2">
               {state.summary.timeLimitMinutes ? (
                 <p className="text-sm text-slate-600">
-                  You will have {state.summary.timeLimitMinutes} minutes. The timer starts when you begin and is kept by the server.
+                  {q.timed(state.summary.timeLimitMinutes)}
                 </p>
               ) : null}
               <Button onClick={() => void start()} disabled={pending}>
-                {pending ? 'Starting…' : state.summary.attemptsUsed ? 'Start a new attempt' : 'Start quiz'}
+                {pending ? q.starting : state.summary.attemptsUsed ? q.startNew : q.start}
               </Button>
             </div>
           ) : (
-            <p className="text-sm text-slate-600">You have used all attempts for this quiz.</p>
+            <p className="text-sm text-slate-600">{q.noneLeft}</p>
           )}
           {state.summary.items.length ? (
             <ul className="space-y-2 text-sm">
               {state.summary.items.map((attempt) => (
                 <li key={attempt.id} className="rounded-lg border border-slate-200 p-3">
-                  <span className="font-medium text-slate-900">Attempt {attempt.attemptNumber}</span>
+                  <span className="font-medium text-slate-900">{q.attemptN(attempt.attemptNumber)}</span>
                   {' — '}
                   {attempt.status === 'in_progress'
-                    ? 'in progress'
-                    : `recorded ${formatDateTime(attempt.submittedAt)}${attempt.closedByTimeLimit ? ' (closed at the time limit)' : ''}`}
+                    ? q.inProgress
+                    : `${q.recorded(formatDateTimeOrDash(attempt.submittedAt, locale))}${attempt.closedByTimeLimit ? ` ${q.closedAtLimit}` : ''}`}
                 </li>
               ))}
             </ul>
           ) : null}
           {state.summary.gradeReleased ? (
             <p className="text-sm text-slate-700">
-              Your grade for this quiz has been released (best attempt).{' '}
+              {q.released}{' '}
               <Link href={`/courses/${courseId}/grades`} className="font-medium text-brand-700 hover:underline">
-                See my grades
+                {q.seeGrades}
               </Link>
             </p>
           ) : state.summary.items.some((attempt) => attempt.status === 'submitted') ? (
-            <p className="text-sm text-slate-600">Results have not been released yet. Your instructor will publish them later.</p>
+            <p className="text-sm text-slate-600">{q.notReleased}</p>
           ) : null}
         </>
       )}

@@ -1,22 +1,24 @@
-import type { DocumentFormat, DocumentSummary } from '@/lib/api/types';
+import type { DocumentFormat, DocumentSegment } from '@/lib/api/types';
+import type { Messages } from '@/lib/i18n/messages';
 
-export const FORMAT_LABELS: Record<DocumentFormat, string> = { pdf: 'PDF', docx: 'Word (.docx)', pptx: 'PowerPoint (.pptx)' };
+/** "3 pages", "1 slide", "7 paragraphs" in the interface language. */
+export function segmentCount(t: Messages, format: DocumentFormat, count: number): string {
+  const kind = format === 'pdf' ? 'page' : format === 'pptx' ? 'slide' : 'paragraph';
+  return t.documents.segments[kind](count);
+}
 
-const SEGMENT_NOUNS: Record<DocumentFormat, [string, string]> = {
-  pdf: ['page', 'pages'],
-  docx: ['paragraph', 'paragraphs'],
-  pptx: ['slide', 'slides'],
-};
+/**
+ * The server labels each block "Page 3", "Slide 2" or "Paragraph 5" (English). The label is rebuilt
+ * from the block's kind and number in the interface language; unknown labels are shown unchanged.
+ */
+export function segmentLabel(t: Messages, kind: DocumentSegment['kind'], label: string): string {
+  const number = /(\d+)$/.exec(label)?.[1];
+  return number ? t.documents.segmentLabel[kind](number) : label;
+}
 
-export const segmentNoun = (format: DocumentFormat, count: number) => SEGMENT_NOUNS[format][count === 1 ? 0 : 1];
-
-export const STRATEGY_LABELS: Record<DocumentSummary['strategy'], string> = {
-  key_sentences: 'Key sentences',
-  section_coverage: 'Section coverage',
-};
-
-export function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number, locale: 'en' | 'es'): string {
+  const format = (value: number) => value.toLocaleString(locale === 'es' ? 'es-PE' : 'en-US', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
   if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024) return `${format(bytes / 1024)} KB`;
+  return `${format(bytes / (1024 * 1024))} MB`;
 }
