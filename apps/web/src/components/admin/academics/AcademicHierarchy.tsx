@@ -36,7 +36,7 @@ function countBy(offerings: Course[] | null, key: 'programId' | 'templateId') {
 
 function HierarchyContent() {
   const { handleUnauthorized } = useSession();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -65,9 +65,9 @@ function HierarchyContent() {
       setData({ status: 'ready', value: { terms, programs, subjects } });
     } catch (error) {
       if (isApiError(error, 401)) handleUnauthorized();
-      setData({ status: 'error', message: describeApiError(error) });
+      setData({ status: 'error', message: describeApiError(error, locale) });
     }
-  }, [handleUnauthorized]);
+  }, [handleUnauthorized, locale]);
 
   useEffect(() => {
     void reload();
@@ -375,12 +375,13 @@ function TreeItem({
 }
 
 export function PanelPlaceholder({ title, description, children }: { title: string; description: string; children?: ReactNode }) {
+  const { t } = useLocale();
   return (
     <Card className="space-y-2">
       <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
       <p className="text-sm text-slate-600">{description}</p>
       {children}
-      <Badge tone="neutral">Administrators only</Badge>
+      <Badge tone="neutral">{t.setup.hierarchy.adminOnly}</Badge>
     </Card>
   );
 }

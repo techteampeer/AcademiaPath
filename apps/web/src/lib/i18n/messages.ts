@@ -3,6 +3,15 @@
  * lesson text and tutor quotations stay in the language they were written in.
  * `es` must provide every key of `en` (checked by TypeScript).
  */
+import { assignments } from './catalog/assignments';
+import { content } from './catalog/content';
+import { documents } from './catalog/documents';
+import { errors } from './catalog/errors';
+import { meta } from './catalog/meta';
+import { quiz } from './catalog/quiz';
+import { setup } from './catalog/setup';
+import { tutor } from './catalog/tutor';
+
 export type Locale = 'en' | 'es';
 export const LOCALES: Locale[] = ['en', 'es'];
 export const LOCALE_COOKIE = 'ap_locale';
@@ -133,6 +142,7 @@ const en = {
     resources: 'Resources',
     quizzes: 'Quizzes',
     assignments: 'Assignments',
+    documents: 'Documents',
     learningTitle: 'Learning',
     learningIntro: 'Your published courses.',
     toDo: 'To do',
@@ -227,6 +237,14 @@ const en = {
     assignment: 'Assignment',
     file: 'Document',
   },
+  content: content.en,
+  quiz: quiz.en,
+  assignments: assignments.en,
+  setup: setup.en,
+  documents: documents.en,
+  tutor: tutor.en,
+  errors: errors.en,
+  meta: meta.en,
   academics: {
     hierarchy: 'Hierarchy',
     treeLabel: 'Academic hierarchy',
@@ -374,6 +392,7 @@ const es: Messages = {
     resources: 'Recursos',
     quizzes: 'Cuestionarios',
     assignments: 'Tareas',
+    documents: 'Documentos',
     learningTitle: 'Aprendizaje',
     learningIntro: 'Tus cursos publicados.',
     toDo: 'Pendientes',
@@ -468,6 +487,14 @@ const es: Messages = {
     assignment: 'Tarea',
     file: 'Documento',
   },
+  content: content.es,
+  quiz: quiz.es,
+  assignments: assignments.es,
+  setup: setup.es,
+  documents: documents.es,
+  tutor: tutor.es,
+  errors: errors.es,
+  meta: meta.es,
   academics: {
     hierarchy: 'Jerarquía',
     treeLabel: 'Jerarquía académica',
@@ -499,4 +526,9 @@ export function formatDate(value: string, locale: Locale): string {
 
 export function formatDateTime(value: string, locale: Locale): string {
   return new Date(value).toLocaleString(locale === 'es' ? 'es-PE' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+/** Date and time in the interface language, or an em dash when there is no value. */
+export function formatDateTimeOrDash(value: string | null | undefined, locale: Locale): string {
+  return value ? formatDateTime(value, locale) : '—';
 }

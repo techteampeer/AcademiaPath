@@ -1,11 +1,12 @@
 import type { Metadata } from 'next';
+import { localizedTitle } from '@/lib/i18n/server';
 import { CourseGrid } from '@/components/courses/CourseGrid';
 import { Badge } from '@/components/ui/Badge';
 import { demoCourses } from '@/mocks/courses';
 
-export const metadata: Metadata = {
-  title: 'Course components preview',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return localizedTitle('preview');
+}
 
 export default function CourseComponentsPreviewPage() {
   return (

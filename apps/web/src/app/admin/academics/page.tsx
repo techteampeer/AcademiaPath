@@ -1,10 +1,11 @@
 import type { Metadata } from 'next';
+import { localizedTitle } from '@/lib/i18n/server';
 import { Suspense } from 'react';
 import { AcademicHierarchy } from '@/components/admin/academics/AcademicHierarchy';
 
-export const metadata: Metadata = {
-  title: 'Academic structure',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return localizedTitle('academicStructure');
+}
 
 export default function AcademicStructurePage() {
   // The hierarchy keeps its selection in the URL (search params), so it renders inside Suspense.

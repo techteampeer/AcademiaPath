@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { useCsrfAction } from '@/components/session/useCsrfAction';
 import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
@@ -9,7 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { api } from '@/lib/api/endpoints';
 import type { Activity, ActivityCreate } from '@/lib/api/types';
 import { ActivityForm } from './ActivityForm';
-import { ACTIVITY_TYPE_LABELS, ReviewStatusBadge, type ContentAbilities } from './contentDisplay';
+import { ReviewStatusBadge, type ContentAbilities } from './contentDisplay';
 
 export const lessonHref = (courseId: string, activityId: string) => `/courses/${courseId}/activities/${activityId}`;
 
@@ -29,13 +30,14 @@ export function SectionActivities({
   abilities: ContentAbilities;
   onChanged: () => Promise<void>;
 }) {
+  const { t } = useLocale();
   const [adding, setAdding] = useState(false);
   const { run, pending, result } = useCsrfAction();
 
   const create = async (value: ActivityCreate) => {
     const created = await run(
       (csrf) => api.createActivity(courseId, sectionId, value, csrf),
-      (activity) => `"${activity.title}" saved as a draft.`,
+      (activity) => t.content.section.savedDraft(activity.title),
     );
     if (created) {
       setAdding(false);
@@ -47,18 +49,18 @@ export function SectionActivities({
   return (
     <div className="mt-3 space-y-3">
       {items.length ? (
-        <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200" aria-label={`Content in ${sectionTitle}`}>
+        <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200" aria-label={t.content.section.contentIn(sectionTitle)}>
           {items.map((activity) => (
             <li key={activity.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
               <div className="min-w-0">
                 <Link href={lessonHref(courseId, activity.id)} className="font-medium text-brand-700 hover:underline">
                   {activity.title}
                 </Link>
-                <span className="ml-2 text-xs text-slate-500">{ACTIVITY_TYPE_LABELS[activity.type]}</span>
+                <span className="ml-2 text-xs text-slate-500">{t.activityType[activity.type]}</span>
               </div>
               {activity.review ? (
                 <div className="flex items-center gap-2">
-                  {activity.liveVersion && activity.review.status !== 'approved' ? <Badge tone="success">Live version published</Badge> : null}
+                  {activity.liveVersion && activity.review.status !== 'approved' ? <Badge tone="success">{t.content.section.livePublished}</Badge> : null}
                   <ReviewStatusBadge status={activity.review.status} />
                 </div>
               ) : null}
@@ -66,7 +68,7 @@ export function SectionActivities({
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-slate-500">No content yet.</p>
+        <p className="text-sm text-slate-500">{t.content.section.empty}</p>
       )}
 
       {result ? <Alert tone={result.tone}>{result.message}</Alert> : null}
@@ -74,10 +76,10 @@ export function SectionActivities({
       {abilities.edit ? (
         adding ? (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <h4 className="mb-3 text-sm font-semibold text-slate-900">Add content to {sectionTitle}</h4>
+            <h4 className="mb-3 text-sm font-semibold text-slate-900">{t.content.section.addTo(sectionTitle)}</h4>
             <ActivityForm
               idPrefix={`new-${sectionId}`}
-              submitLabel="Save draft"
+              submitLabel={t.content.section.saveDraft}
               pending={pending}
               onSubmit={create}
               onCancel={() => setAdding(false)}
@@ -85,7 +87,7 @@ export function SectionActivities({
           </div>
         ) : (
           <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
-            Add content
+            {t.content.section.addContent}
           </Button>
         )
       ) : null}
