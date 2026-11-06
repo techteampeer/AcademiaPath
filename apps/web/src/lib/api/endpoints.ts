@@ -1,6 +1,8 @@
 import { API_BASE, apiRequest, apiUpload } from './client';
 import type {
+  AccountInvitation,
   Activity,
+  ActivationPreview,
   ActivityCreate,
   AssignmentGradeInput,
   AssignmentSubmissionDetail,
@@ -19,7 +21,9 @@ import type {
   DocumentDetail,
   Enrollment,
   EnrollmentCreate,
+  EnrollmentImportResult,
   EnrollmentPage,
+  EnrollmentUpdate,
   Gradebook,
   GradeReleaseResult,
   LoginRequest,
@@ -50,9 +54,18 @@ import type {
   TermCreate,
   TermPage,
   TermUpdate,
+  UserCreate,
+  UserCreateResult,
+  UserDetail,
+  UserPage,
+  UserUpdate,
 } from './types';
 
 export type PageRequest = { cursor?: string | null; limit?: number };
+
+export type UserFilters = { q?: string; status?: 'active' | 'inactive' | ''; activation?: 'activated' | 'pending' | '' };
+
+const user = (id: string) => `/users/${encodeURIComponent(id)}`;
 
 function withPage(path: string, page?: PageRequest): string {
   const params = new URLSearchParams();
@@ -117,6 +130,28 @@ export const api = {
   listEnrollments: (courseId: string, page?: PageRequest) => apiRequest<EnrollmentPage>('GET', withPage(`${course(courseId)}/enrollments`, page)),
   createEnrollment: (courseId: string, body: EnrollmentCreate, csrfToken: string) =>
     apiRequest<Enrollment>('POST', `${course(courseId)}/enrollments`, { body, csrfToken }),
+  updateEnrollment: (courseId: string, enrollmentId: string, body: EnrollmentUpdate, csrfToken: string) =>
+    apiRequest<Enrollment>('PUT', `${course(courseId)}/enrollments/${encodeURIComponent(enrollmentId)}`, { body, csrfToken }),
+  importEnrollments: (courseId: string, csv: string, apply: boolean, csrfToken: string) =>
+    apiRequest<EnrollmentImportResult>('POST', `${course(courseId)}/enrollments/import`, { body: { csv, apply }, csrfToken }),
+
+  // User accounts (administrators). Passwords and activation tokens are never returned by these reads.
+  listUsers: (filters: UserFilters, page?: PageRequest) => {
+    const path = withPage('/users', page);
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
+    const query = params.toString();
+    return apiRequest<UserPage>('GET', query ? `${path}${path.includes('?') ? '&' : '?'}${query}` : path);
+  },
+  getUser: (id: string) => apiRequest<UserDetail>('GET', user(id)),
+  createUser: (body: UserCreate, csrfToken: string) => apiRequest<UserCreateResult>('POST', '/users', { body, csrfToken }),
+  updateUser: (id: string, body: UserUpdate, csrfToken: string) => apiRequest<UserDetail>('PUT', user(id), { body, csrfToken }),
+  deactivateUser: (id: string, csrfToken: string) => apiRequest<UserDetail>('POST', `${user(id)}/deactivate`, { csrfToken }),
+  reactivateUser: (id: string, csrfToken: string) => apiRequest<UserDetail>('POST', `${user(id)}/reactivate`, { csrfToken }),
+  issueInvitation: (id: string, csrfToken: string) => apiRequest<AccountInvitation>('POST', `${user(id)}/invitations`, { csrfToken }),
+  /** Public: the token travels in the request body only (never in a URL the server sees). */
+  previewActivation: (token: string) => apiRequest<ActivationPreview>('POST', '/auth/activation/preview', { body: { token } }),
+  activateAccount: (token: string, password: string) => apiRequest<void>('POST', '/auth/activate', { body: { token, password } }),
 
   listActivities: (courseId: string, sectionId: string, page?: PageRequest) =>
     apiRequest<ActivityPage>('GET', withPage(sectionActivities(courseId, sectionId), page)),

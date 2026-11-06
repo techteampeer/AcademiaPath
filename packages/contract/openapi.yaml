@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.9.0
+  version: 0.10.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -65,6 +65,16 @@ info:
     connected yet (uploads are recorded as `not_scanned`). Documents use the content review
     workflow: approval freezes the document and the reviewed summary revision; refreshing the summary
     creates a new revision that students do not see until it is approved again.
+
+    User accounts: administrators list, create and edit accounts, deactivate and reactivate them,
+    and assign the system role and course roles (enrollments). There is one authentication system
+    (email and password with server-side sessions); no SSO. New accounts have no password: the user
+    sets one through a single-use activation link that expires (only a SHA-256 hash of its random
+    token is stored). Administrators can never read passwords or reuse a link. Local link delivery
+    (`ACCOUNT_INVITATION_DELIVERY=local_link`) shows the link to the administrator once, for synthetic
+    addresses only; it is a development-only stand-in for secure delivery and identity verification
+    and is refused in production. Deactivation revokes all sessions at once, and the last active
+    administrator can never be deactivated or demoted.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -75,6 +85,8 @@ tags:
     description: Sign-in, sign-out and CSRF bootstrap
   - name: Account
     description: The signed-in user
+  - name: Users
+    description: Account administration (administrators only)
   - name: Academic structure
     description: Programs, terms and versioned course templates (administrators only)
   - name: Courses
@@ -187,6 +199,71 @@ paths:
                 $ref: "#/components/schemas/CsrfTokenResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /api/v1/auth/activation/preview:
+    post:
+      operationId: previewAccountActivation
+      summary: Check an account activation link
+      description: |
+        Returns the name and email of the pending account an activation token belongs to, so the
+        activation page can show whom it activates. The token is sent in the body, never in a URL,
+        so it does not appear in server or proxy logs. Invalid, expired, used and revoked tokens all
+        receive the same `400 INVITATION_INVALID`. Rate limited per client IP address.
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivationPreviewRequest"
+      responses:
+        "200":
+          description: The token is valid.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivationPreview"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/auth/activate:
+    post:
+      operationId: activateAccount
+      summary: Activate a pending account by setting its password
+      description: |
+        Consumes a single-use activation token and sets the account's first password (hashed with
+        Argon2id). The token must be unused, unrevoked and unexpired, the account active and still
+        without a password; the token is claimed atomically, so it can never be used twice. Other
+        open activation links of the account are revoked. Does not sign in: the user then signs in
+        normally. Audited as `account.activated` (never with the token or password). Rate limited per
+        client IP address. Activation never resets the password of an activated account.
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivationRequest"
+      responses:
+        "204":
+          description: Account activated. Sign in with the new password.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+        "429":
+          $ref: "#/components/responses/RateLimited"
   /api/v1/me:
     get:
       operationId: getCurrentUser
@@ -210,6 +287,270 @@ paths:
                 $ref: "#/components/schemas/MeResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /api/v1/users:
+    get:
+      operationId: listUsers
+      summary: List and search user accounts
+      description: |
+        Administrators only. Ordered by email. `q` matches part of the email or full name
+        (case-insensitive). Never returns passwords, password hashes or activation tokens.
+      tags:
+        - Users
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: q
+          in: query
+          description: Text to find in the email or name.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+        - name: status
+          in: query
+          description: Only active or only deactivated accounts.
+          schema:
+            type: string
+            enum: [active, inactive]
+        - name: activation
+          in: query
+          description: Only accounts that have set a password (`activated`) or not yet (`pending`).
+          schema:
+            $ref: "#/components/schemas/UserActivationState"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of users.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createUser
+      summary: Create a user account
+      description: |
+        Administrators only. Creates an active account without a password (activation `pending`)
+        and, optionally, course enrollments with course-level roles. The email is trimmed and
+        lowercased and must be unique (case-insensitive). No default password is ever set: the user
+        sets one through a single-use, expiring activation link.
+
+        Activation links (`invitation`): when `ACCOUNT_INVITATION_DELIVERY=local_link` (development
+        only; refused in production) the link is returned once in this response, for synthetic
+        addresses on reserved domains (`.example`, `.test`, `.invalid`, `.localhost`,
+        `example.com/.net/.org`) only. Only a hash of the token is stored, so it can never be shown
+        again; issue a new one with `POST /users/{userId}/invitations`. Otherwise `invitation` is
+        `null` and `invitationStatus` says why.
+
+        Audited as `user.created`, `enrollment.created` and `user.invitation_issued`.
+      tags:
+        - Users
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreate"
+      responses:
+        "201":
+          description: Account created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserCreateResult"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/users/{userId}:
+    get:
+      operationId: getUser
+      summary: Get a user account with its course roles
+      description: Administrators only. Includes activation state and every enrollment (active and inactive).
+      tags:
+        - Users
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: The user.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateUser
+      summary: Update permitted account details
+      description: |
+        Administrators only. Send only the fields to change. The email can be corrected only while
+        the account is pending activation (open activation links are then revoked); afterwards it is
+        locked (`EMAIL_LOCKED`). Changing `systemRole` cannot remove the last active administrator
+        (`LAST_ADMINISTRATOR`), and administrators cannot change their own system role
+        (`SELF_ACCOUNT_CHANGE`). Passwords and activation state cannot be set here. Audited as
+        `user.updated`.
+      tags:
+        - Users
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: The updated user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/users/{userId}/deactivate:
+    post:
+      operationId: deactivateUser
+      summary: Deactivate an account
+      description: |
+        Administrators only. The account can no longer sign in, every existing session is revoked
+        immediately and open activation links are revoked. Enrollments, grades and history are kept.
+        The last active administrator cannot be deactivated (`LAST_ADMINISTRATOR`), and
+        administrators cannot deactivate themselves (`SELF_ACCOUNT_CHANGE`). Repeating the call on an
+        inactive account changes nothing. Send no request body. Audited as `user.deactivated`.
+      tags:
+        - Users
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: The deactivated user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/users/{userId}/reactivate:
+    post:
+      operationId: reactivateUser
+      summary: Reactivate a deactivated account
+      description: |
+        Administrators only. The user can sign in again with their own password; sessions and
+        activation links revoked at deactivation stay revoked. A pending account needs a new
+        activation link. Repeating the call on an active account changes nothing. Send no request
+        body. Audited as `user.reactivated`.
+      tags:
+        - Users
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: The reactivated user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/users/{userId}/invitations:
+    post:
+      operationId: issueUserInvitation
+      summary: Issue a new activation link for a pending account
+      description: |
+        Administrators only. Revokes the account's open activation links and issues a new
+        single-use link that expires after `ACCOUNT_INVITATION_TTL_HOURS` (default 72). Only for
+        active accounts that have not set a password (`ACCOUNT_ALREADY_ACTIVATED` otherwise): this is
+        not a password reset. Requires local link delivery (`INVITATIONS_DISABLED`) and a synthetic
+        address (`INVITATION_SYNTHETIC_ONLY`); see `POST /users`. Send no request body. Audited as
+        `user.invitation_issued`.
+      tags:
+        - Users
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "201":
+          description: Activation link issued (shown only in this response).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountInvitation"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
   /api/v1/programs:
     get:
       operationId: listPrograms
@@ -635,6 +976,97 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Enrollment"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/enrollments/{enrollmentId}:
+    put:
+      operationId: updateCourseEnrollment
+      summary: Change an enrollment's course role or status
+      description: |
+        Administrators only. The enrollment must belong to the course in the path (otherwise `404`).
+        Send `role`, `status` or both. Setting `status` to `inactive` removes the user's access to the
+        course while keeping their work and grades; `active` restores it (the account must be active).
+        A student enrollment with quiz attempts, submissions or grades cannot change to a staff role
+        (`ENROLLMENT_HAS_STUDENT_WORK`); set it inactive instead. Audited as `enrollment.updated`.
+      tags:
+        - Courses
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/EnrollmentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollmentUpdate"
+      responses:
+        "200":
+          description: The updated enrollment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Enrollment"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/enrollments/import:
+    post:
+      operationId: importCourseEnrollments
+      summary: Preview or apply a CSV of student enrollments
+      description: |
+        Administrators only. `csv` holds one `email` per line, optionally followed by `,role`, with an
+        optional `email,role` header (at most 500 rows). Bulk import only enrolls existing, active
+        accounts as `student` (or confirms an existing active student enrollment); staff roles are
+        assigned individually. Every row is validated and reported: `INVALID_EMAIL`,
+        `INVALID_ROW`, `INVALID_ROLE`, `ROLE_NOT_ALLOWED`, `DUPLICATE_ROW`, `USER_NOT_FOUND`,
+        `USER_INACTIVE`, `ROLE_CONFLICT` (enrolled with another role) or `ENROLLMENT_INACTIVE`.
+
+        With `apply: false` (default) nothing changes. With `apply: true` the import is all or
+        nothing: if any row has an error, nothing is applied (`422 IMPORT_HAS_ERRORS`); a concurrent
+        change rolls the whole import back (`409 IMPORT_CONFLICT`). Audited as `enrollment.created`
+        per new enrollment and `enrollments.imported`.
+      tags:
+        - Courses
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollmentImportRequest"
+      responses:
+        "200":
+          description: The validated rows, and whether they were applied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrollmentImportResult"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -1851,6 +2283,20 @@ components:
       schema:
         type: string
         format: uuid
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    EnrollmentId:
+      name: enrollmentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   securitySchemes:
     sessionCookie:
       type: apiKey
@@ -1869,6 +2315,20 @@ components:
         type: string
         const: no-store
   responses:
+    BadRequest:
+      description: |
+        The request is invalid (`VALIDATION_ERROR`), or the activation token is invalid, expired,
+        already used or revoked (`INVITATION_INVALID`; one code for all, so tokens cannot be probed).
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: about:blank
+            title: Bad Request
+            status: 400
+            detail: This activation link is invalid, has expired or was already used.
+            code: INVITATION_INVALID
     ValidationError:
       description: "The request body is missing or invalid (`code`: `VALIDATION_ERROR`)."
       content:
@@ -1897,7 +2357,7 @@ components:
             detail: Invalid email or password.
             code: INVALID_CREDENTIALS
     Forbidden:
-      description: "`code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` or `SELF_REVIEW_NOT_ALLOWED`."
+      description: "`code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint) or `SELF_REVIEW_NOT_ALLOWED`."
       content:
         application/problem+json:
           schema:
@@ -1936,7 +2396,7 @@ components:
             detail: Only PDF (.pdf), Word (.docx) and PowerPoint (.pptx) files are accepted.
             code: UNSUPPORTED_FILE_TYPE
     RateLimited:
-      description: "Too many sign-in attempts or tutor requests (`code`: `RATE_LIMITED`)."
+      description: "Too many sign-in or activation attempts, or tutor requests (`code`: `RATE_LIMITED`)."
       headers:
         Retry-After:
           description: Seconds until another attempt is allowed.
@@ -1970,7 +2430,10 @@ components:
         `ENROLLMENT_EXISTS`, `TEMPLATE_CODE_TAKEN` or `TEMPLATE_VERSION_CONFLICT`; or an invalid review transition:
         `ACTIVITY_UNDER_REVIEW`, `INVALID_REVIEW_STATE`; or a quiz rule: `QUIZ_QUESTION_LIMIT`,
         `ATTEMPT_LIMIT_REACHED`, `ATTEMPT_NOT_IN_PROGRESS`, `ATTEMPT_EXPIRED`, `ATTEMPT_CONFLICT`; or an
-        assignment rule: `SUBMISSION_EXISTS`, `SUBMISSION_CLOSED`.
+        assignment rule: `SUBMISSION_EXISTS`, `SUBMISSION_CLOSED`; or an account rule: `EMAIL_TAKEN`,
+        `EMAIL_LOCKED`, `LAST_ADMINISTRATOR`, `SELF_ACCOUNT_CHANGE`, `INVITATIONS_DISABLED`,
+        `ACCOUNT_ALREADY_ACTIVATED`; or an enrollment rule: `ENROLLMENT_HAS_STUDENT_WORK`,
+        `IMPORT_CONFLICT`.
       content:
         application/problem+json:
           schema:
@@ -1991,7 +2454,9 @@ components:
         `INVALID_ANSWER_KEY`, `INVALID_ANSWER`, `INVALID_DUE_DATE` or `INVALID_RUBRIC_SCORES`; or a refused
         document upload: `FILE_SIGNATURE_MISMATCH` (content does not match the extension),
         `DOCUMENT_ENCRYPTED`, `DOCUMENT_MALFORMED`, `DOCUMENT_LIMITS_EXCEEDED` (decompressed size,
-        processing time or memory) or `MALWARE_DETECTED`.
+        processing time or memory) or `MALWARE_DETECTED`; or an account or enrollment rule:
+        `COURSE_NOT_FOUND`, `DUPLICATE_COURSE`, `INVITATION_SYNTHETIC_ONLY`, `PASSWORD_TOO_WEAK`,
+        `IMPORT_HAS_ERRORS` or `IMPORT_TOO_LARGE`.
       content:
         application/problem+json:
           schema:
@@ -2189,6 +2654,21 @@ components:
             - DOCUMENT_MALFORMED
             - DOCUMENT_LIMITS_EXCEEDED
             - MALWARE_DETECTED
+            - EMAIL_TAKEN
+            - EMAIL_LOCKED
+            - LAST_ADMINISTRATOR
+            - SELF_ACCOUNT_CHANGE
+            - INVITATIONS_DISABLED
+            - INVITATION_SYNTHETIC_ONLY
+            - ACCOUNT_ALREADY_ACTIVATED
+            - INVITATION_INVALID
+            - PASSWORD_TOO_WEAK
+            - COURSE_NOT_FOUND
+            - DUPLICATE_COURSE
+            - ENROLLMENT_HAS_STUDENT_WORK
+            - IMPORT_HAS_ERRORS
+            - IMPORT_TOO_LARGE
+            - IMPORT_CONFLICT
     Code:
       type: string
       minLength: 1
@@ -4132,3 +4612,372 @@ components:
         updatedAt:
           type: string
           format: date-time
+    SystemRole:
+      type: string
+      description: Platform-wide role. Only `administrator` grants system-level permissions.
+      enum: [administrator, user]
+    Locale:
+      type: string
+      enum: [es, en]
+    UserActivationState:
+      type: string
+      description: "`activated`: the user has set a password. `pending`: not yet (no password exists)."
+      enum: [activated, pending]
+    PersonName:
+      type: string
+      minLength: 1
+      maxLength: 100
+      pattern: "\\S"
+    UserSummary:
+      type: object
+      required: [id, email, givenName, familyName, systemRole, isActive, activationState, activeEnrollmentCount, courseRoles, createdAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        givenName:
+          type: string
+        familyName:
+          type: string
+        systemRole:
+          $ref: "#/components/schemas/SystemRole"
+        isActive:
+          type: boolean
+          description: Deactivated accounts cannot sign in and have no valid sessions.
+        activationState:
+          $ref: "#/components/schemas/UserActivationState"
+        activeEnrollmentCount:
+          type: integer
+          minimum: 0
+        courseRoles:
+          type: array
+          description: Distinct course roles held in active enrollments.
+          items:
+            $ref: "#/components/schemas/CourseRole"
+        createdAt:
+          type: string
+          format: date-time
+    UserPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserSummary"
+        nextCursor:
+          type: [string, "null"]
+    UserEnrollment:
+      type: object
+      description: One of the user's course enrollments (one course role per course).
+      required: [id, courseId, courseCode, courseTitle, courseStatus, termCode, role, status, createdAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        courseId:
+          type: string
+          format: uuid
+        courseCode:
+          type: string
+        courseTitle:
+          type: string
+        courseStatus:
+          $ref: "#/components/schemas/CourseStatus"
+        termCode:
+          type: string
+        role:
+          $ref: "#/components/schemas/CourseRole"
+        status:
+          type: string
+          enum: [active, inactive]
+        createdAt:
+          type: string
+          format: date-time
+    UserActivation:
+      type: object
+      required: [state, activatedAt, pendingInvitation]
+      additionalProperties: false
+      properties:
+        state:
+          $ref: "#/components/schemas/UserActivationState"
+        activatedAt:
+          type: [string, "null"]
+          format: date-time
+        pendingInvitation:
+          description: The open activation link, if any (its token is never returned again).
+          oneOf:
+            - type: object
+              required: [id, createdAt, expiresAt, expired]
+              additionalProperties: false
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                createdAt:
+                  type: string
+                  format: date-time
+                expiresAt:
+                  type: string
+                  format: date-time
+                expired:
+                  type: boolean
+            - type: "null"
+    UserDetail:
+      type: object
+      required: [id, email, givenName, familyName, systemRole, isActive, activationState, activeEnrollmentCount, courseRoles, createdAt, institutionalId, preferredLocale, updatedAt, activation, enrollments]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        givenName:
+          type: string
+        familyName:
+          type: string
+        systemRole:
+          $ref: "#/components/schemas/SystemRole"
+        isActive:
+          type: boolean
+        activationState:
+          $ref: "#/components/schemas/UserActivationState"
+        activeEnrollmentCount:
+          type: integer
+          minimum: 0
+        courseRoles:
+          type: array
+          items:
+            $ref: "#/components/schemas/CourseRole"
+        createdAt:
+          type: string
+          format: date-time
+        institutionalId:
+          type: [string, "null"]
+        preferredLocale:
+          $ref: "#/components/schemas/Locale"
+        updatedAt:
+          type: string
+          format: date-time
+        activation:
+          $ref: "#/components/schemas/UserActivation"
+        enrollments:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserEnrollment"
+    UserEnrollmentInput:
+      type: object
+      required: [courseId, role]
+      additionalProperties: false
+      properties:
+        courseId:
+          type: string
+          format: uuid
+        role:
+          $ref: "#/components/schemas/CourseRole"
+    UserCreate:
+      type: object
+      required: [email, givenName, familyName]
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 3
+          maxLength: 254
+        givenName:
+          $ref: "#/components/schemas/PersonName"
+        familyName:
+          $ref: "#/components/schemas/PersonName"
+        systemRole:
+          allOf:
+            - $ref: "#/components/schemas/SystemRole"
+          default: user
+        preferredLocale:
+          allOf:
+            - $ref: "#/components/schemas/Locale"
+          default: es
+        enrollments:
+          type: array
+          description: Initial course roles, one per course (`DUPLICATE_COURSE` otherwise).
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/UserEnrollmentInput"
+    UserUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 3
+          maxLength: 254
+        givenName:
+          $ref: "#/components/schemas/PersonName"
+        familyName:
+          $ref: "#/components/schemas/PersonName"
+        systemRole:
+          $ref: "#/components/schemas/SystemRole"
+        preferredLocale:
+          $ref: "#/components/schemas/Locale"
+    AccountInvitation:
+      type: object
+      description: |
+        A single-use activation link, returned only once when issued. `activationPath` is relative to
+        the web app origin; the token is in the URL fragment so browsers never send it to a server.
+        Synthetic local demonstration only (local link delivery).
+      required: [id, expiresAt, delivery, activationPath]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        expiresAt:
+          type: string
+          format: date-time
+        delivery:
+          type: string
+          enum: [local_link]
+        activationPath:
+          type: string
+          description: "`/activate#token=…`"
+    UserCreateResult:
+      type: object
+      required: [user, invitation, invitationStatus]
+      additionalProperties: false
+      properties:
+        user:
+          $ref: "#/components/schemas/UserDetail"
+        invitation:
+          oneOf:
+            - $ref: "#/components/schemas/AccountInvitation"
+            - type: "null"
+        invitationStatus:
+          type: string
+          description: |
+            `issued`: a local activation link is included. `disabled`: activation links are turned off
+            in this environment. `synthetic_only`: local links are only issued for synthetic addresses.
+          enum: [issued, disabled, synthetic_only]
+    ActivationPreviewRequest:
+      type: object
+      required: [token]
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          minLength: 1
+          maxLength: 128
+          writeOnly: true
+    ActivationPreview:
+      type: object
+      required: [email, givenName, familyName, expiresAt]
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+        givenName:
+          type: string
+        familyName:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+    ActivationRequest:
+      type: object
+      required: [token, password]
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          minLength: 1
+          maxLength: 128
+          writeOnly: true
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          description: 12 to 256 characters; must not contain the account's email name (`PASSWORD_TOO_WEAK`).
+          minLength: 12
+          maxLength: 256
+    EnrollmentUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        role:
+          $ref: "#/components/schemas/CourseRole"
+        status:
+          type: string
+          enum: [active, inactive]
+    EnrollmentImportRequest:
+      type: object
+      required: [csv]
+      additionalProperties: false
+      properties:
+        csv:
+          type: string
+          minLength: 1
+          maxLength: 100000
+        apply:
+          type: boolean
+          default: false
+    EnrollmentImportRow:
+      type: object
+      required: [line, email, role, outcome, errorCode]
+      additionalProperties: false
+      properties:
+        line:
+          type: integer
+          description: Line number in the CSV text (1-based).
+        email:
+          type: string
+        role:
+          type: [string, "null"]
+        outcome:
+          type: string
+          description: "`create`: will be (or was) enrolled. `unchanged`: already an active student. `error`: see `errorCode`."
+          enum: [create, unchanged, error]
+        errorCode:
+          type: [string, "null"]
+          enum:
+            - INVALID_ROW
+            - INVALID_EMAIL
+            - INVALID_ROLE
+            - ROLE_NOT_ALLOWED
+            - DUPLICATE_ROW
+            - USER_NOT_FOUND
+            - USER_INACTIVE
+            - ROLE_CONFLICT
+            - ENROLLMENT_INACTIVE
+            - null
+    EnrollmentImportResult:
+      type: object
+      required: [applied, rows, summary]
+      additionalProperties: false
+      properties:
+        applied:
+          type: boolean
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/EnrollmentImportRow"
+        summary:
+          type: object
+          required: [total, create, unchanged, errors]
+          additionalProperties: false
+          properties:
+            total:
+              type: integer
+            create:
+              type: integer
+            unchanged:
+              type: integer
+            errors:
+              type: integer

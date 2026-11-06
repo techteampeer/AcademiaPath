@@ -85,3 +85,17 @@ export type ProgramUpdate = Schemas['ProgramUpdate'];
 export type TermUpdate = Schemas['TermUpdate'];
 export type CourseTemplateDetail = Schemas['CourseTemplateDetail'];
 export type EnrollmentPage = Schemas['EnrollmentPage'];
+
+export type SystemRole = Schemas['SystemRole'];
+export type UserSummary = Schemas['UserSummary'];
+export type UserPage = Schemas['UserPage'];
+export type UserDetail = Schemas['UserDetail'];
+export type UserEnrollment = Schemas['UserEnrollment'];
+export type UserCreate = Schemas['UserCreate'];
+export type UserUpdate = Schemas['UserUpdate'];
+export type UserCreateResult = Schemas['UserCreateResult'];
+export type AccountInvitation = Schemas['AccountInvitation'];
+export type ActivationPreview = Schemas['ActivationPreview'];
+export type EnrollmentUpdate = Schemas['EnrollmentUpdate'];
+export type EnrollmentImportResult = Schemas['EnrollmentImportResult'];
+export type EnrollmentImportRow = Schemas['EnrollmentImportRow'];

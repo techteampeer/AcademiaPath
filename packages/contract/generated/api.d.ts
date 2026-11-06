@@ -83,6 +83,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/activation/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check an account activation link
+         * @description Returns the name and email of the pending account an activation token belongs to, so the
+         *     activation page can show whom it activates. The token is sent in the body, never in a URL,
+         *     so it does not appear in server or proxy logs. Invalid, expired, used and revoked tokens all
+         *     receive the same `400 INVITATION_INVALID`. Rate limited per client IP address.
+         */
+        post: operations["previewAccountActivation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate a pending account by setting its password
+         * @description Consumes a single-use activation token and sets the account's first password (hashed with
+         *     Argon2id). The token must be unused, unrevoked and unexpired, the account active and still
+         *     without a password; the token is claimed atomically, so it can never be used twice. Other
+         *     open activation links of the account are revoked. Does not sign in: the user then signs in
+         *     normally. Audited as `account.activated` (never with the token or password). Rate limited per
+         *     client IP address. Activation never resets the password of an activated account.
+         */
+        post: operations["activateAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -98,6 +146,144 @@ export interface paths {
         get: operations["getCurrentUser"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List and search user accounts
+         * @description Administrators only. Ordered by email. `q` matches part of the email or full name
+         *     (case-insensitive). Never returns passwords, password hashes or activation tokens.
+         */
+        get: operations["listUsers"];
+        put?: never;
+        /**
+         * Create a user account
+         * @description Administrators only. Creates an active account without a password (activation `pending`)
+         *     and, optionally, course enrollments with course-level roles. The email is trimmed and
+         *     lowercased and must be unique (case-insensitive). No default password is ever set: the user
+         *     sets one through a single-use, expiring activation link.
+         *
+         *     Activation links (`invitation`): when `ACCOUNT_INVITATION_DELIVERY=local_link` (development
+         *     only; refused in production) the link is returned once in this response, for synthetic
+         *     addresses on reserved domains (`.example`, `.test`, `.invalid`, `.localhost`,
+         *     `example.com/.net/.org`) only. Only a hash of the token is stored, so it can never be shown
+         *     again; issue a new one with `POST /users/{userId}/invitations`. Otherwise `invitation` is
+         *     `null` and `invitationStatus` says why.
+         *
+         *     Audited as `user.created`, `enrollment.created` and `user.invitation_issued`.
+         */
+        post: operations["createUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a user account with its course roles
+         * @description Administrators only. Includes activation state and every enrollment (active and inactive).
+         */
+        get: operations["getUser"];
+        /**
+         * Update permitted account details
+         * @description Administrators only. Send only the fields to change. The email can be corrected only while
+         *     the account is pending activation (open activation links are then revoked); afterwards it is
+         *     locked (`EMAIL_LOCKED`). Changing `systemRole` cannot remove the last active administrator
+         *     (`LAST_ADMINISTRATOR`), and administrators cannot change their own system role
+         *     (`SELF_ACCOUNT_CHANGE`). Passwords and activation state cannot be set here. Audited as
+         *     `user.updated`.
+         */
+        put: operations["updateUser"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{userId}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deactivate an account
+         * @description Administrators only. The account can no longer sign in, every existing session is revoked
+         *     immediately and open activation links are revoked. Enrollments, grades and history are kept.
+         *     The last active administrator cannot be deactivated (`LAST_ADMINISTRATOR`), and
+         *     administrators cannot deactivate themselves (`SELF_ACCOUNT_CHANGE`). Repeating the call on an
+         *     inactive account changes nothing. Send no request body. Audited as `user.deactivated`.
+         */
+        post: operations["deactivateUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{userId}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reactivate a deactivated account
+         * @description Administrators only. The user can sign in again with their own password; sessions and
+         *     activation links revoked at deactivation stay revoked. A pending account needs a new
+         *     activation link. Repeating the call on an active account changes nothing. Send no request
+         *     body. Audited as `user.reactivated`.
+         */
+        post: operations["reactivateUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{userId}/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a new activation link for a pending account
+         * @description Administrators only. Revokes the account's open activation links and issues a new
+         *     single-use link that expires after `ACCOUNT_INVITATION_TTL_HOURS` (default 72). Only for
+         *     active accounts that have not set a password (`ACCOUNT_ALREADY_ACTIVATED` otherwise): this is
+         *     not a password reset. Requires local link delivery (`INVITATIONS_DISABLED`) and a synthetic
+         *     address (`INVITATION_SYNTHETIC_ONLY`); see `POST /users`. Send no request body. Audited as
+         *     `user.invitation_issued`.
+         */
+        post: operations["issueUserInvitation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -304,6 +490,60 @@ export interface paths {
          *     one enrollment (one role) per course. Audited as `enrollment.created`.
          */
         post: operations["createCourseEnrollment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/enrollments/{enrollmentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change an enrollment's course role or status
+         * @description Administrators only. The enrollment must belong to the course in the path (otherwise `404`).
+         *     Send `role`, `status` or both. Setting `status` to `inactive` removes the user's access to the
+         *     course while keeping their work and grades; `active` restores it (the account must be active).
+         *     A student enrollment with quiz attempts, submissions or grades cannot change to a staff role
+         *     (`ENROLLMENT_HAS_STUDENT_WORK`); set it inactive instead. Audited as `enrollment.updated`.
+         */
+        put: operations["updateCourseEnrollment"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/enrollments/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview or apply a CSV of student enrollments
+         * @description Administrators only. `csv` holds one `email` per line, optionally followed by `,role`, with an
+         *     optional `email,role` header (at most 500 rows). Bulk import only enrolls existing, active
+         *     accounts as `student` (or confirms an existing active student enrollment); staff roles are
+         *     assigned individually. Every row is validated and reported: `INVALID_EMAIL`,
+         *     `INVALID_ROW`, `INVALID_ROLE`, `ROLE_NOT_ALLOWED`, `DUPLICATE_ROW`, `USER_NOT_FOUND`,
+         *     `USER_INACTIVE`, `ROLE_CONFLICT` (enrolled with another role) or `ENROLLMENT_INACTIVE`.
+         *
+         *     With `apply: false` (default) nothing changes. With `apply: true` the import is all or
+         *     nothing: if any row has an error, nothing is applied (`422 IMPORT_HAS_ERRORS`); a concurrent
+         *     change rolls the whole import back (`409 IMPORT_CONFLICT`). Audited as `enrollment.created`
+         *     per new enrollment and `enrollments.imported`.
+         */
+        post: operations["importCourseEnrollments"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1040,7 +1280,7 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT";
         };
         Code: string;
         /**
@@ -1997,8 +2237,214 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        /**
+         * @description Platform-wide role. Only `administrator` grants system-level permissions.
+         * @enum {string}
+         */
+        SystemRole: "administrator" | "user";
+        /** @enum {string} */
+        Locale: "es" | "en";
+        /**
+         * @description `activated`: the user has set a password. `pending`: not yet (no password exists).
+         * @enum {string}
+         */
+        UserActivationState: "activated" | "pending";
+        PersonName: string;
+        UserSummary: {
+            /** Format: uuid */
+            id: string;
+            email: string;
+            givenName: string;
+            familyName: string;
+            systemRole: components["schemas"]["SystemRole"];
+            /** @description Deactivated accounts cannot sign in and have no valid sessions. */
+            isActive: boolean;
+            activationState: components["schemas"]["UserActivationState"];
+            activeEnrollmentCount: number;
+            /** @description Distinct course roles held in active enrollments. */
+            courseRoles: components["schemas"]["CourseRole"][];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        UserPage: {
+            items: components["schemas"]["UserSummary"][];
+            nextCursor: string | null;
+        };
+        /** @description One of the user's course enrollments (one course role per course). */
+        UserEnrollment: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            courseId: string;
+            courseCode: string;
+            courseTitle: string;
+            courseStatus: components["schemas"]["CourseStatus"];
+            termCode: string;
+            role: components["schemas"]["CourseRole"];
+            /** @enum {string} */
+            status: "active" | "inactive";
+            /** Format: date-time */
+            createdAt: string;
+        };
+        UserActivation: {
+            state: components["schemas"]["UserActivationState"];
+            /** Format: date-time */
+            activatedAt: string | null;
+            /** @description The open activation link, if any (its token is never returned again). */
+            pendingInvitation: {
+                /** Format: uuid */
+                id: string;
+                /** Format: date-time */
+                createdAt: string;
+                /** Format: date-time */
+                expiresAt: string;
+                expired: boolean;
+            } | null;
+        };
+        UserDetail: {
+            /** Format: uuid */
+            id: string;
+            email: string;
+            givenName: string;
+            familyName: string;
+            systemRole: components["schemas"]["SystemRole"];
+            isActive: boolean;
+            activationState: components["schemas"]["UserActivationState"];
+            activeEnrollmentCount: number;
+            courseRoles: components["schemas"]["CourseRole"][];
+            /** Format: date-time */
+            createdAt: string;
+            institutionalId: string | null;
+            preferredLocale: components["schemas"]["Locale"];
+            /** Format: date-time */
+            updatedAt: string;
+            activation: components["schemas"]["UserActivation"];
+            enrollments: components["schemas"]["UserEnrollment"][];
+        };
+        UserEnrollmentInput: {
+            /** Format: uuid */
+            courseId: string;
+            role: components["schemas"]["CourseRole"];
+        };
+        UserCreate: {
+            /** Format: email */
+            email: string;
+            givenName: components["schemas"]["PersonName"];
+            familyName: components["schemas"]["PersonName"];
+            /** @default user */
+            systemRole: components["schemas"]["SystemRole"];
+            /** @default es */
+            preferredLocale: components["schemas"]["Locale"];
+            /** @description Initial course roles, one per course (`DUPLICATE_COURSE` otherwise). */
+            enrollments?: components["schemas"]["UserEnrollmentInput"][];
+        };
+        UserUpdate: {
+            /** Format: email */
+            email?: string;
+            givenName?: components["schemas"]["PersonName"];
+            familyName?: components["schemas"]["PersonName"];
+            systemRole?: components["schemas"]["SystemRole"];
+            preferredLocale?: components["schemas"]["Locale"];
+        };
+        /**
+         * @description A single-use activation link, returned only once when issued. `activationPath` is relative to
+         *     the web app origin; the token is in the URL fragment so browsers never send it to a server.
+         *     Synthetic local demonstration only (local link delivery).
+         */
+        AccountInvitation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @enum {string} */
+            delivery: "local_link";
+            /** @description `/activate#token=…` */
+            activationPath: string;
+        };
+        UserCreateResult: {
+            user: components["schemas"]["UserDetail"];
+            invitation: components["schemas"]["AccountInvitation"] | null;
+            /**
+             * @description `issued`: a local activation link is included. `disabled`: activation links are turned off
+             *     in this environment. `synthetic_only`: local links are only issued for synthetic addresses.
+             * @enum {string}
+             */
+            invitationStatus: "issued" | "disabled" | "synthetic_only";
+        };
+        ActivationPreviewRequest: {
+            token: string;
+        };
+        ActivationPreview: {
+            email: string;
+            givenName: string;
+            familyName: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        ActivationRequest: {
+            token: string;
+            /**
+             * Format: password
+             * @description 12 to 256 characters; must not contain the account's email name (`PASSWORD_TOO_WEAK`).
+             */
+            password: string;
+        };
+        EnrollmentUpdate: {
+            role?: components["schemas"]["CourseRole"];
+            /** @enum {string} */
+            status?: "active" | "inactive";
+        };
+        EnrollmentImportRequest: {
+            csv: string;
+            /** @default false */
+            apply: boolean;
+        };
+        EnrollmentImportRow: {
+            /** @description Line number in the CSV text (1-based). */
+            line: number;
+            email: string;
+            role: string | null;
+            /**
+             * @description `create`: will be (or was) enrolled. `unchanged`: already an active student. `error`: see `errorCode`.
+             * @enum {string}
+             */
+            outcome: "create" | "unchanged" | "error";
+            /** @enum {string|null} */
+            errorCode: "INVALID_ROW" | "INVALID_EMAIL" | "INVALID_ROLE" | "ROLE_NOT_ALLOWED" | "DUPLICATE_ROW" | "USER_NOT_FOUND" | "USER_INACTIVE" | "ROLE_CONFLICT" | "ENROLLMENT_INACTIVE" | null;
+        };
+        EnrollmentImportResult: {
+            applied: boolean;
+            rows: components["schemas"]["EnrollmentImportRow"][];
+            summary: {
+                total: number;
+                create: number;
+                unchanged: number;
+                errors: number;
+            };
+        };
     };
     responses: {
+        /**
+         * @description The request is invalid (`VALIDATION_ERROR`), or the activation token is invalid, expired,
+         *     already used or revoked (`INVITATION_INVALID`; one code for all, so tokens cannot be probed).
+         */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "type": "about:blank",
+                 *       "title": "Bad Request",
+                 *       "status": 400,
+                 *       "detail": "This activation link is invalid, has expired or was already used.",
+                 *       "code": "INVITATION_INVALID"
+                 *     }
+                 */
+                "application/problem+json": components["schemas"]["ProblemDetails"];
+            };
+        };
         /** @description The request body is missing or invalid (`code`: `VALIDATION_ERROR`). */
         ValidationError: {
             headers: {
@@ -2039,7 +2485,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
-        /** @description `code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` or `SELF_REVIEW_NOT_ALLOWED`. */
+        /** @description `code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint) or `SELF_REVIEW_NOT_ALLOWED`. */
         Forbidden: {
             headers: {
                 [name: string]: unknown;
@@ -2097,7 +2543,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
-        /** @description Too many sign-in attempts or tutor requests (`code`: `RATE_LIMITED`). */
+        /** @description Too many sign-in or activation attempts, or tutor requests (`code`: `RATE_LIMITED`). */
         RateLimited: {
             headers: {
                 /** @description Seconds until another attempt is allowed. */
@@ -2140,7 +2586,10 @@ export interface components {
          *     `ENROLLMENT_EXISTS`, `TEMPLATE_CODE_TAKEN` or `TEMPLATE_VERSION_CONFLICT`; or an invalid review transition:
          *     `ACTIVITY_UNDER_REVIEW`, `INVALID_REVIEW_STATE`; or a quiz rule: `QUIZ_QUESTION_LIMIT`,
          *     `ATTEMPT_LIMIT_REACHED`, `ATTEMPT_NOT_IN_PROGRESS`, `ATTEMPT_EXPIRED`, `ATTEMPT_CONFLICT`; or an
-         *     assignment rule: `SUBMISSION_EXISTS`, `SUBMISSION_CLOSED`.
+         *     assignment rule: `SUBMISSION_EXISTS`, `SUBMISSION_CLOSED`; or an account rule: `EMAIL_TAKEN`,
+         *     `EMAIL_LOCKED`, `LAST_ADMINISTRATOR`, `SELF_ACCOUNT_CHANGE`, `INVITATIONS_DISABLED`,
+         *     `ACCOUNT_ALREADY_ACTIVATED`; or an enrollment rule: `ENROLLMENT_HAS_STUDENT_WORK`,
+         *     `IMPORT_CONFLICT`.
          */
         Conflict: {
             headers: {
@@ -2168,7 +2617,9 @@ export interface components {
          *     `INVALID_ANSWER_KEY`, `INVALID_ANSWER`, `INVALID_DUE_DATE` or `INVALID_RUBRIC_SCORES`; or a refused
          *     document upload: `FILE_SIGNATURE_MISMATCH` (content does not match the extension),
          *     `DOCUMENT_ENCRYPTED`, `DOCUMENT_MALFORMED`, `DOCUMENT_LIMITS_EXCEEDED` (decompressed size,
-         *     processing time or memory) or `MALWARE_DETECTED`.
+         *     processing time or memory) or `MALWARE_DETECTED`; or an account or enrollment rule:
+         *     `COURSE_NOT_FOUND`, `DUPLICATE_COURSE`, `INVITATION_SYNTHETIC_ONLY`, `PASSWORD_TOO_WEAK`,
+         *     `IMPORT_HAS_ERRORS` or `IMPORT_TOO_LARGE`.
          */
         UnprocessableContent: {
             headers: {
@@ -2202,6 +2653,8 @@ export interface components {
         TemplateId: string;
         AttemptId: string;
         SubmissionId: string;
+        UserId: string;
+        EnrollmentId: string;
     };
     requestBodies: never;
     headers: {
@@ -2307,6 +2760,60 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    previewAccountActivation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivationPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description The token is valid. */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivationPreview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    activateAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivationRequest"];
+            };
+        };
+        responses: {
+            /** @description Account activated. Sign in with the new password. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableContent"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
     getCurrentUser: {
         parameters: {
             query?: never;
@@ -2327,6 +2834,209 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    listUsers: {
+        parameters: {
+            query?: {
+                /** @description Text to find in the email or name. */
+                q?: string;
+                /** @description Only active or only deactivated accounts. */
+                status?: "active" | "inactive";
+                /** @description Only accounts that have set a password (`activated`) or not yet (`pending`). */
+                activation?: components["schemas"]["UserActivationState"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from the previous page's `nextCursor`. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of users. */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserPage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserCreate"];
+            };
+        };
+        responses: {
+            /** @description Account created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserCreateResult"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    getUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The user. */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDetail"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserUpdate"];
+            };
+        };
+        responses: {
+            /** @description The updated user. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDetail"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deactivateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The deactivated user. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDetail"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    reactivateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The reactivated user. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDetail"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    issueUserInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Activation link issued (shown only in this response). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountInvitation"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
         };
     };
     listPrograms: {
@@ -2724,6 +3434,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Enrollment"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    updateCourseEnrollment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                enrollmentId: components["parameters"]["EnrollmentId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnrollmentUpdate"];
+            };
+        };
+        responses: {
+            /** @description The updated enrollment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Enrollment"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    importCourseEnrollments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnrollmentImportRequest"];
+            };
+        };
+        responses: {
+            /** @description The validated rows, and whether they were applied. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentImportResult"];
                 };
             };
             400: components["responses"]["ValidationError"];

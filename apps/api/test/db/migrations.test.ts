@@ -88,6 +88,7 @@ describe('database migrations (PostgreSQL)', { skip: testServerUrl ? false : 'TE
     assert.deepEqual(
       rows.map((r) => r.table_name),
       [
+        'account_invitations',
         'activities',
         'assignment_criterion_scores',
         'assignment_submissions',

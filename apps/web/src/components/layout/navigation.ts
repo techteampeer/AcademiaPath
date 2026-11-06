@@ -48,6 +48,7 @@ export function buildNavigation(
       title: t.nav.administration,
       items: [
         { href: '/admin', label: t.nav.adminOverview, exact: true },
+        { href: '/admin/users', label: t.nav.users },
         { href: '/admin/academics', label: t.nav.academicStructure },
         { href: '/admin/programs', label: t.nav.programsSubjects },
         { href: '/admin/courses', label: t.nav.coursesEnrollments },
