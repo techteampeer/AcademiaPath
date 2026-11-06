@@ -99,3 +99,9 @@ export type ActivationPreview = Schemas['ActivationPreview'];
 export type EnrollmentUpdate = Schemas['EnrollmentUpdate'];
 export type EnrollmentImportResult = Schemas['EnrollmentImportResult'];
 export type EnrollmentImportRow = Schemas['EnrollmentImportRow'];
+
+export type CourseUpdate = Schemas['CourseUpdate'];
+export type CourseLifecycle = Schemas['CourseLifecycle'];
+export type SectionCreate = Schemas['SectionCreate'];
+export type SectionUpdate = Schemas['SectionUpdate'];
+export type SectionList = Schemas['SectionList'];

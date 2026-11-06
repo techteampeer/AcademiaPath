@@ -8,6 +8,7 @@ import {
   enrollments,
   grades,
   quizAttempts,
+  tutorUsage,
   users,
   type CourseRole,
   type EnrollmentStatus,
@@ -132,6 +133,42 @@ export const enrollmentRoutes: FastifyPluginAsync = async (app) => {
         });
         return present(updated);
       });
+    },
+  );
+
+  app.delete<{ Params: EnrollmentParams }>(
+    '/courses/:id/enrollments/:enrollmentId',
+    { ...adminWrite, schema: { params: enrollmentParamsSchema } },
+    async (request, reply) => {
+      await db.transaction(async (tx) => {
+        // Scoped to the course in the path: an enrollment of another course is "not found".
+        const [enrollment] = await tx
+          .select()
+          .from(enrollments)
+          .where(and(eq(enrollments.id, request.params.enrollmentId), eq(enrollments.courseId, request.params.id)))
+          .for('update');
+        if (!enrollment) throw enrollmentNotFound();
+        // Only a mistaken enrollment without any history can be removed; history is never deleted.
+        for (const table of [quizAttempts, assignmentSubmissions, grades, tutorUsage]) {
+          const [found] = await tx.select({ one: sql`1` }).from(table).where(eq(table.enrollmentId, enrollment.id)).limit(1);
+          if (found) {
+            throw new ApiProblem(
+              409,
+              'ENROLLMENT_HAS_HISTORY',
+              'This enrollment has quiz attempts, submissions, grades or tutor activity. Set it inactive instead; its history is kept.',
+            );
+          }
+        }
+        await tx.delete(enrollments).where(eq(enrollments.id, enrollment.id));
+        await recordAudit(tx, request, {
+          action: 'enrollment.deleted',
+          entityType: 'enrollment',
+          entityId: enrollment.id,
+          before: { courseId: enrollment.courseId, userId: enrollment.userId, role: enrollment.role, status: enrollment.status },
+          after: null,
+        });
+      });
+      return reply.code(204).send();
     },
   );
 

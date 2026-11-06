@@ -14,6 +14,12 @@ const en = {
   coursesEnrollments: 'Courses & enrollments',
   courseSetup: 'Course setup',
   preview: 'Course components preview',
+  users: 'Users',
+  newUser: 'New user',
+  user: 'User',
+  bulkEnroll: 'Bulk student enrollment',
+  activate: 'Activate account',
+  manageCourse: 'Manage course',
   description: 'AcademiaPath — institutional learning platform for universities.',
 };
 
@@ -34,6 +40,12 @@ const es: MetaMessages = {
   coursesEnrollments: 'Cursos y matrículas',
   courseSetup: 'Configuración de cursos',
   preview: 'Vista previa de componentes de curso',
+  users: 'Usuarios',
+  newUser: 'Nuevo usuario',
+  user: 'Usuario',
+  bulkEnroll: 'Matrícula masiva de estudiantes',
+  activate: 'Activar cuenta',
+  manageCourse: 'Gestionar curso',
   description: 'AcademiaPath — plataforma institucional de aprendizaje para universidades.',
 };
 

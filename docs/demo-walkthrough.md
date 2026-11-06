@@ -164,7 +164,7 @@ Release publishes the current grades of every graded student for that activity. 
 ### Student
 **12. See released grades.** As `student@`, open ITIL 4 Foundation → **My grades**. The released quiz and assignment appear on the 0–20 scale with feedback. Project Management Fundamentals already shows released grades (15 and 18). Introduction to AI shows the quiz as not yet released.
 
-**13. Use the mock tutor.** Open ITIL 4 Foundation → **Tutor** (labelled "Mock AI — local demonstration"). On `main` the tutor page opens with **Español** selected; choose **English** under **Response language**.
+**13. Use the mock tutor.** Open ITIL 4 Foundation → **Tutor** (labelled "Mock AI — local demonstration"). The response language follows the interface language and can be changed under **Response language**.
 - Ask "What are the four dimensions of service management?". The answer cites approved lessons of this course only.
 - Ask about "change enablement" before that lesson is approved: it is not cited.
 - In Introduction to AI the tutor answers in Spanish from the Spanish lessons, for example "¿Qué es el aprendizaje supervisado?".
@@ -184,7 +184,8 @@ Release publishes the current grades of every graded student for that activity. 
 
 ## 5. Notes and limitations
 
-- **Partly bilingual UI.** This branch is based on `main`. There, the header's EN/ES switch translates the sign-in page, navigation, dashboards, the administration pages (except Course setup), My courses and the course overview. The tutor has its own EN/ES response language. Lessons, quizzes, assignments, grades and documents are still English-only. The complete bilingual interface (and a tutor that follows the interface language) arrives with the AP-015 frontend (pull request #13), which still awaits review. The course material is English (ITIL, Project Management) and Spanish (Introduction to AI).
+- **Bilingual UI.** The header's EN/ES switch translates the whole interface (AP-015). Course material stays in the language it was written in: English (ITIL, Project Management) and Spanish (Introduction to AI).
+- **Course lifecycle (optional extra step).** As `admin@`, **Courses & enrollments → Manage** on a course shows its status, sections and roster. Unpublishing ITIL 4 Foundation hides it from students at once without deleting anything; publishing it again restores the same view. Do this only on a rehearsal database.
 - **No malware scanning.** No malware scanner is connected, so uploads are recorded as `not_scanned`. Only use the synthetic demo files.
 - **Mock AI only.** Mock summaries and tutor answers quote approved course text. They are not AI-generated and must be presented as mock functionality.
 - **Wall-clock dates.** Due dates and quiz time limits use real time. The assignment due date (4 Dec 2026, 23:59 Lima time) keeps submissions open for the November demo.

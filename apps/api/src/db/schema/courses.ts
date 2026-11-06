@@ -87,9 +87,15 @@ export const courses = pgTable(
     title: text('title').notNull(),
     description: text('description'),
     status: courseStatusEnum('status').notNull().default('draft'),
+    /**
+     * Optimistic concurrency token for course administration: every lifecycle change (details,
+     * publish, unpublish) must name the version it saw and increments it, so a stale edit fails.
+     */
+    version: integer('version').notNull().default(1),
     ...timestamps(),
   },
   (t) => [
+    check('courses_version_check', sql`${t.version} >= 1`),
     unique('courses_term_id_code_unique').on(t.termId, t.code),
     index('courses_template_id_idx').on(t.templateId),
     index('courses_status_idx').on(t.status),

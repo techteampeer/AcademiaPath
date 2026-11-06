@@ -6,7 +6,7 @@ recorded by the person who ran the check.
 
 - **The spreadsheet was not reviewed.** The Google Drive connector available while preparing AP-016 lacked the needed permission, so its column structure could not be checked and it was not modified. Map the fields below (ID, workflow, preconditions, steps, expected result) to the spreadsheet's existing columns when copying cases.
 - **Setup.** Follow "Set up" in `docs/demo-walkthrough.md` on a fresh local database (`pnpm db:migrate`, `pnpm db:seed:demo`, `pnpm dev`). Use only the synthetic accounts. Every account's password is the tester's own local `DEV_SEED_PASSWORD`.
-- **Language.** On `main` the EN/ES switch covers the sign-in page, navigation, dashboards, administration pages (except Course setup), My courses and the course overview. Lessons, quizzes, assignments, grades and documents are English-only until the AP-015 bilingual frontend is merged. Run the full EN/ES checks after that merge.
+- **Language.** The EN/ES switch covers the whole interface since the AP-015 bilingual frontend was merged; run every check in both languages.
 
 ## Havisha: shared UI components (`apps/web/src/components/ui/`)
 
