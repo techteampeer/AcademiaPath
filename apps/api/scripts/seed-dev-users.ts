@@ -12,13 +12,10 @@ import { hashPassword } from '../src/auth/password.js';
 import { createDatabase, type Database } from '../src/db/client.js';
 import { userCredentials, users, type SystemRole } from '../src/db/schema/index.js';
 
+export type SyntheticUser = { email: string; givenName: string; familyName: string; systemRole: SystemRole };
+
 /** Synthetic accounts on the reserved `.example` domain (RFC 2606). */
-export const DEV_USERS: ReadonlyArray<{
-  email: string;
-  givenName: string;
-  familyName: string;
-  systemRole: SystemRole;
-}> = [
+export const DEV_USERS: ReadonlyArray<SyntheticUser> = [
   { email: 'admin@academiapath.example', givenName: 'Demo', familyName: 'Administrator', systemRole: 'administrator' },
   { email: 'instructor@academiapath.example', givenName: 'Demo', familyName: 'Instructor', systemRole: 'user' },
   { email: 'student@academiapath.example', givenName: 'Demo', familyName: 'Student', systemRole: 'user' },
@@ -62,8 +59,13 @@ export function assertDevSeedAllowed(env: NodeJS.ProcessEnv): { databaseUrl: str
 
 /** Creates or updates the synthetic users and their password credentials. Idempotent. */
 export async function seedDevUsers(db: Database, password: string) {
+  return upsertSyntheticUsers(db, password, DEV_USERS);
+}
+
+/** Creates or updates synthetic users (matched by email, case-insensitively) and their credentials. Idempotent. */
+export async function upsertSyntheticUsers(db: Database, password: string, list: ReadonlyArray<SyntheticUser>) {
   const seeded: Array<{ email: string; systemRole: SystemRole }> = [];
-  for (const devUser of DEV_USERS) {
+  for (const devUser of list) {
     const passwordHash = await hashPassword(password);
     await db.transaction(async (tx) => {
       const [existing] = await tx
