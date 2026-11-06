@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.11.0
+  version: 0.12.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -83,6 +83,24 @@ info:
     status: students still see only approved, visible content in visible sections and released
     grades. Unpublishing and deactivating enrollments never delete content, attempts, submissions,
     grades or audit records, and offering changes never modify the subject template.
+
+    Learning progress: calculated by the server from stored records on every request; there is no
+    browser-side progress. Eligible activities (the denominator) are approved, visible lessons
+    (`page`), links, documents (`file`), quizzes and assignments in visible sections of a course;
+    drafts that were never approved, hidden activities, hidden sections and unsupported types never
+    count, and activities in sections locked by a prerequisite still do. A student completes a
+    lesson, link or document by marking it (and can unmark it); a quiz is complete once an attempt is
+    submitted (passing is not required) and an assignment once it is submitted. Completion is kept
+    separate from performance: progress responses never contain scores or grades, and quiz and
+    assignment completion cannot be set by hand. Percentages are rounded down; a course or section
+    without eligible activities reports `no_activities` and no percentage.
+
+    Section prerequisites: administrators can make a section require other sections of the same
+    course. A section opens when every eligible activity of each visible required section is
+    complete (a required section that is hidden or has no eligible activities is treated as complete).
+    While a section is locked, students' requests for its activities, documents, quizzes and
+    assignments respond `403 SECTION_LOCKED` without content, and the tutor does not use its
+    lessons. Staff and administrators are never locked. Courses without prerequisites behave as before.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -111,6 +129,8 @@ tags:
     description: Course-grounded tutor (local mock provider) and usage
   - name: Documents
     description: Uploaded course documents, extracted text and mock summaries
+  - name: Progress
+    description: Server-calculated learning progress, completion marks and section prerequisites
 paths:
   /api/v1/health:
     get:
@@ -293,6 +313,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/me/progress:
+    get:
+      operationId: getMyProgress
+      summary: The signed-in student's progress in each of their courses
+      description: |
+        One item per published course in which the caller holds an active student enrollment, in
+        course-code order. Each item carries the server-calculated counts, percentage and state, and
+        `continueAt`: the first incomplete activity in a section that is open to the student. Staff
+        enrollments and draft or archived courses are not listed. Scores and grades are never included.
+      tags: [Progress]
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Progress per course.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyProgressList"
         "401":
           $ref: "#/components/responses/Unauthorized"
   /api/v1/users:
@@ -1422,6 +1466,7 @@ paths:
         Course staff and administrators see the working copy and review status of every item.
         Students see only approved, visible content in visible sections of published courses
         they are enrolled in (the live version), without review metadata.
+        Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
       tags:
         - Content
       security:
@@ -1442,6 +1487,8 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
     post:
@@ -1490,6 +1537,7 @@ paths:
       description: |
         Staff receive the working copy, review status and live version. Students receive only the
         approved live version; anything else responds `404`.
+        Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
       tags:
         - Content
       security:
@@ -1508,6 +1556,8 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
     put:
@@ -1691,6 +1741,7 @@ paths:
         the approved document and the approved summary revision of approved, visible documents in
         visible sections of published courses they are enrolled in (`liveSummary` is null); never
         drafts, pending revisions or review comments. Anything else responds `404`.
+        Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
       tags:
         - Documents
       security:
@@ -1712,6 +1763,8 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
   /api/v1/courses/{id}/activities/{activityId}/document/summaries:
@@ -1761,6 +1814,7 @@ paths:
         type, `X-Content-Type-Options: nosniff` and a sandboxing Content-Security-Policy. The file's
         SHA-256 is verified before it is sent. Original files are never reachable through a public
         URL.
+        Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
       tags:
         - Documents
       security:
@@ -1795,6 +1849,8 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
   /api/v1/courses/{id}/activities/{activityId}/questions:
@@ -1933,6 +1989,7 @@ paths:
         (`201`) using the approved quiz version, with question and option order fixed for the
         attempt. The attempt limit and time limit are enforced by the server and database. No
         request body. Audited as `quiz.attempt_started`.
+        Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
       tags: [Quizzes]
       security:
         - sessionCookie: []
@@ -1965,6 +2022,7 @@ paths:
     get:
       operationId: getMyQuizAttempts
       summary: The signed-in student's attempts at a quiz (no scores)
+      description: Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
       tags: [Quizzes]
       security:
         - sessionCookie: []
@@ -2158,6 +2216,7 @@ paths:
         with `SUBMISSION_CLOSED`. One final submission per student (`SUBMISSION_EXISTS`). The approved
         rubric is copied into the submission, so later revisions never change how it is graded.
         Audited as `assignment.submitted`.
+        Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
       tags: [Assignments]
       security:
         - sessionCookie: []
@@ -2224,6 +2283,7 @@ paths:
       description: |
         Students only. `submission` is null until the student submits. The grade appears only after
         release; until then `gradeStatus` is `pending` and no numbers are returned.
+        Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
       tags: [Assignments]
       security:
         - sessionCookie: []
@@ -2382,7 +2442,8 @@ paths:
         Students only (`grades.viewOwn`). Lists the course's quizzes and assignments. Released items
         include points, the 0–20 grade and, for assignments, feedback and rubric scores; everything
         else is `pending` without numbers. Answer keys are never included. The total uses released
-        grades only.
+        grades only. Activities in sections that a prerequisite still locks are omitted unless their
+        grade was released.
       tags: [Grades]
       security:
         - sessionCookie: []
@@ -2401,6 +2462,231 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/progress:
+    get:
+      operationId: getMyCourseProgress
+      summary: The signed-in student's progress in one course
+      description: |
+        Students only (`progress.own`, a role-only check: administrators and staff have no progress of
+        their own). Returns the course figures and every visible section with its figures, whether it is
+        locked by a prerequisite and which visible sections it requires. Draft courses respond `404` to
+        students.
+      tags: [Progress]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: Course progress.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseProgress"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/sections/{sectionId}/progress:
+    get:
+      operationId: getMySectionProgress
+      summary: The signed-in student's progress in one section
+      description: |
+        Students only (`progress.own`). Lists the section's eligible activities with their completion
+        state. `completion` is `manual` for lessons, links and documents (the student marks them) and
+        `automatic` for quizzes and assignments (completed by a submitted attempt or a submission). A
+        section that is locked by a prerequisite reports its counts only and an empty `activities`
+        list. Hidden sections respond `404`.
+      tags: [Progress]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SectionId"
+      responses:
+        "200":
+          description: Section progress.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SectionProgress"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/activities/{activityId}/completion:
+    put:
+      operationId: markActivityComplete
+      summary: Mark a lesson, link or document complete
+      description: |
+        Students only (`progress.own`), for their own progress. Send no request body. The activity must
+        be an approved, visible reading activity (`page`, `link` or `file`) in a visible section of this
+        course; otherwise `404`. Quizzes and assignments respond `422 COMPLETION_AUTOMATIC`: they are
+        completed by submitting them. A section locked by a prerequisite responds `403 SECTION_LOCKED`.
+        Idempotent: repeated or concurrent calls keep one record with the first completion time.
+        Audited as `activity.completion_marked` (first mark only).
+      tags: [Progress]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200":
+          description: The activity is complete.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityCompletion"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+    delete:
+      operationId: unmarkActivityComplete
+      summary: Mark a lesson, link or document incomplete again
+      description: |
+        Students only (`progress.own`). Same checks as marking. Idempotent. Audited as
+        `activity.completion_unmarked` when a mark was removed. Quiz and assignment completion cannot be
+        removed (`422 COMPLETION_AUTOMATIC`).
+      tags: [Progress]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200":
+          description: The activity is not complete.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityCompletion"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/progress/students:
+    get:
+      operationId: listStudentProgress
+      summary: Progress of the course's students (staff, read-only)
+      description: |
+        Requires `progress.viewAll` (instructor, non-editing instructor) or the administrator role.
+        The design team, students and program-level roles cannot read it. Rows are active students
+        ordered by email and paginated, with completed and total eligible activities. No scores,
+        grades, time-spent or engagement figures are included. Nobody can change a student's progress
+        through this endpoint.
+      tags: [Progress]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of student progress rows.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentProgressPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/section-prerequisites:
+    get:
+      operationId: listSectionPrerequisites
+      summary: Section prerequisites of a course (staff)
+      description: |
+        Requires `sections.viewHidden` (course staff) or the administrator role. One item per section
+        that has requirements, with the required sections in course order. Students see their own
+        requirements in `GET /api/v1/courses/{id}/progress`.
+      tags: [Progress]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: The course's prerequisites.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SectionPrerequisiteList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/sections/{sectionId}/prerequisites:
+    put:
+      operationId: setSectionPrerequisites
+      summary: Set the sections a section requires (administrators)
+      description: |
+        Administrators only. Replaces the section's requirements; an empty list removes them. Every
+        required section must belong to the same course (`422 PREREQUISITE_SECTION_NOT_FOUND`), a
+        section cannot require itself (`422 PREREQUISITE_SELF`), and requirements that would form a
+        cycle are refused (`422 PREREQUISITE_CYCLE`). Changes are serialized per course. Audited as
+        `section.prerequisites_updated`.
+      tags: [Progress]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SectionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SectionPrerequisitesUpdate"
+      responses:
+        "200":
+          description: The section's requirements after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SectionPrerequisites"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
   /api/v1/courses/{id}/tutor/messages:
     post:
       operationId: askTutor
@@ -2666,7 +2952,7 @@ components:
             detail: Invalid email or password.
             code: INVALID_CREDENTIALS
     Forbidden:
-      description: "`code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint) or `SELF_REVIEW_NOT_ALLOWED`."
+      description: "`code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks)."
       content:
         application/problem+json:
           schema:
@@ -2767,7 +3053,9 @@ components:
         `DOCUMENT_ENCRYPTED`, `DOCUMENT_MALFORMED`, `DOCUMENT_LIMITS_EXCEEDED` (decompressed size,
         processing time or memory) or `MALWARE_DETECTED`; or an account or enrollment rule:
         `COURSE_NOT_FOUND`, `DUPLICATE_COURSE`, `INVITATION_SYNTHETIC_ONLY`, `PASSWORD_TOO_WEAK`,
-        `IMPORT_HAS_ERRORS`, `IMPORT_TOO_LARGE` or `INVALID_SECTION_ORDER`.
+        `IMPORT_HAS_ERRORS`, `IMPORT_TOO_LARGE` or `INVALID_SECTION_ORDER`; or a progress rule:
+        `COMPLETION_AUTOMATIC` (quizzes and assignments complete on submission), `PREREQUISITE_SELF`,
+        `PREREQUISITE_SECTION_NOT_FOUND` or `PREREQUISITE_CYCLE`.
       content:
         application/problem+json:
           schema:
@@ -2986,6 +3274,285 @@ components:
             - SECTION_ORDER_STALE
             - INVALID_SECTION_ORDER
             - ENROLLMENT_HAS_HISTORY
+            - SECTION_LOCKED
+            - COMPLETION_AUTOMATIC
+            - PREREQUISITE_SELF
+            - PREREQUISITE_SECTION_NOT_FOUND
+            - PREREQUISITE_CYCLE
+    ProgressState:
+      type: string
+      description: "`no_activities` when the course or section has no eligible activities (no percentage is shown)."
+      enum: [no_activities, not_started, in_progress, completed]
+    TrackedActivityType:
+      type: string
+      enum: [page, link, file, quiz, assignment]
+    ContinueAt:
+      type: [object, "null"]
+      description: The first incomplete eligible activity in an open section, in course order; `null` when there is none.
+      required: [sectionId, activityId, type, title]
+      additionalProperties: false
+      properties:
+        sectionId:
+          type: string
+          format: uuid
+        activityId:
+          type: string
+          format: uuid
+        type:
+          $ref: "#/components/schemas/TrackedActivityType"
+        title:
+          type: string
+    RequiredSection:
+      type: object
+      required: [sectionId, title, completed]
+      additionalProperties: false
+      properties:
+        sectionId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        completed:
+          type: boolean
+    SectionProgressSummary:
+      type: object
+      required: [sectionId, title, position, locked, requiredSections, completedCount, totalCount, percent, state]
+      additionalProperties: false
+      properties:
+        sectionId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        position:
+          type: integer
+        locked:
+          type: boolean
+          description: True while a visible section it requires is incomplete. Locked activities still count in `totalCount`.
+        requiredSections:
+          type: array
+          description: Visible sections this one requires. Requirements on hidden sections are ignored and never named.
+          items:
+            $ref: "#/components/schemas/RequiredSection"
+        completedCount:
+          type: integer
+          minimum: 0
+        totalCount:
+          type: integer
+          minimum: 0
+        percent:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 100
+          description: floor(completedCount × 100 / totalCount); `null` when `totalCount` is 0.
+        state:
+          $ref: "#/components/schemas/ProgressState"
+    CourseProgress:
+      type: object
+      required: [courseId, continueAt, sections, completedCount, totalCount, percent, state]
+      additionalProperties: false
+      properties:
+        courseId:
+          type: string
+          format: uuid
+        continueAt:
+          $ref: "#/components/schemas/ContinueAt"
+        sections:
+          type: array
+          items:
+            $ref: "#/components/schemas/SectionProgressSummary"
+        completedCount:
+          type: integer
+          minimum: 0
+        totalCount:
+          type: integer
+          minimum: 0
+          description: Eligible activities (see the API description), including those in locked sections.
+        percent:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 100
+        state:
+          $ref: "#/components/schemas/ProgressState"
+    MyProgressList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [courseId, continueAt, completedCount, totalCount, percent, state]
+            additionalProperties: false
+            properties:
+              courseId:
+                type: string
+                format: uuid
+              continueAt:
+                $ref: "#/components/schemas/ContinueAt"
+              completedCount:
+                type: integer
+                minimum: 0
+              totalCount:
+                type: integer
+                minimum: 0
+              percent:
+                type: [integer, "null"]
+                minimum: 0
+                maximum: 100
+              state:
+                $ref: "#/components/schemas/ProgressState"
+    ActivityProgress:
+      type: object
+      required: [activityId, type, title, completion, completed, completedAt]
+      additionalProperties: false
+      properties:
+        activityId:
+          type: string
+          format: uuid
+        type:
+          $ref: "#/components/schemas/TrackedActivityType"
+        title:
+          type: string
+        completion:
+          type: string
+          enum: [manual, automatic]
+          description: "`manual`: the student marks it complete. `automatic`: a submitted quiz attempt or assignment submission completes it (passing is not required)."
+        completed:
+          type: boolean
+        completedAt:
+          type: [string, "null"]
+          format: date-time
+    SectionProgress:
+      type: object
+      required: [sectionId, title, position, locked, requiredSections, completedCount, totalCount, percent, state, activities]
+      additionalProperties: false
+      properties:
+        sectionId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        position:
+          type: integer
+        locked:
+          type: boolean
+        requiredSections:
+          type: array
+          items:
+            $ref: "#/components/schemas/RequiredSection"
+        completedCount:
+          type: integer
+          minimum: 0
+        totalCount:
+          type: integer
+          minimum: 0
+        percent:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 100
+        state:
+          $ref: "#/components/schemas/ProgressState"
+        activities:
+          type: array
+          description: Empty while the section is locked.
+          items:
+            $ref: "#/components/schemas/ActivityProgress"
+    ActivityCompletion:
+      type: object
+      required: [activityId, sectionId, completed, completedAt]
+      additionalProperties: false
+      properties:
+        activityId:
+          type: string
+          format: uuid
+        sectionId:
+          type: string
+          format: uuid
+        completed:
+          type: boolean
+        completedAt:
+          type: [string, "null"]
+          format: date-time
+    StudentProgressPage:
+      type: object
+      required: [totalCount, items, nextCursor]
+      additionalProperties: false
+      properties:
+        totalCount:
+          type: integer
+          minimum: 0
+          description: Eligible activities in the course (the same for every student).
+        items:
+          type: array
+          items:
+            type: object
+            required: [student, completedCount, totalCount, percent, state]
+            additionalProperties: false
+            properties:
+              student:
+                type: object
+                required: [id, email, givenName, familyName]
+                additionalProperties: false
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  email:
+                    type: string
+                  givenName:
+                    type: string
+                  familyName:
+                    type: string
+              completedCount:
+                type: integer
+                minimum: 0
+              totalCount:
+                type: integer
+                minimum: 0
+              percent:
+                type: [integer, "null"]
+                minimum: 0
+                maximum: 100
+              state:
+                $ref: "#/components/schemas/ProgressState"
+        nextCursor:
+          type: [string, "null"]
+    SectionPrerequisites:
+      type: object
+      required: [sectionId, requiredSectionIds]
+      additionalProperties: false
+      properties:
+        sectionId:
+          type: string
+          format: uuid
+        requiredSectionIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+    SectionPrerequisiteList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SectionPrerequisites"
+    SectionPrerequisitesUpdate:
+      type: object
+      required: [requiredSectionIds]
+      additionalProperties: false
+      properties:
+        requiredSectionIds:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
     Code:
       type: string
       minLength: 1

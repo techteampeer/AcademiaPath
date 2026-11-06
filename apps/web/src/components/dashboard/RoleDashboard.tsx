@@ -14,6 +14,7 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { LoadingCards, Skeleton } from '@/components/ui/Skeleton';
+import { ProgressBar } from '@/components/progress/ProgressDisplay';
 import { isApiError } from '@/lib/api/client';
 import { api, loadAll } from '@/lib/api/endpoints';
 import type { Activity, Course, CourseRole, CurrentUser, GradeStatus } from '@/lib/api/types';
@@ -100,7 +101,6 @@ function RoleSection({ role, courses }: { role: CourseRole; courses: Course[] })
           </h2>
           <p className="mt-1 text-sm text-slate-600">{text.intro}</p>
         </div>
-        {role === 'student' ? <p className="text-xs text-slate-500">{t.dashboard.progressNotTracked}</p> : null}
       </div>
       {courses.length > DETAIL_LIMIT ? <p className="text-xs text-slate-500">{t.dashboard.partial(DETAIL_LIMIT, courses.length)}</p> : null}
       <ul className="grid gap-4 lg:grid-cols-2">
@@ -149,11 +149,32 @@ function useLoad<T>(loader: () => Promise<T>, deps: unknown[]): Load<T> {
   return state;
 }
 
-/** Sections and activities the caller may see (students: approved, visible only — enforced by the API). */
-async function loadActivities(courseId: string): Promise<Activity[]> {
-  const sections = (await loadAll((page) => api.listSections(courseId, page), 2)).slice(0, SECTION_LIMIT);
-  const lists = await Promise.all(sections.map((section) => loadAll((page) => api.listActivities(courseId, section.id, page), 2)));
+/**
+ * Sections and activities the caller may see (students: approved, visible only — enforced by the API).
+ * Sections a prerequisite still locks are skipped: the API refuses them with 403 SECTION_LOCKED.
+ */
+async function loadActivities(courseId: string, locked: ReadonlySet<string> = new Set()): Promise<Activity[]> {
+  const sections = (await loadAll((page) => api.listSections(courseId, page), 2)).slice(0, SECTION_LIMIT).filter((section) => !locked.has(section.id));
+  const lists = await Promise.all(
+    sections.map((section) =>
+      loadAll((page) => api.listActivities(courseId, section.id, page), 2).catch((error: unknown) => {
+        if (isApiError(error, 403) && error.code === 'SECTION_LOCKED') return [] as Activity[];
+        throw error;
+      }),
+    ),
+  );
   return lists.flat();
+}
+
+/** Progress of the course's students (staff overview, read-only, calculated by the API). */
+async function loadStudentProgressCounts(courseId: string) {
+  const page = await api.studentProgress(courseId, { limit: 100 });
+  return {
+    students: page.items.length,
+    finished: page.items.filter((row) => row.state === 'completed').length,
+    notStarted: page.items.filter((row) => row.state === 'not_started').length,
+    partial: page.nextCursor !== null,
+  };
 }
 
 /** Grading status counts from the course gradebook (server-calculated). */
@@ -173,9 +194,10 @@ async function loadGradingCounts(courseId: string) {
   return { counts, needsGrading, partial: book.nextCursor !== null };
 }
 
-/** Student to-do items: open assignments not yet submitted and quizzes not yet attempted. */
+/** Student to-do items (open assignments not yet submitted, quizzes not yet attempted) and learning progress. */
 async function loadStudentData(courseId: string) {
-  const activities = await loadActivities(courseId);
+  const progress = await api.courseProgress(courseId);
+  const activities = await loadActivities(courseId, new Set(progress.sections.filter((s) => s.locked).map((s) => s.sectionId)));
   const assignments = activities.filter((a) => a.type === 'assignment').slice(0, 10);
   const quizzes = activities.filter((a) => a.type === 'quiz').slice(0, 10);
   const [grades, assignmentStates, quizStates] = await Promise.all([
@@ -191,7 +213,7 @@ async function loadStudentData(courseId: string) {
       .filter(({ summary }) => summary.attemptsUsed === 0)
       .map(({ activity }) => ({ id: activity.id, title: activity.title, kind: 'quiz' as const, due: null as string | null })),
   ].sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'));
-  return { grades, todo };
+  return { grades, todo, progress };
 }
 
 // ---------------------------------------------------------------- cards
@@ -311,6 +333,7 @@ function TeachingCard({ course, role }: { course: Course; role: 'instructor' | '
   const { t } = useLocale();
   const content = useLoad(() => loadActivities(course.id), [course.id]);
   const grading = useLoad(() => loadGradingCounts(course.id), [course.id]);
+  const learners = useLoad(() => loadStudentProgressCounts(course.id), [course.id]);
   const byType = (type: Activity['type']) => (content.status === 'ready' ? content.data.filter((a) => a.type === type).length : 0);
   return (
     <CardShell
@@ -324,12 +347,28 @@ function TeachingCard({ course, role }: { course: Course; role: 'instructor' | '
           <Link href={`/courses/${course.id}/grades`} className={linkClass}>
             {t.nav.gradebook}
           </Link>
+          <Link href={`/courses/${course.id}/progress`} className={linkClass}>
+            {t.progress.studentProgress}
+          </Link>
           <Link href={`/courses/${course.id}/tutor`} className={linkClass}>
             {t.nav.tutor}
           </Link>
         </>
       }
     >
+      {learners.status !== 'ready' ? (
+        <DetailState state={learners} />
+      ) : (
+        <div aria-label={t.progress.studentProgress} role="group">
+          <Figures
+            items={[
+              { label: t.progress.studentsLabel, value: learners.data.students },
+              { label: t.progress.finishedAll, value: learners.data.finished },
+              { label: t.progress.notStartedCount, value: learners.data.notStarted, tone: 'warn' },
+            ]}
+          />
+        </div>
+      )}
       {content.status !== 'ready' ? (
         <DetailState state={content} />
       ) : (
@@ -399,6 +438,16 @@ function StudentCard({ course }: { course: Course }) {
         <DetailState state={state} />
       ) : (
         <>
+          <div className="space-y-2" data-progress-card>
+            <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">{t.progress.yourProgress}</p>
+            <ProgressBar figures={state.data.progress} label={t.progress.progressOf(course.title)} />
+            {state.data.progress.continueAt ? (
+              <Link href={`/courses/${course.id}/activities/${state.data.progress.continueAt.activityId}`} className={buttonClasses({ size: 'sm' })}>
+                {t.progress.continueLearning}
+                <span className="sr-only">: {state.data.progress.continueAt.title}</span>
+              </Link>
+            ) : null}
+          </div>
           <div>
             <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">{t.dashboard.releasedGrades}</p>
             {state.data.grades.total.gradedItems > 0 ? (

@@ -113,6 +113,20 @@
       "when": 1793983268654,
       "tag": "0015_course_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793997838655,
+      "tag": "0016_student_progress",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793997839546,
+      "tag": "0017_student_progress_integrity",
+      "breakpoints": true
     }
   ]
 }

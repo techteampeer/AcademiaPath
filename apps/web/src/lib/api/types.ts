@@ -105,3 +105,14 @@ export type CourseLifecycle = Schemas['CourseLifecycle'];
 export type SectionCreate = Schemas['SectionCreate'];
 export type SectionUpdate = Schemas['SectionUpdate'];
 export type SectionList = Schemas['SectionList'];
+
+export type ProgressState = Schemas['ProgressState'];
+export type CourseProgress = Schemas['CourseProgress'];
+export type SectionProgressSummary = Schemas['SectionProgressSummary'];
+export type SectionProgress = Schemas['SectionProgress'];
+export type ActivityProgress = Schemas['ActivityProgress'];
+export type ActivityCompletion = Schemas['ActivityCompletion'];
+export type MyProgressList = Schemas['MyProgressList'];
+export type StudentProgressPage = Schemas['StudentProgressPage'];
+export type SectionPrerequisites = Schemas['SectionPrerequisites'];
+export type SectionPrerequisiteList = Schemas['SectionPrerequisiteList'];

@@ -28,6 +28,10 @@ export function contentAbilities(user: CurrentUser, viewerRole: CourseRole | nul
     grade: role === 'instructor' || role === 'non_editing_instructor',
     /** Course tutor: students, instructors and non-editing instructors (never via the administrator role). */
     tutor: role === 'student' || role === 'instructor' || role === 'non_editing_instructor',
+    /** Own learning progress and completion marks: enrolled students only. */
+    trackProgress: role === 'student',
+    /** Students' progress overview (read-only): instructors, non-editing instructors and administrators. */
+    viewProgress: admin || role === 'instructor' || role === 'non_editing_instructor',
   };
 }
 

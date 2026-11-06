@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, check, index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 import { primaryId, timestamps } from './columns.js';
 import { courses } from './courses.js';
 import { activityReviewStatusEnum, activityTypeEnum } from './enums.js';
@@ -22,6 +22,8 @@ export const sections = pgTable(
   (t) => [
     index('sections_course_id_position_idx').on(t.courseId, t.position),
     check('sections_position_check', sql`${t.position} >= 0`),
+    // Target of composite foreign keys that keep section prerequisites inside one course.
+    unique('sections_id_course_id_unique').on(t.id, t.courseId),
   ],
 );
 
