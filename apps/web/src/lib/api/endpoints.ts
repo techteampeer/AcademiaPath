@@ -12,6 +12,8 @@ import type {
   ActivityUpdate,
   Course,
   CourseCreate,
+  CourseLifecycle,
+  CourseUpdate,
   CoursePage,
   CourseTemplateCreate,
   CourseTemplateDetail,
@@ -40,7 +42,11 @@ import type {
   QuizQuestionInput,
   QuizQuestionList,
   QuizResultPage,
+  Section,
+  SectionCreate,
+  SectionList,
   SectionPage,
+  SectionUpdate,
   StudentAssignmentStatus,
   StudentAssignmentSubmission,
   StudentGrades,
@@ -132,6 +138,19 @@ export const api = {
     apiRequest<Enrollment>('POST', `${course(courseId)}/enrollments`, { body, csrfToken }),
   updateEnrollment: (courseId: string, enrollmentId: string, body: EnrollmentUpdate, csrfToken: string) =>
     apiRequest<Enrollment>('PUT', `${course(courseId)}/enrollments/${encodeURIComponent(enrollmentId)}`, { body, csrfToken }),
+  deleteEnrollment: (courseId: string, enrollmentId: string, csrfToken: string) =>
+    apiRequest<void>('DELETE', `${course(courseId)}/enrollments/${encodeURIComponent(enrollmentId)}`, { csrfToken }),
+
+  // Course lifecycle (administrators). Every change names the course `version` it is based on.
+  getCourseLifecycle: (id: string) => apiRequest<CourseLifecycle>('GET', `${course(id)}/lifecycle`),
+  updateCourse: (id: string, body: CourseUpdate, csrfToken: string) => apiRequest<Course>('PUT', course(id), { body, csrfToken }),
+  publishCourse: (id: string, version: number, csrfToken: string) => apiRequest<Course>('POST', `${course(id)}/publish`, { body: { version }, csrfToken }),
+  unpublishCourse: (id: string, version: number, csrfToken: string) => apiRequest<Course>('POST', `${course(id)}/unpublish`, { body: { version }, csrfToken }),
+  createSection: (id: string, body: SectionCreate, csrfToken: string) => apiRequest<Section>('POST', `${course(id)}/sections`, { body, csrfToken }),
+  updateSection: (id: string, sectionId: string, body: SectionUpdate, csrfToken: string) =>
+    apiRequest<Section>('PUT', `${course(id)}/sections/${encodeURIComponent(sectionId)}`, { body, csrfToken }),
+  reorderSections: (id: string, sectionIds: string[], csrfToken: string) =>
+    apiRequest<SectionList>('PUT', `${course(id)}/sections/order`, { body: { sectionIds }, csrfToken }),
   importEnrollments: (courseId: string, csv: string, apply: boolean, csrfToken: string) =>
     apiRequest<EnrollmentImportResult>('POST', `${course(courseId)}/enrollments/import`, { body: { csv, apply }, csrfToken }),
 

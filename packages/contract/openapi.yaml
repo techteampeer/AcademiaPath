@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.10.0
+  version: 0.11.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -75,6 +75,14 @@ info:
     addresses only; it is a development-only stand-in for secure delivery and identity verification
     and is refused in production. Deactivation revokes all sessions at once, and the last active
     administrator can never be deactivated or demoted.
+
+    Course lifecycle: administrators edit an offering's details, publish (`draft` → `published`) and
+    unpublish (`published` → `draft`) it through explicit transitions, and manage its sections (add,
+    rename, show or hide, reorder) and enrollments. Each lifecycle change names the course `version`
+    it is based on, so concurrent edits are refused rather than lost. Publishing only changes the
+    status: students still see only approved, visible content in visible sections and released
+    grades. Unpublishing and deactivating enrollments never delete content, attempts, submissions,
+    grades or audit records, and offering changes never modify the subject template.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -922,6 +930,162 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateCourse
+      summary: Edit a course offering's details
+      description: |
+        Administrators only. Send the `version` you last read and the fields to change. The title and
+        description can always be edited. The code can be changed only while the course is a draft
+        (`COURSE_CODE_LOCKED` otherwise) and must stay unique in the term (`COURSE_CODE_TAKEN`).
+        Offerings take their dates from their term. Status changes use the publish and unpublish
+        operations, never this one. A stale `version` is refused (`COURSE_VERSION_CONFLICT`), so
+        concurrent edits cannot silently overwrite each other. Only the offering changes: its subject
+        template and template version are never modified. Audited as `course.updated`.
+      tags:
+        - Courses
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CourseUpdate"
+      responses:
+        "200":
+          description: The updated course (with its new `version`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Course"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/courses/{id}/lifecycle:
+    get:
+      operationId: getCourseLifecycle
+      summary: Course administration overview
+      description: |
+        Administrators only. The offering with its term, source template version, sections (with
+        activity counts), enrollment counts per role and status, and the status transitions allowed
+        now. `studentVisibleActivityCount` counts approved, visible activities in visible sections:
+        exactly what students can open once the course is published. Activities that were never
+        approved (`unapprovedActivityCount`, including those awaiting review) stay hidden from
+        students whatever the course status.
+      tags:
+        - Courses
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: The course overview.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseLifecycle"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/publish:
+    post:
+      operationId: publishCourse
+      summary: Publish a draft course
+      description: |
+        Administrators only. Explicit transition `draft` → `published`; any other current status is
+        refused (`INVALID_COURSE_TRANSITION`), as is a stale `version` (`COURSE_VERSION_CONFLICT`).
+        Publishing changes only the course status: students enrolled in the course can then open it,
+        but still see only approved, visible content in visible sections, and only released grades.
+        Audited as `course.published`.
+      tags:
+        - Courses
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CourseTransition"
+      responses:
+        "200":
+          description: The published course.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Course"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/courses/{id}/unpublish:
+    post:
+      operationId: unpublishCourse
+      summary: Unpublish a published course
+      description: |
+        Administrators only. Explicit transition `published` → `draft`. Students immediately lose
+        access to the course; staff keep it. Nothing is deleted: content, enrollments, quiz attempts,
+        submissions, grades and audit records stay, and reappear for students when the course is
+        published again. Refused for other statuses (`INVALID_COURSE_TRANSITION`) or a stale
+        `version` (`COURSE_VERSION_CONFLICT`). Audited as `course.unpublished`.
+      tags:
+        - Courses
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CourseTransition"
+      responses:
+        "200":
+          description: The course, now a draft.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Course"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/v1/courses/{id}/enrollments:
     get:
       operationId: listCourseEnrollments
@@ -1031,6 +1195,36 @@ paths:
           $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/UnprocessableContent"
+    delete:
+      operationId: deleteCourseEnrollment
+      summary: Remove an enrollment that has no history
+      description: |
+        Administrators only. Removes an enrollment created by mistake. Only allowed when it has no quiz
+        attempts, submissions, grades or tutor usage (`ENROLLMENT_HAS_HISTORY` otherwise); for those,
+        set `status` to `inactive` instead, which blocks access while keeping everything, and set it
+        back to `active` to restore access with the student's history intact. The enrollment must
+        belong to the course in the path (`404` otherwise). Audited as `enrollment.deleted`.
+      tags:
+        - Courses
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/EnrollmentId"
+      responses:
+        "204":
+          description: Enrollment removed.
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/v1/courses/{id}/enrollments/import:
     post:
       operationId: importCourseEnrollments
@@ -1103,6 +1297,121 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createCourseSection
+      summary: Add a section to a course offering
+      description: |
+        Administrators only. Appends a section after the existing ones. Only this offering changes;
+        its subject template is never modified. Hidden sections (`isVisible: false`) and their
+        activities are never shown to students. Audited as `section.created`.
+      tags:
+        - Courses
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SectionCreate"
+      responses:
+        "201":
+          description: The new section.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Section"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/sections/order:
+    put:
+      operationId: reorderCourseSections
+      summary: Change the order of a course's sections
+      description: |
+        Administrators only. `sectionIds` must list every section of the course exactly once, in the
+        new order; positions become 0, 1, 2… A list that no longer matches the course (a section was
+        added or belongs elsewhere) is refused (`SECTION_ORDER_STALE`), and duplicates are invalid
+        (`INVALID_SECTION_ORDER`). Changes to one course's structure are serialized, and the subject
+        template never changes. Audited as `sections.reordered`.
+      tags:
+        - Courses
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SectionOrder"
+      responses:
+        "200":
+          description: Every section of the course in its new order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SectionList"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/sections/{sectionId}:
+    put:
+      operationId: updateCourseSection
+      summary: Rename a section or change its visibility
+      description: |
+        Administrators only. Send `title`, `summary` and/or `isVisible`. The section must belong to the
+        course in the path (`404` otherwise). Hiding a section hides all of its activities from
+        students without deleting anything; showing it again reveals only approved, visible
+        activities. Audited as `section.updated`.
+      tags:
+        - Courses
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SectionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SectionUpdate"
+      responses:
+        "200":
+          description: The updated section.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Section"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
   /api/v1/courses/{id}/sections/{sectionId}/activities:
@@ -2433,7 +2742,9 @@ components:
         assignment rule: `SUBMISSION_EXISTS`, `SUBMISSION_CLOSED`; or an account rule: `EMAIL_TAKEN`,
         `EMAIL_LOCKED`, `LAST_ADMINISTRATOR`, `SELF_ACCOUNT_CHANGE`, `INVITATIONS_DISABLED`,
         `ACCOUNT_ALREADY_ACTIVATED`; or an enrollment rule: `ENROLLMENT_HAS_STUDENT_WORK`,
-        `IMPORT_CONFLICT`.
+        `IMPORT_CONFLICT`, `ENROLLMENT_HAS_HISTORY`; or a course lifecycle rule:
+        `COURSE_VERSION_CONFLICT`, `INVALID_COURSE_TRANSITION`, `COURSE_CODE_LOCKED`,
+        `SECTION_ORDER_STALE`.
       content:
         application/problem+json:
           schema:
@@ -2456,7 +2767,7 @@ components:
         `DOCUMENT_ENCRYPTED`, `DOCUMENT_MALFORMED`, `DOCUMENT_LIMITS_EXCEEDED` (decompressed size,
         processing time or memory) or `MALWARE_DETECTED`; or an account or enrollment rule:
         `COURSE_NOT_FOUND`, `DUPLICATE_COURSE`, `INVITATION_SYNTHETIC_ONLY`, `PASSWORD_TOO_WEAK`,
-        `IMPORT_HAS_ERRORS` or `IMPORT_TOO_LARGE`.
+        `IMPORT_HAS_ERRORS`, `IMPORT_TOO_LARGE` or `INVALID_SECTION_ORDER`.
       content:
         application/problem+json:
           schema:
@@ -2669,6 +2980,12 @@ components:
             - IMPORT_HAS_ERRORS
             - IMPORT_TOO_LARGE
             - IMPORT_CONFLICT
+            - COURSE_VERSION_CONFLICT
+            - INVALID_COURSE_TRANSITION
+            - COURSE_CODE_LOCKED
+            - SECTION_ORDER_STALE
+            - INVALID_SECTION_ORDER
+            - ENROLLMENT_HAS_HISTORY
     Code:
       type: string
       minLength: 1
@@ -2955,6 +3272,7 @@ components:
         - description
         - status
         - viewerRole
+        - version
         - createdAt
         - updatedAt
       additionalProperties: false
@@ -2987,6 +3305,10 @@ components:
           oneOf:
             - $ref: "#/components/schemas/CourseRole"
             - type: "null"
+        version:
+          type: integer
+          minimum: 1
+          description: Concurrency token for course administration; incremented by every lifecycle change.
         createdAt:
           type: string
           format: date-time
@@ -4981,3 +5303,173 @@ components:
               type: integer
             errors:
               type: integer
+    CourseUpdate:
+      type: object
+      required: [version]
+      minProperties: 2
+      additionalProperties: false
+      properties:
+        version:
+          type: integer
+          minimum: 1
+          description: The course `version` the change is based on.
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: "\\S"
+        code:
+          $ref: "#/components/schemas/Code"
+        description:
+          type: [string, "null"]
+          maxLength: 2000
+    CourseTransition:
+      type: object
+      required: [version]
+      additionalProperties: false
+      properties:
+        version:
+          type: integer
+          minimum: 1
+    SectionCreate:
+      type: object
+      required: [title]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: "\\S"
+        summary:
+          type: [string, "null"]
+          maxLength: 2000
+        isVisible:
+          type: boolean
+          default: true
+    SectionUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: "\\S"
+        summary:
+          type: [string, "null"]
+          maxLength: 2000
+        isVisible:
+          type: boolean
+    SectionOrder:
+      type: object
+      required: [sectionIds]
+      additionalProperties: false
+      properties:
+        sectionIds:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: string
+            format: uuid
+    SectionList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Section"
+    CourseLifecycle:
+      type: object
+      required: [course, term, template, sections, enrollmentCounts, studentVisibleActivityCount, unapprovedActivityCount, awaitingReviewCount, allowedTransitions]
+      additionalProperties: false
+      properties:
+        course:
+          $ref: "#/components/schemas/Course"
+        term:
+          type: object
+          description: Offerings take their dates from their term.
+          required: [id, code, name, startsOn, endsOn]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            code:
+              type: string
+            name:
+              type: string
+            startsOn:
+              type: string
+              format: date
+            endsOn:
+              type: string
+              format: date
+        template:
+          description: The subject template version the offering was created from (never modified by course administration).
+          oneOf:
+            - type: object
+              required: [id, code, title, version]
+              additionalProperties: false
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                code:
+                  type: string
+                title:
+                  type: string
+                version:
+                  type: integer
+            - type: "null"
+        sections:
+          type: array
+          items:
+            type: object
+            required: [id, title, summary, position, isVisible, activityCount, studentVisibleActivityCount]
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+                format: uuid
+              title:
+                type: string
+              summary:
+                type: [string, "null"]
+              position:
+                type: integer
+              isVisible:
+                type: boolean
+              activityCount:
+                type: integer
+              studentVisibleActivityCount:
+                type: integer
+                description: Approved, visible activities (shown to students only if the section is visible too).
+        enrollmentCounts:
+          type: array
+          items:
+            type: object
+            required: [role, active, inactive]
+            additionalProperties: false
+            properties:
+              role:
+                $ref: "#/components/schemas/CourseRole"
+              active:
+                type: integer
+              inactive:
+                type: integer
+        studentVisibleActivityCount:
+          type: integer
+        unapprovedActivityCount:
+          type: integer
+        awaitingReviewCount:
+          type: integer
+        allowedTransitions:
+          type: array
+          items:
+            type: string
+            enum: [publish, unpublish]

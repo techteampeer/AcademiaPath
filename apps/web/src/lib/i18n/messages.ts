@@ -5,6 +5,7 @@
  */
 import { assignments } from './catalog/assignments';
 import { content } from './catalog/content';
+import { courseAdmin } from './catalog/courseAdmin';
 import { documents } from './catalog/documents';
 import { errors } from './catalog/errors';
 import { meta } from './catalog/meta';
@@ -247,6 +248,7 @@ const en = {
   tutor: tutor.en,
   errors: errors.en,
   meta: meta.en,
+  courseAdmin: courseAdmin.en,
   academics: {
     hierarchy: 'Hierarchy',
     treeLabel: 'Academic hierarchy',
@@ -676,6 +678,7 @@ const es: Messages = {
   tutor: tutor.es,
   errors: errors.es,
   meta: meta.es,
+  courseAdmin: courseAdmin.es,
   academics: {
     hierarchy: 'Jerarquía',
     treeLabel: 'Jerarquía académica',

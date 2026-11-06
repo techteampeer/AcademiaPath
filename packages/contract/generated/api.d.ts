@@ -462,8 +462,91 @@ export interface paths {
         };
         /** Get a course the caller can access */
         get: operations["getCourse"];
+        /**
+         * Edit a course offering's details
+         * @description Administrators only. Send the `version` you last read and the fields to change. The title and
+         *     description can always be edited. The code can be changed only while the course is a draft
+         *     (`COURSE_CODE_LOCKED` otherwise) and must stay unique in the term (`COURSE_CODE_TAKEN`).
+         *     Offerings take their dates from their term. Status changes use the publish and unpublish
+         *     operations, never this one. A stale `version` is refused (`COURSE_VERSION_CONFLICT`), so
+         *     concurrent edits cannot silently overwrite each other. Only the offering changes: its subject
+         *     template and template version are never modified. Audited as `course.updated`.
+         */
+        put: operations["updateCourse"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/lifecycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Course administration overview
+         * @description Administrators only. The offering with its term, source template version, sections (with
+         *     activity counts), enrollment counts per role and status, and the status transitions allowed
+         *     now. `studentVisibleActivityCount` counts approved, visible activities in visible sections:
+         *     exactly what students can open once the course is published. Activities that were never
+         *     approved (`unapprovedActivityCount`, including those awaiting review) stay hidden from
+         *     students whatever the course status.
+         */
+        get: operations["getCourseLifecycle"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish a draft course
+         * @description Administrators only. Explicit transition `draft` → `published`; any other current status is
+         *     refused (`INVALID_COURSE_TRANSITION`), as is a stale `version` (`COURSE_VERSION_CONFLICT`).
+         *     Publishing changes only the course status: students enrolled in the course can then open it,
+         *     but still see only approved, visible content in visible sections, and only released grades.
+         *     Audited as `course.published`.
+         */
+        post: operations["publishCourse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/unpublish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unpublish a published course
+         * @description Administrators only. Explicit transition `published` → `draft`. Students immediately lose
+         *     access to the course; staff keep it. Nothing is deleted: content, enrollments, quiz attempts,
+         *     submissions, grades and audit records stay, and reappear for students when the course is
+         *     published again. Refused for other statuses (`INVALID_COURSE_TRANSITION`) or a stale
+         *     `version` (`COURSE_VERSION_CONFLICT`). Audited as `course.unpublished`.
+         */
+        post: operations["unpublishCourse"];
         delete?: never;
         options?: never;
         head?: never;
@@ -514,7 +597,15 @@ export interface paths {
          */
         put: operations["updateCourseEnrollment"];
         post?: never;
-        delete?: never;
+        /**
+         * Remove an enrollment that has no history
+         * @description Administrators only. Removes an enrollment created by mistake. Only allowed when it has no quiz
+         *     attempts, submissions, grades or tutor usage (`ENROLLMENT_HAS_HISTORY` otherwise); for those,
+         *     set `status` to `inactive` instead, which blocks access while keeping everything, and set it
+         *     back to `active` to restore access with the student's history intact. The enrollment must
+         *     belong to the course in the path (`404` otherwise). Audited as `enrollment.deleted`.
+         */
+        delete: operations["deleteCourseEnrollment"];
         options?: never;
         head?: never;
         patch?: never;
@@ -563,6 +654,59 @@ export interface paths {
          */
         get: operations["listCourseSections"];
         put?: never;
+        /**
+         * Add a section to a course offering
+         * @description Administrators only. Appends a section after the existing ones. Only this offering changes;
+         *     its subject template is never modified. Hidden sections (`isVisible: false`) and their
+         *     activities are never shown to students. Audited as `section.created`.
+         */
+        post: operations["createCourseSection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/sections/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change the order of a course's sections
+         * @description Administrators only. `sectionIds` must list every section of the course exactly once, in the
+         *     new order; positions become 0, 1, 2… A list that no longer matches the course (a section was
+         *     added or belongs elsewhere) is refused (`SECTION_ORDER_STALE`), and duplicates are invalid
+         *     (`INVALID_SECTION_ORDER`). Changes to one course's structure are serialized, and the subject
+         *     template never changes. Audited as `sections.reordered`.
+         */
+        put: operations["reorderCourseSections"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/sections/{sectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rename a section or change its visibility
+         * @description Administrators only. Send `title`, `summary` and/or `isVisible`. The section must belong to the
+         *     course in the path (`404` otherwise). Hiding a section hides all of its activities from
+         *     students without deleting anything; showing it again reveals only approved, visible
+         *     activities. Audited as `section.updated`.
+         */
+        put: operations["updateCourseSection"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1280,7 +1424,7 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY";
         };
         Code: string;
         /**
@@ -1436,6 +1580,8 @@ export interface components {
             status: components["schemas"]["CourseStatus"];
             /** @description The caller's role in this course, or null (e.g. an administrator who is not enrolled). */
             viewerRole: components["schemas"]["CourseRole"] | null;
+            /** @description Concurrency token for course administration; incremented by every lifecycle change. */
+            version: number;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -2422,6 +2568,75 @@ export interface components {
                 errors: number;
             };
         };
+        CourseUpdate: {
+            /** @description The course `version` the change is based on. */
+            version: number;
+            title?: string;
+            code?: components["schemas"]["Code"];
+            description?: string | null;
+        };
+        CourseTransition: {
+            version: number;
+        };
+        SectionCreate: {
+            title: string;
+            summary?: string | null;
+            /** @default true */
+            isVisible: boolean;
+        };
+        SectionUpdate: {
+            title?: string;
+            summary?: string | null;
+            isVisible?: boolean;
+        };
+        SectionOrder: {
+            sectionIds: string[];
+        };
+        SectionList: {
+            items: components["schemas"]["Section"][];
+        };
+        CourseLifecycle: {
+            course: components["schemas"]["Course"];
+            /** @description Offerings take their dates from their term. */
+            term: {
+                /** Format: uuid */
+                id: string;
+                code: string;
+                name: string;
+                /** Format: date */
+                startsOn: string;
+                /** Format: date */
+                endsOn: string;
+            };
+            /** @description The subject template version the offering was created from (never modified by course administration). */
+            template: {
+                /** Format: uuid */
+                id: string;
+                code: string;
+                title: string;
+                version: number;
+            } | null;
+            sections: {
+                /** Format: uuid */
+                id: string;
+                title: string;
+                summary: string | null;
+                position: number;
+                isVisible: boolean;
+                activityCount: number;
+                /** @description Approved, visible activities (shown to students only if the section is visible too). */
+                studentVisibleActivityCount: number;
+            }[];
+            enrollmentCounts: {
+                role: components["schemas"]["CourseRole"];
+                active: number;
+                inactive: number;
+            }[];
+            studentVisibleActivityCount: number;
+            unapprovedActivityCount: number;
+            awaitingReviewCount: number;
+            allowedTransitions: ("publish" | "unpublish")[];
+        };
     };
     responses: {
         /**
@@ -2589,7 +2804,9 @@ export interface components {
          *     assignment rule: `SUBMISSION_EXISTS`, `SUBMISSION_CLOSED`; or an account rule: `EMAIL_TAKEN`,
          *     `EMAIL_LOCKED`, `LAST_ADMINISTRATOR`, `SELF_ACCOUNT_CHANGE`, `INVITATIONS_DISABLED`,
          *     `ACCOUNT_ALREADY_ACTIVATED`; or an enrollment rule: `ENROLLMENT_HAS_STUDENT_WORK`,
-         *     `IMPORT_CONFLICT`.
+         *     `IMPORT_CONFLICT`, `ENROLLMENT_HAS_HISTORY`; or a course lifecycle rule:
+         *     `COURSE_VERSION_CONFLICT`, `INVALID_COURSE_TRANSITION`, `COURSE_CODE_LOCKED`,
+         *     `SECTION_ORDER_STALE`.
          */
         Conflict: {
             headers: {
@@ -2619,7 +2836,7 @@ export interface components {
          *     `DOCUMENT_ENCRYPTED`, `DOCUMENT_MALFORMED`, `DOCUMENT_LIMITS_EXCEEDED` (decompressed size,
          *     processing time or memory) or `MALWARE_DETECTED`; or an account or enrollment rule:
          *     `COURSE_NOT_FOUND`, `DUPLICATE_COURSE`, `INVITATION_SYNTHETIC_ONLY`, `PASSWORD_TOO_WEAK`,
-         *     `IMPORT_HAS_ERRORS` or `IMPORT_TOO_LARGE`.
+         *     `IMPORT_HAS_ERRORS`, `IMPORT_TOO_LARGE` or `INVALID_SECTION_ORDER`.
          */
         UnprocessableContent: {
             headers: {
@@ -3382,6 +3599,126 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    updateCourse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CourseUpdate"];
+            };
+        };
+        responses: {
+            /** @description The updated course (with its new `version`). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Course"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getCourseLifecycle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The course overview. */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseLifecycle"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    publishCourse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CourseTransition"];
+            };
+        };
+        responses: {
+            /** @description The published course. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Course"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    unpublishCourse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CourseTransition"];
+            };
+        };
+        responses: {
+            /** @description The course, now a draft. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Course"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     listCourseEnrollments: {
         parameters: {
             query?: {
@@ -3477,6 +3814,32 @@ export interface operations {
             422: components["responses"]["UnprocessableContent"];
         };
     };
+    deleteCourseEnrollment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                enrollmentId: components["parameters"]["EnrollmentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Enrollment removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     importCourseEnrollments: {
         parameters: {
             query?: never;
@@ -3536,6 +3899,99 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createCourseSection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SectionCreate"];
+            };
+        };
+        responses: {
+            /** @description The new section. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Section"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    reorderCourseSections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SectionOrder"];
+            };
+        };
+        responses: {
+            /** @description Every section of the course in its new order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SectionList"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    updateCourseSection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                sectionId: components["parameters"]["SectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SectionUpdate"];
+            };
+        };
+        responses: {
+            /** @description The updated section. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Section"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };

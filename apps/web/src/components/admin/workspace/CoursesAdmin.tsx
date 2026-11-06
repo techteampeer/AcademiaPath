@@ -141,6 +141,10 @@ function CoursesContent() {
                   </td>
                   <td className={tableClasses.td}>
                     <div className="flex flex-wrap gap-2">
+                      <Link href={`/admin/courses/${course.id}`} className={buttonClasses({ size: 'sm' })}>
+                        {t.courseAdmin.manage}
+                        <span className="sr-only"> {course.code}</span>
+                      </Link>
                       <Link href={`/courses/${course.id}`} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
                         {t.common.open}
                         <span className="sr-only"> {course.code}</span>
