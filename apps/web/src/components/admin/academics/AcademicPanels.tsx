@@ -15,6 +15,7 @@ import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { Course, CourseTemplate, CourseTemplateDetail, Program, Term } from '@/lib/api/types';
 import { formatDate, type Messages } from '@/lib/i18n/messages';
+import { ProgramManagersPanel } from './ProgramManagers';
 
 const CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const PERIOD_VALUES = ['1', '2', '0'] as const;
@@ -378,6 +379,8 @@ export function ProgramPanel({
         </form>
       </Card>
 
+      <ProgramManagersPanel key={program.id} program={program} />
+
       <Card as="section" aria-labelledby="subjects-heading" className="space-y-4">
         <h3 id="subjects-heading" className="text-lg font-semibold text-slate-900">
           {h.subjects}
@@ -410,9 +413,10 @@ export function ProgramPanel({
 
 // ---------------------------------------------------------------- Subject
 
-type SubjectFormMode = { kind: 'create'; programId: string } | { kind: 'edit'; detail: CourseTemplateDetail };
+export type SubjectFormMode = { kind: 'create'; programId: string } | { kind: 'edit'; detail: CourseTemplateDetail };
 
-function SubjectForm({ mode, onSaved }: { mode: SubjectFormMode; onSaved: () => Promise<void> }) {
+/** Create a subject or save a new version of one (also used by the Academic management workspace). */
+export function SubjectForm({ mode, onSaved }: { mode: SubjectFormMode; onSaved: () => Promise<void> }) {
   const detail = mode.kind === 'edit' ? mode.detail : null;
   const [code, setCode] = useState(detail?.code ?? '');
   const [title, setTitle] = useState(detail?.latestVersion?.title ?? detail?.title ?? '');
@@ -439,6 +443,8 @@ function SubjectForm({ mode, onSaved }: { mode: SubjectFormMode; onSaved: () => 
     setErrors(next);
     if (Object.keys(next).length) return;
     const programId = detail ? detail.programId : mode.kind === 'create' ? mode.programId : null;
+    // A new version keeps each existing section's visibility (matched by title); new sections are visible.
+    const visibility = new Map((detail?.latestVersion?.sections ?? []).map((section) => [section.title, section.isVisible]));
     const saved = await run(
       (csrf) =>
         api.createCourseTemplate(
@@ -448,7 +454,7 @@ function SubjectForm({ mode, onSaved }: { mode: SubjectFormMode; onSaved: () => 
             title: title.trim(),
             ...(description.trim() ? { description: description.trim() } : {}),
             baseVersion,
-            sections: lines.map((line) => ({ title: line, isVisible: true })),
+            sections: lines.map((line) => ({ title: line, isVisible: visibility.get(line) ?? true })),
           },
           csrf,
         ),
