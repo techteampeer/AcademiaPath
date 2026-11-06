@@ -105,3 +105,9 @@ export type CourseLifecycle = Schemas['CourseLifecycle'];
 export type SectionCreate = Schemas['SectionCreate'];
 export type SectionUpdate = Schemas['SectionUpdate'];
 export type SectionList = Schemas['SectionList'];
+
+export type ManagedProgramList = Schemas['ManagedProgramList'];
+export type ManagedProgram = Schemas['ManagedProgramList']['items'][number];
+export type ProgramManager = Schemas['ProgramManager'];
+export type ProgramManagerList = Schemas['ProgramManagerList'];
+export type CourseTemplateVersionList = Schemas['CourseTemplateVersionList'];

@@ -12,10 +12,10 @@ export function NavLinks({ idPrefix, onNavigate }: { idPrefix: string; onNavigat
   const pathname = usePathname();
   const { session } = useSession();
   const { t } = useLocale();
-  const { roleByCourse } = useWorkspace();
+  const { roleByCourse, managedPrograms } = useWorkspace();
   if (session.status === 'loading') return null;
   const user = session.status === 'authenticated' ? session.user : null;
-  const sections = buildNavigation(t, user, pathname, roleByCourse);
+  const sections = buildNavigation(t, user, pathname, roleByCourse, managedPrograms.length > 0);
 
   return (
     <div className="space-y-6">
