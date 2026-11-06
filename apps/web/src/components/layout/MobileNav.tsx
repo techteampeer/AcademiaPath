@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { LanguageSwitcher, useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { SessionSummary } from '@/components/session/SessionControls';
 import { NavLinks } from './NavLinks';
 
@@ -52,9 +52,6 @@ export function MobileNav() {
       {open ? (
         <nav id={PANEL_ID} aria-label={t.nav.main} className="absolute inset-x-0 top-full max-h-[calc(100vh-4rem)] overflow-y-auto border-b border-slate-200 bg-white px-4 py-4 shadow-lg sm:px-6">
           <SessionSummary />
-          <div className="mb-4 px-3 sm:hidden">
-            <LanguageSwitcher />
-          </div>
           <NavLinks idPrefix="mobile-nav" onNavigate={() => setOpen(false)} />
         </nav>
       ) : null}

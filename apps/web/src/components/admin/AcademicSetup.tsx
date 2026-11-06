@@ -1,15 +1,19 @@
 'use client';
 
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
+import { useCsrfAction, type ActionResult } from '@/components/session/useCsrfAction';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SelectField, TextField } from '@/components/ui/Field';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { Course, CourseRole, CourseTemplate, Program, Term } from '@/lib/api/types';
+import type { Messages } from '@/lib/i18n/messages';
 
 /** Lists show the first page only; enough for the demo setup. */
 const LIST_LIMIT = 100;
@@ -17,51 +21,15 @@ const CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type Errors = Record<string, string>;
-type Result = { tone: 'success' | 'error'; message: string } | null;
 
-function codeError(code: string): string | undefined {
-  if (!code.trim()) return 'Enter a code.';
-  if (code.trim().length > 32 || !CODE_PATTERN.test(code.trim())) {
-    return 'Use up to 32 letters, numbers, dots, hyphens or underscores, without spaces.';
-  }
+function codeError(code: string, t: Messages): string | undefined {
+  if (!code.trim()) return t.errors.enterCode;
+  if (code.trim().length > 32 || !CODE_PATTERN.test(code.trim())) return t.errors.codeFormat;
   return undefined;
 }
 
-function describeError(error: unknown): string {
-  if (isApiError(error, 401)) return 'Your session has ended. Sign in again.';
-  if (isApiError(error, 403)) return 'You are not allowed to perform this action.';
-  // Other API errors carry a safe, human-readable RFC 9457 `detail`.
-  if (isApiError(error)) return error.message;
-  return 'The request failed. Check your connection and try again.';
-}
-
-/**
- * Runs one state-changing request with the session's in-memory CSRF token. Failures are shown to
- * the user and are never retried automatically.
- */
-function useAction() {
-  const { getCsrfToken, handleUnauthorized } = useSession();
-  const [pending, setPending] = useState(false);
-  const [result, setResult] = useState<Result>(null);
-
-  async function run<T>(action: (csrfToken: string) => Promise<T>, successMessage: (value: T) => string) {
-    setPending(true);
-    setResult(null);
-    try {
-      const value = await action(await getCsrfToken());
-      setResult({ tone: 'success', message: successMessage(value) });
-      return value;
-    } catch (error) {
-      setResult({ tone: 'error', message: describeError(error) });
-      if (isApiError(error, 401)) handleUnauthorized();
-      return null;
-    } finally {
-      setPending(false);
-    }
-  }
-
-  return { run, pending, result };
-}
+/** Shared CSRF action (localized errors); each step shows its own result. */
+const useAction = useCsrfAction;
 
 function StepCard({ step, title, description, children }: { step: number; title: string; description: string; children: ReactNode }) {
   const headingId = `setup-step-${step}`;
@@ -76,7 +44,7 @@ function StepCard({ step, title, description, children }: { step: number; title:
   );
 }
 
-function ActionResult({ result }: { result: Result }) {
+function ActionResultAlert({ result }: { result: ActionResult }) {
   return result ? <Alert tone={result.tone}>{result.message}</Alert> : null;
 }
 
@@ -93,6 +61,7 @@ type Lists = { programs: Program[]; terms: Term[]; templates: CourseTemplate[]; 
 
 function SetupSteps() {
   const { handleUnauthorized } = useSession();
+  const { t } = useLocale();
   const [lists, setLists] = useState<Lists>({ programs: [], terms: [], templates: [], courses: [] });
   const [listError, setListError] = useState(false);
 
@@ -118,14 +87,13 @@ function SetupSteps() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Academic setup</h1>
-        <p className="mt-2 max-w-3xl text-slate-600">
-          Create the academic structure for a course and enroll a user. Every step saves directly to the database through the
-          AcademiaPath API. Lists show up to {LIST_LIMIT} entries.
-        </p>
-      </div>
-      {listError ? <Alert tone="error">Existing programs, terms, templates and courses could not be loaded.</Alert> : null}
+      <PageHeader
+        breadcrumbs={[{ label: t.nav.adminOverview, href: '/admin' }, { label: t.nav.courseSetup }]}
+        breadcrumbLabel={t.common.breadcrumb}
+        title={t.nav.courseSetup}
+        description={t.setup.setup.intro(LIST_LIMIT)}
+      />
+      {listError ? <Alert tone="error">{t.setup.setup.listError}</Alert> : null}
       <ProgramStep onCreated={refresh} />
       <TermStep onCreated={refresh} />
       <TemplateStep programs={lists.programs} onCreated={refresh} />
@@ -137,6 +105,9 @@ function SetupSteps() {
 
 function ProgramStep({ onCreated }: { onCreated: () => Promise<void> }) {
   const { run, pending, result } = useAction();
+  const { t } = useLocale();
+  const s = t.setup.setup;
+  const f = t.setup.fields;
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -145,15 +116,15 @@ function ProgramStep({ onCreated }: { onCreated: () => Promise<void> }) {
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const next: Errors = {};
-    const codeProblem = codeError(code);
+    const codeProblem = codeError(code, t);
     if (codeProblem) next.code = codeProblem;
-    if (!name.trim()) next.name = 'Enter a name.';
+    if (!name.trim()) next.name = t.errors.enterName;
     setErrors(next);
     if (Object.keys(next).length) return;
 
     const created = await run(
       (csrf) => api.createProgram({ code: code.trim(), name: name.trim(), ...(description.trim() ? { description: description.trim() } : {}) }, csrf),
-      (program) => `Program ${program.code} created.`,
+      (program) => s.programCreated(program.code),
     );
     if (created) {
       setCode('');
@@ -164,15 +135,15 @@ function ProgramStep({ onCreated }: { onCreated: () => Promise<void> }) {
   };
 
   return (
-    <StepCard step={1} title="Create a program" description="An academic program, for example a degree.">
+    <StepCard step={1} title={s.programStep} description={s.programStepHelp}>
       <form noValidate onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
-        <TextField id="program-code" label="Code" value={code} onChange={(e) => setCode(e.target.value)} error={errors.code} hint="For example ING-SIS" required />
-        <TextField id="program-name" label="Name" value={name} onChange={(e) => setName(e.target.value)} error={errors.name} required />
-        <TextField id="program-description" label="Description (optional)" className="sm:col-span-2" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <TextField id="program-code" label={f.code} value={code} onChange={(e) => setCode(e.target.value)} error={errors.code} hint={s.programCodeHint} required />
+        <TextField id="program-name" label={f.name} value={name} onChange={(e) => setName(e.target.value)} error={errors.name} required />
+        <TextField id="program-description" label={f.descriptionOptional} className="sm:col-span-2" value={description} onChange={(e) => setDescription(e.target.value)} />
         <div className="space-y-3 sm:col-span-2">
-          <ActionResult result={result} />
+          <ActionResultAlert result={result} />
           <Button type="submit" disabled={pending}>
-            {pending ? 'Creating…' : 'Create program'}
+            {pending ? f.creating : s.createProgram}
           </Button>
         </div>
       </form>
@@ -182,6 +153,9 @@ function ProgramStep({ onCreated }: { onCreated: () => Promise<void> }) {
 
 function TermStep({ onCreated }: { onCreated: () => Promise<void> }) {
   const { run, pending, result } = useAction();
+  const { t } = useLocale();
+  const s = t.setup.setup;
+  const f = t.setup.fields;
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [startsOn, setStartsOn] = useState('');
@@ -191,18 +165,18 @@ function TermStep({ onCreated }: { onCreated: () => Promise<void> }) {
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const next: Errors = {};
-    const codeProblem = codeError(code);
+    const codeProblem = codeError(code, t);
     if (codeProblem) next.code = codeProblem;
-    if (!name.trim()) next.name = 'Enter a name.';
-    if (!startsOn) next.startsOn = 'Choose a start date.';
-    if (!endsOn) next.endsOn = 'Choose an end date.';
-    else if (startsOn && endsOn < startsOn) next.endsOn = 'The end date cannot be before the start date.';
+    if (!name.trim()) next.name = t.errors.enterName;
+    if (!startsOn) next.startsOn = t.setup.dates.chooseStart;
+    if (!endsOn) next.endsOn = t.setup.dates.chooseEnd;
+    else if (startsOn && endsOn < startsOn) next.endsOn = t.setup.dates.endBeforeStart;
     setErrors(next);
     if (Object.keys(next).length) return;
 
     const created = await run(
       (csrf) => api.createTerm({ code: code.trim(), name: name.trim(), startsOn, endsOn }, csrf),
-      (term) => `Term ${term.code} created.`,
+      (term) => s.termCreated(term.code),
     );
     if (created) {
       setCode('');
@@ -214,16 +188,16 @@ function TermStep({ onCreated }: { onCreated: () => Promise<void> }) {
   };
 
   return (
-    <StepCard step={2} title="Create a term" description="An academic period, for example a semester.">
+    <StepCard step={2} title={s.termStep} description={s.termStepHelp}>
       <form noValidate onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
-        <TextField id="term-code" label="Code" value={code} onChange={(e) => setCode(e.target.value)} error={errors.code} hint="For example 2026-2" required />
-        <TextField id="term-name" label="Name" value={name} onChange={(e) => setName(e.target.value)} error={errors.name} required />
-        <TextField id="term-starts" label="Starts on" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} error={errors.startsOn} required />
-        <TextField id="term-ends" label="Ends on" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} error={errors.endsOn} required />
+        <TextField id="term-code" label={f.code} value={code} onChange={(e) => setCode(e.target.value)} error={errors.code} hint={s.termCodeHint} required />
+        <TextField id="term-name" label={f.name} value={name} onChange={(e) => setName(e.target.value)} error={errors.name} required />
+        <TextField id="term-starts" label={f.startsOn} type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} error={errors.startsOn} required />
+        <TextField id="term-ends" label={f.endsOn} type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} error={errors.endsOn} required />
         <div className="space-y-3 sm:col-span-2">
-          <ActionResult result={result} />
+          <ActionResultAlert result={result} />
           <Button type="submit" disabled={pending}>
-            {pending ? 'Creating…' : 'Create term'}
+            {pending ? f.creating : s.createTerm}
           </Button>
         </div>
       </form>
@@ -235,6 +209,9 @@ type SectionDraft = { title: string; isVisible: boolean };
 
 function TemplateStep({ programs, onCreated }: { programs: Program[]; onCreated: () => Promise<void> }) {
   const { run, pending, result } = useAction();
+  const { t } = useLocale();
+  const s = t.setup.setup;
+  const f = t.setup.fields;
   const [code, setCode] = useState('');
   const [title, setTitle] = useState('');
   const [programId, setProgramId] = useState('');
@@ -247,13 +224,13 @@ function TemplateStep({ programs, onCreated }: { programs: Program[]; onCreated:
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const next: Errors = {};
-    const codeProblem = codeError(code);
+    const codeProblem = codeError(code, t);
     if (codeProblem) next.code = codeProblem;
-    if (!title.trim()) next.title = 'Enter a title.';
+    if (!title.trim()) next.title = t.errors.enterTitle;
     sections.forEach((section, index) => {
-      if (!section.title.trim()) next[`section-${index}`] = 'Enter a section title or remove the section.';
+      if (!section.title.trim()) next[`section-${index}`] = s.sectionRequired;
     });
-    if (sections.length === 0) next.sections = 'Add at least one section.';
+    if (sections.length === 0) next.sections = s.atLeastOneSection;
     setErrors(next);
     if (Object.keys(next).length) return;
 
@@ -268,7 +245,7 @@ function TemplateStep({ programs, onCreated }: { programs: Program[]; onCreated:
           },
           csrf,
         ),
-      (version) => `Template ${version.code} version ${version.version} created with ${version.sections.length} sections.`,
+      (version) => s.templateCreated(version.code, version.version, version.sections.length),
     );
     if (created) {
       setCode('');
@@ -281,29 +258,29 @@ function TemplateStep({ programs, onCreated }: { programs: Program[]; onCreated:
   return (
     <StepCard
       step={3}
-      title="Create a course template"
-      description="Using an existing template code creates a new version; earlier versions are kept."
+      title={s.templateStep}
+      description={s.templateStepHelp}
     >
       <form noValidate onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
-        <TextField id="template-code" label="Code" value={code} onChange={(e) => setCode(e.target.value)} error={errors.code} hint="For example ITIL-F" required />
-        <TextField id="template-title" label="Title" value={title} onChange={(e) => setTitle(e.target.value)} error={errors.title} required />
+        <TextField id="template-code" label={f.code} value={code} onChange={(e) => setCode(e.target.value)} error={errors.code} hint={s.templateCodeHint} required />
+        <TextField id="template-title" label={f.title} value={title} onChange={(e) => setTitle(e.target.value)} error={errors.title} required />
         <SelectField
           id="template-program"
-          label="Program"
+          label={f.program}
           className="sm:col-span-2"
           value={programId}
           onChange={(e) => setProgramId(e.target.value)}
-          options={[{ value: '', label: 'Shared (no specific program)' }, ...programs.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` }))]}
+          options={[{ value: '', label: s.sharedProgram }, ...programs.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` }))]}
         />
         <fieldset className="sm:col-span-2">
-          <legend className="text-sm font-medium text-slate-800">Sections (in order)</legend>
+          <legend className="text-sm font-medium text-slate-800">{s.sectionsInOrder}</legend>
           {errors.sections ? <p className="mt-1 text-sm text-red-700">{errors.sections}</p> : null}
           <ol className="mt-2 space-y-3">
             {sections.map((section, index) => (
               <li key={index} className="flex flex-wrap items-end gap-3">
                 <TextField
                   id={`template-section-${index}`}
-                  label={`Section ${index + 1} title`}
+                  label={s.sectionTitle(index + 1)}
                   className="min-w-0 flex-1"
                   value={section.title}
                   onChange={(e) => updateSection(index, { title: e.target.value })}
@@ -311,16 +288,16 @@ function TemplateStep({ programs, onCreated }: { programs: Program[]; onCreated:
                 />
                 <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
                   <input type="checkbox" checked={section.isVisible} onChange={(e) => updateSection(index, { isVisible: e.target.checked })} />
-                  Visible to students
+                  {s.visibleToStudents}
                 </label>
                 <Button
                   variant="ghost"
                   size="sm"
                   className="mb-1"
                   onClick={() => setSections((current) => current.filter((_, i) => i !== index))}
-                  aria-label={`Remove section ${index + 1}`}
+                  aria-label={s.removeSection(index + 1)}
                 >
-                  Remove
+                  {f.remove}
                 </Button>
               </li>
             ))}
@@ -332,13 +309,13 @@ function TemplateStep({ programs, onCreated }: { programs: Program[]; onCreated:
             disabled={sections.length >= 100}
             onClick={() => setSections((current) => [...current, { title: '', isVisible: true }])}
           >
-            Add section
+            {s.addSection}
           </Button>
         </fieldset>
         <div className="space-y-3 sm:col-span-2">
-          <ActionResult result={result} />
+          <ActionResultAlert result={result} />
           <Button type="submit" disabled={pending}>
-            {pending ? 'Creating…' : 'Create template'}
+            {pending ? f.creating : s.createTemplate}
           </Button>
         </div>
       </form>
@@ -358,6 +335,9 @@ function CourseStep({
   onCreated: () => Promise<void>;
 }) {
   const { run, pending, result } = useAction();
+  const { t } = useLocale();
+  const s = t.setup.setup;
+  const f = t.setup.fields;
   const [programId, setProgramId] = useState('');
   const [termId, setTermId] = useState('');
   const [templateId, setTemplateId] = useState('');
@@ -377,10 +357,10 @@ function CourseStep({
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const next: Errors = {};
-    if (!programId) next.programId = 'Choose a program.';
-    if (!termId) next.termId = 'Choose a term.';
-    if (!selectedTemplate) next.templateId = 'Choose a template for this program.';
-    const codeProblem = codeError(code);
+    if (!programId) next.programId = s.chooseProgram;
+    if (!termId) next.termId = s.chooseTerm;
+    if (!selectedTemplate) next.templateId = s.chooseTemplate;
+    const codeProblem = codeError(code, t);
     if (codeProblem) next.code = codeProblem;
     setErrors(next);
     if (Object.keys(next).length) return;
@@ -399,7 +379,7 @@ function CourseStep({
           },
           csrf,
         ),
-      (course) => `Course ${course.code} created as ${course.status} with the template's sections.`,
+      (course) => s.courseCreated(course.code, t.status[course.status]),
     );
     if (created) {
       setCode('');
@@ -410,11 +390,11 @@ function CourseStep({
   };
 
   return (
-    <StepCard step={4} title="Create a course" description="A course in a term, created from a template version. The template's sections are copied into the course.">
+    <StepCard step={4} title={s.courseStep} description={s.courseStepHelp}>
       <form noValidate onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
         <SelectField
           id="course-program"
-          label="Program"
+          label={f.program}
           value={programId}
           onChange={(e) => {
             setProgramId(e.target.value);
@@ -422,19 +402,19 @@ function CourseStep({
             setTemplateVersion('');
           }}
           error={errors.programId}
-          options={selectOptions('Select a program', programs.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` })))}
+          options={selectOptions(s.selectProgram, programs.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` })))}
         />
         <SelectField
           id="course-term"
-          label="Term"
+          label={f.term}
           value={termId}
           onChange={(e) => setTermId(e.target.value)}
           error={errors.termId}
-          options={selectOptions('Select a term', terms.map((t) => ({ value: t.id, label: `${t.code} — ${t.name}` })))}
+          options={selectOptions(s.selectTerm, terms.map((term) => ({ value: term.id, label: `${term.code} — ${term.name}` })))}
         />
         <SelectField
           id="course-template"
-          label="Template"
+          label={s.template}
           value={templateId}
           onChange={(e) => {
             setTemplateId(e.target.value);
@@ -442,40 +422,40 @@ function CourseStep({
           }}
           error={errors.templateId}
           disabled={!programId}
-          hint={programId ? undefined : 'Choose a program first.'}
+          hint={programId ? undefined : s.programFirst}
           options={selectOptions(
-            'Select a template',
-            compatibleTemplates.map((t) => ({ value: t.id, label: `${t.code} — ${t.title} (latest v${t.latestVersion?.version})` })),
+            s.selectTemplate,
+            compatibleTemplates.map((template) => ({ value: template.id, label: s.templateOption(template.code, template.title, template.latestVersion?.version ?? 0) })),
           )}
         />
         <SelectField
           id="course-template-version"
-          label="Template version"
+          label={s.templateVersion}
           value={templateVersion}
           onChange={(e) => setTemplateVersion(e.target.value)}
           disabled={!selectedTemplate}
           options={[
-            { value: '', label: selectedTemplate ? `Latest (v${latestVersion})` : 'Latest' },
-            ...Array.from({ length: latestVersion }, (_, i) => ({ value: String(i + 1), label: `Version ${i + 1}` })),
+            { value: '', label: selectedTemplate ? s.latestVersion(latestVersion) : s.latest },
+            ...Array.from({ length: latestVersion }, (_, i) => ({ value: String(i + 1), label: s.versionN(i + 1) })),
           ]}
         />
-        <TextField id="course-code" label="Course code" value={code} onChange={(e) => setCode(e.target.value)} error={errors.code} hint="Unique within the term, for example ITIL-2026-2-A" required />
-        <TextField id="course-title" label="Title (optional)" value={title} onChange={(e) => setTitle(e.target.value)} hint="Defaults to the template version's title" />
+        <TextField id="course-code" label={f.courseCode} value={code} onChange={(e) => setCode(e.target.value)} error={errors.code} hint={s.courseCodeHint} required />
+        <TextField id="course-title" label={f.titleOptional} value={title} onChange={(e) => setTitle(e.target.value)} hint={s.courseTitleHint} />
         <SelectField
           id="course-status"
-          label="Status"
+          label={f.status}
           value={status}
           onChange={(e) => setStatus(e.target.value === 'published' ? 'published' : 'draft')}
-          hint="Students only see published courses."
+          hint={s.statusHint}
           options={[
-            { value: 'draft', label: 'Draft' },
-            { value: 'published', label: 'Published' },
+            { value: 'draft', label: t.status.draft },
+            { value: 'published', label: t.status.published },
           ]}
         />
         <div className="space-y-3 sm:col-span-2">
-          <ActionResult result={result} />
+          <ActionResultAlert result={result} />
           <Button type="submit" disabled={pending}>
-            {pending ? 'Creating…' : 'Create course'}
+            {pending ? f.creating : s.createCourse}
           </Button>
         </div>
       </form>
@@ -483,15 +463,13 @@ function CourseStep({
   );
 }
 
-const ROLE_OPTIONS: Array<{ value: CourseRole; label: string }> = [
-  { value: 'student', label: 'Student' },
-  { value: 'instructor', label: 'Instructor' },
-  { value: 'non_editing_instructor', label: 'Non-editing instructor' },
-  { value: 'design_team', label: 'Design team' },
-];
+const ROLE_VALUES: CourseRole[] = ['student', 'instructor', 'non_editing_instructor', 'design_team'];
 
 function EnrollmentStep({ courses, onCreated }: { courses: Course[]; onCreated: () => Promise<void> }) {
   const { run, pending, result } = useAction();
+  const { t } = useLocale();
+  const s = t.setup.setup;
+  const roleOptions = ROLE_VALUES.map((value) => ({ value, label: t.roles[value] }));
   const [courseId, setCourseId] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<CourseRole>('student');
@@ -500,15 +478,15 @@ function EnrollmentStep({ courses, onCreated }: { courses: Course[]; onCreated: 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const next: Errors = {};
-    if (!courseId) next.courseId = 'Choose a course.';
-    if (!email.trim()) next.email = "Enter the user's email address.";
-    else if (!EMAIL_PATTERN.test(email.trim())) next.email = 'Enter a valid email address.';
+    if (!courseId) next.courseId = s.chooseCourse;
+    if (!email.trim()) next.email = s.enterEmail;
+    else if (!EMAIL_PATTERN.test(email.trim())) next.email = t.errors.invalidEmail;
     setErrors(next);
     if (Object.keys(next).length) return;
 
     const created = await run(
       (csrf) => api.createEnrollment(courseId, { email: email.trim(), role }, csrf),
-      (enrollment) => `${enrollment.user.email} enrolled as ${ROLE_OPTIONS.find((r) => r.value === enrollment.role)?.label ?? enrollment.role}.`,
+      (enrollment) => s.enrolled(enrollment.user.email, t.roles[enrollment.role]),
     );
     if (created) {
       setEmail('');
@@ -517,29 +495,29 @@ function EnrollmentStep({ courses, onCreated }: { courses: Course[]; onCreated: 
   };
 
   return (
-    <StepCard step={5} title="Enroll a user" description="Give an existing user a role in a course. Each user can hold one role per course.">
+    <StepCard step={5} title={s.enrollStep} description={s.enrollStepHelp}>
       <form noValidate onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
         <SelectField
           id="enroll-course"
-          label="Course"
+          label={s.course}
           className="sm:col-span-2"
           value={courseId}
           onChange={(e) => setCourseId(e.target.value)}
           error={errors.courseId}
-          options={selectOptions('Select a course', courses.map((c) => ({ value: c.id, label: `${c.code} — ${c.title} (${c.status})` })))}
+          options={selectOptions(s.selectCourse, courses.map((c) => ({ value: c.id, label: `${c.code} — ${c.title} (${t.status[c.status]})` })))}
         />
-        <TextField id="enroll-email" label="User email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} error={errors.email} required />
+        <TextField id="enroll-email" label={s.userEmail} type="email" value={email} onChange={(e) => setEmail(e.target.value)} error={errors.email} required />
         <SelectField
           id="enroll-role"
-          label="Course role"
+          label={s.courseRole}
           value={role}
-          onChange={(e) => setRole(ROLE_OPTIONS.find((r) => r.value === e.target.value)?.value ?? 'student')}
-          options={ROLE_OPTIONS}
+          onChange={(e) => setRole(ROLE_VALUES.find((value) => value === e.target.value) ?? 'student')}
+          options={roleOptions}
         />
         <div className="space-y-3 sm:col-span-2">
-          <ActionResult result={result} />
+          <ActionResultAlert result={result} />
           <Button type="submit" disabled={pending}>
-            {pending ? 'Enrolling…' : 'Enroll user'}
+            {pending ? s.enrolling : s.enroll}
           </Button>
         </div>
       </form>

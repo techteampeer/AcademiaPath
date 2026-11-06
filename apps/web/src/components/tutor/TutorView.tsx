@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { contentAbilities } from '@/components/content/contentDisplay';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { useCsrfAction } from '@/components/session/useCsrfAction';
@@ -11,77 +12,16 @@ import { Badge } from '@/components/ui/Badge';
 import { Button, buttonClasses } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Breadcrumbs } from '@/components/ui/PageHeader';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { Course, CurrentUser, TutorCitation, TutorLanguage, TutorMessageResponse, TutorPracticeResponse, TutorUsage } from '@/lib/api/types';
+import type { Messages } from '@/lib/i18n/messages';
 
 const QUESTION_LIMIT = 500;
 const TOPIC_LIMIT = 200;
 
-/** Interface strings. Responses come from the API in the selected language (fixed mock templates). */
-const UI = {
-  en: {
-    heading: 'Course tutor',
-    mock: 'Mock AI — local demonstration',
-    mockNote: 'Answers quote approved lessons from this course. No language model or external service is used, and nothing is translated.',
-    language: 'Response language',
-    askHeading: 'Ask a question',
-    question: 'Your question',
-    questionHint: `Up to ${QUESTION_LIMIT} characters. Do not include personal information.`,
-    ask: 'Ask the tutor',
-    asking: 'Searching approved lessons…',
-    empty: 'Enter a question.',
-    tooLong: `Use at most ${QUESTION_LIMIT} characters.`,
-    response: 'Response',
-    insufficient: 'Not enough approved material',
-    sources: 'Sources',
-    openLesson: 'Open lesson',
-    sourceIn: (lang: string) => `Source in ${lang} (original text, not translated)`,
-    sourceUnknown: 'Source language not detected',
-    practiceHeading: 'Practice prompts',
-    topic: 'Topic (optional)',
-    suggest: 'Suggest practice prompts',
-    suggesting: 'Preparing prompts…',
-    noPractice: 'No approved lesson material matches this topic.',
-    practiceNote: 'Practice prompts are for self-study only. They are not graded and contain no assessment answers.',
-    usage: (used: number, limit: number, minutes: number) => `${used} of ${limit} requests used in the last ${minutes} minutes.`,
-    back: 'Back to course',
-    loading: 'Loading tutor…',
-    unavailable: 'The tutor is not available to you in this course.',
-    langNames: { en: 'English', es: 'Spanish' } as Record<string, string>,
-  },
-  es: {
-    heading: 'Tutor del curso',
-    mock: 'IA simulada — demostración local',
-    mockNote: 'Las respuestas citan lecciones aprobadas de este curso. No se usa un modelo de lenguaje ni servicios externos, y nada se traduce.',
-    language: 'Idioma de la respuesta',
-    askHeading: 'Haz una pregunta',
-    question: 'Tu pregunta',
-    questionHint: `Hasta ${QUESTION_LIMIT} caracteres. No incluyas datos personales.`,
-    ask: 'Preguntar al tutor',
-    asking: 'Buscando en lecciones aprobadas…',
-    empty: 'Escribe una pregunta.',
-    tooLong: `Usa como máximo ${QUESTION_LIMIT} caracteres.`,
-    response: 'Respuesta',
-    insufficient: 'No hay material aprobado suficiente',
-    sources: 'Fuentes',
-    openLesson: 'Abrir lección',
-    sourceIn: (lang: string) => `Fuente en ${lang} (texto original, sin traducir)`,
-    sourceUnknown: 'Idioma de la fuente no detectado',
-    practiceHeading: 'Preguntas de práctica',
-    topic: 'Tema (opcional)',
-    suggest: 'Sugerir preguntas de práctica',
-    suggesting: 'Preparando preguntas…',
-    noPractice: 'Ninguna lección aprobada coincide con este tema.',
-    practiceNote: 'Las preguntas de práctica son solo para estudiar. No se califican y no contienen respuestas de evaluaciones.',
-    usage: (used: number, limit: number, minutes: number) => `${used} de ${limit} solicitudes usadas en los últimos ${minutes} minutos.`,
-    back: 'Volver al curso',
-    loading: 'Cargando tutor…',
-    unavailable: 'El tutor no está disponible para ti en este curso.',
-    langNames: { en: 'inglés', es: 'español' } as Record<string, string>,
-  },
-} as const;
-type Strings = (typeof UI)[TutorLanguage];
+type Strings = Messages['tutor'];
 
 export function TutorView({ courseId }: { courseId: string }) {
   return <RequireAuth>{(user) => <TutorContent courseId={courseId} user={user} />}</RequireAuth>;
@@ -89,10 +29,14 @@ export function TutorView({ courseId }: { courseId: string }) {
 
 function TutorContent({ courseId, user }: { courseId: string; user: CurrentUser }) {
   const { handleUnauthorized } = useSession();
-  const [language, setLanguage] = useState<TutorLanguage>('es');
+  // Interface strings follow the application language; answers default to it but can be requested in the other language.
+  const { t: messages, locale } = useLocale();
+  const t = messages.tutor;
+  const [language, setLanguage] = useState<TutorLanguage>(locale);
   const [course, setCourse] = useState<{ status: 'loading' | 'missing' | 'error' } | { status: 'ready'; data: Course }>({ status: 'loading' });
   const [usage, setUsage] = useState<TutorUsage | null>(null);
-  const t = UI[language];
+  // Switching the interface language also switches the default response language.
+  useEffect(() => setLanguage(locale), [locale]);
 
   useEffect(() => {
     api
@@ -115,7 +59,7 @@ function TutorContent({ courseId, user }: { courseId: string; user: CurrentUser 
 
   const backLink = (
     <Link href={`/courses/${courseId}`} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
-      {t.back}
+      {messages.content.view.backToCourse}
     </Link>
   );
   if (course.status === 'loading') {
@@ -130,9 +74,12 @@ function TutorContent({ courseId, user }: { courseId: string; user: CurrentUser 
   }
 
   return (
-    <div className="space-y-6" lang={language}>
+    <div className="space-y-6">
       <div>
-        {backLink}
+        <Breadcrumbs
+          label={messages.common.breadcrumb}
+          items={[{ label: messages.nav.myCourses, href: '/courses' }, { label: course.data.title, href: `/courses/${course.data.id}` }, { label: t.heading }]}
+        />
         <p className="mt-4 text-sm text-slate-500">{course.data.code}</p>
         <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{t.heading}</h1>
@@ -144,7 +91,7 @@ function TutorContent({ courseId, user }: { courseId: string; user: CurrentUser 
       <fieldset className="flex flex-wrap items-center gap-4">
         <legend className="mb-1 text-sm font-medium text-slate-800">{t.language}</legend>
         {(['en', 'es'] as const).map((option) => (
-          <label key={option} className="flex items-center gap-2 text-sm text-slate-800">
+          <label key={option} lang={option} className="flex items-center gap-2 text-sm text-slate-800">
             <input type="radio" name="tutor-language" value={option} checked={language === option} onChange={() => setLanguage(option)} />
             {option === 'en' ? 'English' : 'Español'}
           </label>
@@ -187,6 +134,7 @@ function CitationList({ courseId, citations, t }: { courseId: string; citations:
 }
 
 function QuestionPanel({ courseId, language, t, onDone }: { courseId: string; language: TutorLanguage; t: Strings; onDone: () => void }) {
+  const errorText = useLocale().t.errors;
   const [question, setQuestion] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<TutorMessageResponse | null>(null);
@@ -195,7 +143,7 @@ function QuestionPanel({ courseId, language, t, onDone }: { courseId: string; la
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!question.trim()) return setError(t.empty);
-    if (question.length > QUESTION_LIMIT) return setError(t.tooLong);
+    if (question.length > QUESTION_LIMIT) return setError(errorText.maxChars(QUESTION_LIMIT));
     setError(null);
     const answer = await run((csrf) => api.askTutor(courseId, question.trim(), language, csrf));
     if (answer) setResponse(answer);
@@ -223,7 +171,7 @@ function QuestionPanel({ courseId, language, t, onDone }: { courseId: string; la
             className={`block w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm ${error ? 'border-red-500' : 'border-slate-300'}`}
           />
           <p id="tutor-question-hint" className="mt-1 text-xs text-slate-500">
-            {t.questionHint}
+            {t.questionHint(QUESTION_LIMIT)}
           </p>
           {error ? (
             <p id="tutor-question-error" className="mt-1 text-sm text-red-700">

@@ -43,6 +43,7 @@ Health check: `curl http://localhost:4000/api/v1/health`
 | `pnpm db:check`         | Validate the migration history           |
 | `pnpm db:migrate`       | Apply migrations to `DATABASE_URL`       |
 | `pnpm db:seed:dev`      | Create synthetic local users (dev only)  |
+| `pnpm db:seed:demo`     | Seed the synthetic demo courses (dev only) |
 
 ## Database
 
@@ -73,6 +74,8 @@ Course content: instructors add plain-text lessons and links to a course's secti
 Course documents (proof of concept): instructors and the design team upload PDF, Word (.docx) or PowerPoint (.pptx) files in a course's **Document library**. The API checks each file's real content (signature and container structure), refuses encrypted, macro-enabled, malformed and oversized files, extracts the selectable text in a time- and memory-limited worker thread (no OCR, so scanned pages yield no text) and creates a deterministic **mock** summary that only quotes sentences from the document, with page, slide or paragraph references. **Refresh summary** adds a new revision; documents and summaries go through the same review as other content, and students only ever see the approved document and summary revision. Original files are stored privately outside the repository (`DOCUMENT_STORAGE_DIR`, default `~/.academiapath/documents` in development) under server-generated names and are only downloadable through the authenticated, course-authorized API. **No malware scanning service is connected** (uploads are recorded as `not_scanned`; `apps/api/src/documents/scanner.ts` is the integration hook), so this local proof of concept is not approved for untrusted production documents.
 
 Local demo: start PostgreSQL, run `pnpm db:migrate` and `pnpm db:seed:dev`, then `pnpm dev` and open http://localhost:3000/login. Administrators get **Academic setup** (`/admin/setup`); everyone gets **Dashboard** (`/dashboard`).
+
+Demonstration dataset: `pnpm db:seed:demo` adds three synthetic courses (ITIL 4 Foundation, Project Management Fundamentals, Introduction to Artificial Intelligence) with content, review states, quizzes, assignments, grades and documents, created through the real API as the seeded accounts. It is repeatable, never deletes data and is for local databases only. See `docs/demo-walkthrough.md` for the accounts and the step-by-step demo.
 
 `pnpm test` always runs the static schema checks. To also run the migration and constraint tests, set `TEST_DATABASE_URL` to a local server whose role can create databases (e.g. `postgresql://postgres@127.0.0.1:5432/postgres`); the tests create and drop a temporary database.
 
