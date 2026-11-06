@@ -83,6 +83,11 @@ const en = {
     SECTION_ORDER_STALE: 'The sections changed in the meantime. Reload the course and try again.',
     INVALID_SECTION_ORDER: 'Each section can appear only once.',
     ENROLLMENT_HAS_HISTORY: 'This enrollment has work or grades, so it cannot be removed. Set it inactive instead; its history is kept.',
+    SECTION_LOCKED: 'This section is locked. Complete the sections it requires first.',
+    COMPLETION_AUTOMATIC: 'Quizzes and assignments are completed automatically when you submit them.',
+    PREREQUISITE_SELF: 'A section cannot require itself.',
+    PREREQUISITE_SECTION_NOT_FOUND: 'Every required section must belong to this course.',
+    PREREQUISITE_CYCLE: 'These requirements would create a loop, so some sections could never open.',
   } as Record<string, string>,
 };
 
@@ -169,6 +174,11 @@ const es: ErrorMessages = {
     SECTION_ORDER_STALE: 'Las secciones cambiaron mientras tanto. Recarga el curso e inténtalo de nuevo.',
     INVALID_SECTION_ORDER: 'Cada sección puede aparecer solo una vez.',
     ENROLLMENT_HAS_HISTORY: 'Esta matrícula tiene trabajos o calificaciones, así que no se puede quitar. Márcala como inactiva; su historial se conserva.',
+    SECTION_LOCKED: 'Esta sección está bloqueada. Primero completa las secciones que requiere.',
+    COMPLETION_AUTOMATIC: 'Los cuestionarios y las tareas se completan automáticamente al enviarlos.',
+    PREREQUISITE_SELF: 'Una sección no puede requerirse a sí misma.',
+    PREREQUISITE_SECTION_NOT_FOUND: 'Cada sección requerida debe pertenecer a este curso.',
+    PREREQUISITE_CYCLE: 'Estos requisitos formarían un ciclo y algunas secciones nunca se abrirían.',
   },
 };
 

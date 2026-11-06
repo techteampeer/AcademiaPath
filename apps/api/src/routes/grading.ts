@@ -21,6 +21,7 @@ import { courseTotal, GRADE_SCALE_MAX, toScale20 } from '../grading/scale.js';
 import { ApiProblem } from '../http/errors.js';
 import { decodeCursor, paginationQuerySchema, toPage, type PaginationQuery } from '../http/pagination.js';
 import { readSnapshotQuestions } from '../quizzes/model.js';
+import { assertSectionOpen, lockedSectionsFor } from '../progress/model.js';
 import { courseActivityParamsSchema } from './activity-schemas.js';
 import {
   courseParamsSchema,
@@ -117,6 +118,7 @@ export const gradingRoutes: FastifyPluginAsync = async (app) => {
     if (!canInCourse(access, 'content.viewUnapproved')) {
       const available = row.sectionVisible && row.activity.isVisible && row.activity.approvedConfig !== null && row.activity.approvedAt !== null;
       if (!available) throw notFound(label);
+      await assertSectionOpen(executor, access, row.activity.sectionId);
     }
     return row.activity;
   }
@@ -548,13 +550,15 @@ export const gradingRoutes: FastifyPluginAsync = async (app) => {
         .where(and(eq(grades.courseId, access.course.id), eq(grades.userId, user.id), isNotNull(grades.releasedRevision)));
       const releasedByActivity = new Map(released.map((row) => [row.activityId, row]));
       const rows = await db
-        .select({ id: activities.id, type: activities.type, title: activities.approvedTitle, isVisible: activities.isVisible, sectionVisible: sections.isVisible })
+        .select({ id: activities.id, sectionId: activities.sectionId, type: activities.type, title: activities.approvedTitle, isVisible: activities.isVisible, sectionVisible: sections.isVisible })
         .from(activities)
         .innerJoin(sections, eq(sections.id, activities.sectionId))
         .where(and(eq(sections.courseId, access.course.id), inArray(activities.type, GRADABLE), isNotNull(activities.approvedConfig)))
         .orderBy(asc(sections.position), asc(activities.position), asc(activities.id));
+      // Activities in sections locked by a prerequisite stay unnamed until they open (released grades always show).
+      const locked = await lockedSectionsFor(db, access);
       const items = rows
-        .filter((row) => (row.isVisible && row.sectionVisible) || releasedByActivity.has(row.id))
+        .filter((row) => (row.isVisible && row.sectionVisible && !locked.has(row.sectionId)) || releasedByActivity.has(row.id))
         .map((row) => {
           const grade = releasedGradeView(releasedByActivity.get(row.id));
           return { activityId: row.id, title: row.title ?? '', type: row.type as GradableType, status: grade ? ('released' as const) : ('pending' as const), grade };

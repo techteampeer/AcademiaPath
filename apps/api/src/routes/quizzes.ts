@@ -9,6 +9,7 @@ import { activities, enrollments, quizAttemptAnswers, quizAttempts, quizQuestion
 import { ApiProblem } from '../http/errors.js';
 import { decodeCursor, paginationQuerySchema, toPage, type PaginationQuery } from '../http/pagination.js';
 import { isGradeReleased, syncQuizGrade } from '../grading/grades.js';
+import { assertSectionOpen } from '../progress/model.js';
 import { gradeResponse, normalizeResponse } from '../quizzes/grading.js';
 import { buildQuestion, DEADLINE_GRACE_SECONDS, QUIZ_LIMITS, readSettings, readSnapshotQuestions, shuffle, type QuestionInput } from '../quizzes/model.js';
 import {
@@ -120,6 +121,7 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
     if (!canInCourse(access, 'content.viewUnapproved')) {
       const available = row.sectionVisible && row.activity.isVisible && row.activity.approvedConfig !== null;
       if (!available) throw notFound('Quiz');
+      await assertSectionOpen(executor, access, row.activity.sectionId);
     }
     return row.activity;
   }

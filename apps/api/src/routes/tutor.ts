@@ -8,6 +8,7 @@ import { ApiProblem, sendError } from '../http/errors.js';
 import { mockTutorProvider, type TutorLanguage, type TutorProvider } from '../tutor/provider.js';
 import { firstApprovedLessons, openingSources, searchApprovedLessons, selectSources, type TutorScope, type TutorSource } from '../tutor/retrieval.js';
 import { searchTerms } from '../tutor/text.js';
+import { lockedSectionsFor } from '../progress/model.js';
 import {
   tutorMessageResponseSchema,
   tutorMessageSchema,
@@ -44,10 +45,12 @@ export const tutorRoutes: FastifyPluginAsync = async (app) => {
     return access;
   }
 
-  const scopeOf = (access: CourseAccess): TutorScope => ({
+  const scopeOf = async (executor: Pick<Database, 'select'>, access: CourseAccess): Promise<TutorScope> => ({
     courseId: access.course.id,
     // Staff roles may read approved lessons in hidden sections; students never do.
     includeHidden: hasCoursePermission(access.viewerRole, 'sections.viewHidden'),
+    // Students are not grounded in sections that a prerequisite still locks.
+    excludedSectionIds: [...(await lockedSectionsFor(executor, access))],
   });
 
   const windowFilter = (courseId: string, userId: string) =>
@@ -125,7 +128,7 @@ export const tutorRoutes: FastifyPluginAsync = async (app) => {
       const { question, language } = request.body;
       const outcome = await runTutorRequest(access, user.id, 'message', language, async (tx) => {
         const terms = searchTerms(question);
-        const sources = selectSources(await searchApprovedLessons(tx, scopeOf(access), terms), terms);
+        const sources = selectSources(await searchApprovedLessons(tx, await scopeOf(tx, access), terms), terms);
         // Provider input: the question and numbered approved excerpts only; no names, emails or ids.
         const text = provider.answer({ question, language, sources: providerSources(sources) });
         return { sources, result: { text, citations: sources.map((source, index) => citationOf(source, index + 1, language)) } };
@@ -156,9 +159,9 @@ export const tutorRoutes: FastifyPluginAsync = async (app) => {
         let sources: TutorSource[];
         if (topic) {
           const terms = searchTerms(topic);
-          sources = selectSources(await searchApprovedLessons(tx, scopeOf(access), terms), terms);
+          sources = selectSources(await searchApprovedLessons(tx, await scopeOf(tx, access), terms), terms);
         } else {
-          sources = openingSources(await firstApprovedLessons(tx, scopeOf(access)));
+          sources = openingSources(await firstApprovedLessons(tx, await scopeOf(tx, access)));
         }
         // A prompt may only cite a source that was actually retrieved; anything else is dropped.
         const prompts = provider

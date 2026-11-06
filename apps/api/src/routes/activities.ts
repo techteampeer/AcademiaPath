@@ -22,6 +22,7 @@ import { pageSchema } from './course-schemas.js';
 import { readSettings, readSnapshotQuestions, settingsFromInput, type QuizSettingsInput, type QuizSnapshot } from '../quizzes/model.js';
 import { assignmentFromInput, readAssignment, rubricTotal, type AssignmentInput } from '../assignments/model.js';
 import { presentDocumentContent } from '../documents/model.js';
+import { assertSectionOpen } from '../progress/model.js';
 
 type SectionParams = { id: string; sectionId: string };
 type ActivityParams = { id: string; activityId: string };
@@ -153,7 +154,8 @@ function auditLiveVersion(type: ActivityRecord['type'], title: string | null, co
 
 /**
  * Loads an activity of this course (row-locked inside transactions). Students only reach approved,
- * visible content in visible sections; anything else is 404 (shared with the document routes).
+ * visible content in visible sections; anything else is 404 (shared with the document routes). A
+ * section that is locked by a prerequisite answers 403 SECTION_LOCKED without revealing content.
  */
 export async function findActivity(executor: Executor, access: CourseAccess, activityId: string, lock: boolean) {
   const query = executor
@@ -167,6 +169,7 @@ export async function findActivity(executor: Executor, access: CourseAccess, act
   if (!canInCourse(access, 'content.viewUnapproved')) {
     const readable = row.sectionVisible && row.activity.isVisible && row.activity.approvedConfig !== null;
     if (!readable) throw notFound('Activity');
+    await assertSectionOpen(executor, access, row.activity.sectionId);
   }
   return row.activity;
 }
@@ -211,6 +214,7 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
         .from(sections)
         .where(and(eq(sections.id, request.params.sectionId), eq(sections.courseId, access.course.id)));
       if (!section || (!section.isVisible && !canInCourse(access, 'sections.viewHidden'))) throw notFound('Section');
+      await assertSectionOpen(db, access, section.id);
 
       const { limit } = request.query;
       const after = decodeCursor(request.query.cursor, 'number');
