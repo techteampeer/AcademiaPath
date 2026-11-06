@@ -1,25 +1,23 @@
 import type { Metadata } from 'next';
-import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { LocaleProvider } from '@/components/i18n/LocaleProvider';
 import { AppShell } from '@/components/layout/AppShell';
 import { SessionProvider } from '@/components/session/SessionProvider';
 import { WorkspaceProvider } from '@/components/session/WorkspaceProvider';
-import { isLocale, LOCALE_COOKIE, type Locale } from '@/lib/i18n/messages';
+import { MESSAGES } from '@/lib/i18n/messages';
+import { serverLocale } from '@/lib/i18n/server';
 import './globals.css';
 
-export const metadata: Metadata = {
-  title: {
-    default: 'AcademiaPath',
-    template: '%s · AcademiaPath',
-  },
-  description: 'AcademiaPath — institutional learning platform for universities.',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    title: { default: 'AcademiaPath', template: '%s · AcademiaPath' },
+    description: MESSAGES[await serverLocale()].meta.description,
+  };
+}
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   // Interface language preference only (not a credential); defaults to English.
-  const stored = (await cookies()).get(LOCALE_COOKIE)?.value;
-  const locale: Locale = isLocale(stored) ? stored : 'en';
+  const locale = await serverLocale();
   return (
     <html lang={locale}>
       <body className="min-h-screen font-sans">

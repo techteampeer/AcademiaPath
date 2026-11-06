@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { ReleaseGradesButton } from '@/components/grades/ReleaseGradesButton';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError, useCsrfAction } from '@/components/session/useCsrfAction';
@@ -10,7 +11,8 @@ import { Card } from '@/components/ui/Card';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { AssignmentSubmissionDetail, AssignmentSubmissionSummary } from '@/lib/api/types';
-import { formatDateTime, formatGrade20, GradeStatusBadge } from './assignmentDisplay';
+import { formatDateTimeOrDash } from '@/lib/i18n/messages';
+import { formatGrade20, GradeStatusBadge } from './assignmentDisplay';
 
 type Load<T> = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; data: T };
 const FEEDBACK_LIMIT = 5000;
@@ -18,15 +20,17 @@ const FEEDBACK_LIMIT = 5000;
 /** Submissions with grading status. Graders score each rubric criterion; the server computes the grade. */
 export function AssignmentGradingPanel({ courseId, assignmentId, canGrade }: { courseId: string; assignmentId: string; canGrade: boolean }) {
   const { handleUnauthorized } = useSession();
+  const { t, locale } = useLocale();
+  const g = t.assignments.grading;
   const [list, setList] = useState<Load<AssignmentSubmissionSummary[]>>({ status: 'loading' });
   const [selected, setSelected] = useState<Load<AssignmentSubmissionDetail> | null>(null);
 
   const fail = useCallback(
     (error: unknown) => {
       if (isApiError(error, 401)) handleUnauthorized();
-      return describeApiError(error);
+      return describeApiError(error, locale);
     },
-    [handleUnauthorized],
+    [handleUnauthorized, locale],
   );
 
   const load = useCallback(async () => {
@@ -54,35 +58,43 @@ export function AssignmentGradingPanel({ courseId, assignmentId, canGrade }: { c
     <Card as="section" aria-labelledby="submissions-heading" className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="submissions-heading" className="text-lg font-semibold text-slate-900">
-          Submissions
+          {g.heading}
         </h2>
         <Button variant="secondary" size="sm" onClick={() => void load()}>
-          Refresh
+          {g.refresh}
         </Button>
       </div>
       <p className="text-sm text-slate-600">
-        Grades are calculated by the server from the rubric and stay hidden from students until you release them.
+        {g.note}
       </p>
-      {canGrade ? <ReleaseGradesButton courseId={courseId} activityId={assignmentId} label="Release assignment grades" onReleased={() => void load()} /> : null}
+      {canGrade ? <ReleaseGradesButton courseId={courseId} activityId={assignmentId} label={g.release} onReleased={() => void load()} /> : null}
       {list.status === 'loading' ? (
         <p role="status" className="text-sm text-slate-600">
-          Loading submissions…
+          {g.loading}
         </p>
       ) : list.status === 'error' ? (
         <Alert tone="error">{list.message}</Alert>
       ) : list.data.length === 0 ? (
-        <p className="text-sm text-slate-600">No submissions yet.</p>
+        <p className="text-sm text-slate-600">{g.empty}</p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-slate-200 text-slate-500">
               <tr>
-                <th scope="col" className="py-2 pr-4 font-medium">Student</th>
-                <th scope="col" className="py-2 pr-4 font-medium">Submitted</th>
-                <th scope="col" className="py-2 pr-4 font-medium">Grade</th>
-                <th scope="col" className="py-2 pr-4 font-medium">Status</th>
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  {g.student}
+                </th>
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  {g.submitted}
+                </th>
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  {g.grade}
+                </th>
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  {g.status}
+                </th>
                 <th scope="col" className="py-2 font-medium">
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">{g.actions}</span>
                 </th>
               </tr>
             </thead>
@@ -96,8 +108,8 @@ export function AssignmentGradingPanel({ courseId, assignmentId, canGrade }: { c
                     <span className="block text-xs break-all text-slate-500">{row.student.email}</span>
                   </td>
                   <td className="py-2 pr-4">
-                    {formatDateTime(row.submittedAt)}
-                    {row.isLate ? <span className="ml-1 text-xs font-medium text-amber-700">(late)</span> : null}
+                    {formatDateTimeOrDash(row.submittedAt, locale)}
+                    {row.isLate ? <span className="ml-1 text-xs font-medium text-amber-700">{g.late}</span> : null}
                   </td>
                   <td className="py-2 pr-4 font-medium">
                     {row.grade ? `${row.grade.points} / ${row.grade.maxPoints} · ${formatGrade20(row.grade.grade20)}` : '—'}
@@ -107,8 +119,8 @@ export function AssignmentGradingPanel({ courseId, assignmentId, canGrade }: { c
                   </td>
                   <td className="py-2">
                     <Button variant="ghost" size="sm" onClick={() => void open(row.id)}>
-                      {canGrade ? 'Grade' : 'View'}
-                      <span className="sr-only"> submission of {row.student.email}</span>
+                      {canGrade ? g.gradeAction : g.view}
+                      <span className="sr-only"> {g.submissionOf(row.student.email)}</span>
                     </Button>
                   </td>
                 </tr>
@@ -119,7 +131,7 @@ export function AssignmentGradingPanel({ courseId, assignmentId, canGrade }: { c
       )}
       {selected?.status === 'loading' ? (
         <p role="status" className="text-sm text-slate-600">
-          Loading submission…
+          {g.loadingOne}
         </p>
       ) : selected?.status === 'error' ? (
         <Alert tone="error">{selected.message}</Alert>
@@ -161,6 +173,8 @@ function GradingForm({
   const [feedback, setFeedback] = useState(submission.feedback ?? '');
   const [error, setError] = useState<string | null>(null);
   const { run, pending, result } = useCsrfAction();
+  const { t, locale } = useLocale();
+  const g = t.assignments.grading;
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -168,12 +182,12 @@ function GradingForm({
       const value = points[criterion.id] ?? '';
       const n = Number(value);
       if (!/^\d+$/.test(value.trim()) || n > criterion.maxPoints) {
-        setError(`"${criterion.title}": enter whole points from 0 to ${criterion.maxPoints}.`);
+        setError(g.scoreRange(criterion.title, criterion.maxPoints));
         return;
       }
     }
     if (feedback.length > FEEDBACK_LIMIT) {
-      setError(`Feedback can have at most ${FEEDBACK_LIMIT} characters.`);
+      setError(g.feedbackLength(FEEDBACK_LIMIT));
       return;
     }
     setError(null);
@@ -189,7 +203,7 @@ function GradingForm({
           },
           csrf,
         ),
-      (value) => `Grade saved: ${value.grade?.points ?? 0} / ${value.grade?.maxPoints ?? 0} (${formatGrade20(value.grade?.grade20 ?? null)}), calculated by the server.`,
+      (value) => g.saved(value.grade?.points ?? 0, value.grade?.maxPoints ?? 0, formatGrade20(value.grade?.grade20 ?? null)),
     );
     if (saved) onSaved(saved);
   };
@@ -202,18 +216,17 @@ function GradingForm({
           {submission.grade ? ` — ${submission.grade.points} / ${submission.grade.maxPoints} (${formatGrade20(submission.grade.grade20)})` : ''}
         </h3>
         <Button variant="ghost" size="sm" onClick={onClose}>
-          Close
+          {g.close}
         </Button>
       </div>
       <p className="text-xs text-slate-500">
-        Submitted {formatDateTime(submission.submittedAt)}
-        {submission.isLate ? ' (late)' : ''}
+        {g.submittedAt(formatDateTimeOrDash(submission.submittedAt, locale), submission.isLate)}
       </p>
       <div className="whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">{submission.body}</div>
       {result ? <Alert tone={result.tone}>{result.message}</Alert> : null}
       <form noValidate onSubmit={save} className="space-y-3">
         <fieldset className="space-y-2" disabled={!canGrade || pending}>
-          <legend className="text-sm font-medium text-slate-800">Rubric</legend>
+          <legend className="text-sm font-medium text-slate-800">{g.rubric}</legend>
           {submission.rubric.map((criterion) => (
             <div key={criterion.id} className="flex flex-wrap items-center gap-3">
               <label htmlFor={`score-${criterion.id}`} className="min-w-0 flex-1 text-sm text-slate-800">
@@ -231,7 +244,7 @@ function GradingForm({
         </fieldset>
         <div>
           <label htmlFor="grading-feedback" className="block text-sm font-medium text-slate-800">
-            Feedback for the student (optional)
+            {g.feedback}
           </label>
           <textarea
             id="grading-feedback"
@@ -250,10 +263,10 @@ function GradingForm({
         ) : null}
         {canGrade ? (
           <Button type="submit" disabled={pending}>
-            {pending ? 'Saving…' : 'Save grade'}
+            {pending ? g.saving : g.save}
           </Button>
         ) : (
-          <p className="text-sm text-slate-600">Read only: only instructors and non-editing instructors of this course can grade.</p>
+          <p className="text-sm text-slate-600">{g.readOnly}</p>
         )}
       </form>
     </section>

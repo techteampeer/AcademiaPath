@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { Button } from '@/components/ui/Button';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { fromLocalInput, toLocalInput } from '@/components/assignments/assignmentDisplay';
@@ -53,6 +54,8 @@ export function ActivityForm({
   onSubmit: (value: ActivityCreate) => Promise<boolean>;
   onCancel?: () => void;
 }) {
+  const { t } = useLocale();
+  const f = t.content.form;
   const initialContent = initial?.content;
   const [type, setType] = useState<ActivityType>(fixedType ?? 'page');
   const [title, setTitle] = useState(initial?.title ?? '');
@@ -77,33 +80,33 @@ export function ActivityForm({
 
   const validate = (): Errors => {
     const next: Errors = {};
-    if (!title.trim()) next.title = 'Enter a title.';
-    else if (title.length > LIMITS.title) next.title = `Use at most ${LIMITS.title} characters.`;
+    if (!title.trim()) next.title = t.errors.enterTitle;
+    else if (title.length > LIMITS.title) next.title = t.errors.maxChars(LIMITS.title);
     if (type === 'page') {
-      if (!body.trim()) next.body = 'Enter the lesson text.';
-      else if (body.length > LIMITS.body) next.body = `Use at most ${LIMITS.body} characters.`;
+      if (!body.trim()) next.body = f.enterLessonText;
+      else if (body.length > LIMITS.body) next.body = t.errors.maxChars(LIMITS.body);
     } else if (type === 'assignment') {
-      if (!instructions.trim()) next.instructions = 'Enter the assignment instructions.';
-      else if (instructions.length > LIMITS.assignmentInstructions) next.instructions = `Use at most ${LIMITS.assignmentInstructions} characters.`;
+      if (!instructions.trim()) next.instructions = f.enterInstructions;
+      else if (instructions.length > LIMITS.assignmentInstructions) next.instructions = t.errors.maxChars(LIMITS.assignmentInstructions);
       const due = fromLocalInput(dueAt);
       const late = fromLocalInput(lateUntil);
-      if (!due) next.dueAt = 'Choose the due date and time.';
-      if (lateUntil && !late) next.lateUntil = 'Choose a valid date and time, or leave empty.';
+      if (!due) next.dueAt = f.chooseDue;
+      if (lateUntil && !late) next.lateUntil = f.invalidLate;
       else if (due && late && (Date.parse(late) <= Date.parse(due) || Date.parse(late) - Date.parse(due) > LIMITS.lateWindowDays * 86_400_000)) {
-        next.lateUntil = `Late submissions must end after the due date and at most ${LIMITS.lateWindowDays} days later.`;
+        next.lateUntil = f.lateWindow(LIMITS.lateWindowDays);
       }
-      const rubricError = validateRubric(criteria);
+      const rubricError = validateRubric(criteria, t.assignments.rubric);
       if (rubricError) next.rubric = rubricError;
     } else if (type === 'quiz') {
-      if (instructions.length > LIMITS.instructions) next.instructions = `Use at most ${LIMITS.instructions} characters.`;
-      if (wholeNumberIn(attemptLimit, 1, LIMITS.attemptLimit) === null) next.attemptLimit = `Enter a whole number from 1 to ${LIMITS.attemptLimit}.`;
+      if (instructions.length > LIMITS.instructions) next.instructions = t.errors.maxChars(LIMITS.instructions);
+      if (wholeNumberIn(attemptLimit, 1, LIMITS.attemptLimit) === null) next.attemptLimit = t.errors.wholeNumber(1, LIMITS.attemptLimit);
       if (timeLimit.trim() && wholeNumberIn(timeLimit, 1, LIMITS.timeLimitMinutes) === null) {
-        next.timeLimitMinutes = `Enter whole minutes from 1 to ${LIMITS.timeLimitMinutes}, or leave empty.`;
+        next.timeLimitMinutes = f.timeLimitRange(LIMITS.timeLimitMinutes);
       }
     } else {
-      if (!url.trim()) next.url = 'Enter the resource URL.';
-      else if (url.length > LIMITS.url || !safeHttpUrl(url.trim())) next.url = 'Enter a full http:// or https:// URL.';
-      if (description.length > LIMITS.description) next.description = `Use at most ${LIMITS.description} characters.`;
+      if (!url.trim()) next.url = f.enterUrl;
+      else if (url.length > LIMITS.url || !safeHttpUrl(url.trim())) next.url = f.invalidUrl;
+      if (description.length > LIMITS.description) next.description = t.errors.maxChars(LIMITS.description);
     }
     return next;
   };
@@ -162,25 +165,25 @@ export function ActivityForm({
       {fixedType ? null : (
         <SelectField
           id={`${idPrefix}-type`}
-          label="Content type"
+          label={f.contentType}
           value={type}
           onChange={(event) => {
             const next = event.target.value;
             setType(next === 'link' || next === 'quiz' || next === 'assignment' ? next : 'page');
           }}
           options={[
-            { value: 'page', label: 'Text lesson' },
-            { value: 'link', label: 'External resource (link)' },
-            { value: 'quiz', label: 'Quiz' },
-            { value: 'assignment', label: 'Assignment (text submission)' },
+            { value: 'page', label: f.typeOptions.page },
+            { value: 'link', label: f.typeOptions.link },
+            { value: 'quiz', label: f.typeOptions.quiz },
+            { value: 'assignment', label: f.typeOptions.assignment },
           ]}
         />
       )}
-      <TextField id={`${idPrefix}-title`} label="Title" value={title} onChange={(e) => setTitle(e.target.value)} error={errors.title} maxLength={LIMITS.title} required />
+      <TextField id={`${idPrefix}-title`} label={f.title} value={title} onChange={(e) => setTitle(e.target.value)} error={errors.title} maxLength={LIMITS.title} required />
       {type === 'page' ? (
         <div>
           <label htmlFor={`${idPrefix}-body`} className="block text-sm font-medium text-slate-800">
-            Lesson text
+            {f.lessonText}
           </label>
           <textarea
             id={`${idPrefix}-body`}
@@ -193,7 +196,7 @@ export function ActivityForm({
             className={`mt-1 block w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm ${errors.body ? 'border-red-500' : 'border-slate-300'}`}
           />
           <p id={`${idPrefix}-body-hint`} className="mt-1 text-xs text-slate-500">
-            Plain text. Line breaks are kept; HTML is shown as text.
+            {f.lessonTextHint}
           </p>
           {errors.body ? (
             <p id={`${idPrefix}-body-error`} className="mt-1 text-sm text-red-700">
@@ -205,7 +208,7 @@ export function ActivityForm({
         <>
           <div>
             <label htmlFor={`${idPrefix}-assignment-instructions`} className="block text-sm font-medium text-slate-800">
-              Instructions
+              {f.instructions}
             </label>
             <textarea
               id={`${idPrefix}-assignment-instructions`}
@@ -226,22 +229,22 @@ export function ActivityForm({
           <div className="grid gap-4 sm:grid-cols-2">
             <TextField
               id={`${idPrefix}-due`}
-              label="Due date and time"
+              label={f.dueAt}
               type="datetime-local"
               value={dueAt}
               onChange={(e) => setDueAt(e.target.value)}
               error={errors.dueAt}
-              hint="Your local time. The server decides whether a submission is on time."
+              hint={f.dueAtHint}
               required
             />
             <TextField
               id={`${idPrefix}-late`}
-              label="Accept late submissions until (optional)"
+              label={f.lateUntil}
               type="datetime-local"
               value={lateUntil}
               onChange={(e) => setLateUntil(e.target.value)}
               error={errors.lateUntil}
-              hint="Late work is accepted until then and marked late. Leave empty to close at the due date."
+              hint={f.lateUntilHint}
             />
           </div>
           <RubricEditor idPrefix={idPrefix} criteria={criteria} onChange={setCriteria} error={errors.rubric} />
@@ -250,7 +253,7 @@ export function ActivityForm({
         <>
           <div>
             <label htmlFor={`${idPrefix}-instructions`} className="block text-sm font-medium text-slate-800">
-              Instructions (optional)
+              {f.instructionsOptional}
             </label>
             <textarea
               id={`${idPrefix}-instructions`}
@@ -269,43 +272,43 @@ export function ActivityForm({
             ) : null}
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <TextField id={`${idPrefix}-attempts`} label="Attempts allowed" inputMode="numeric" value={attemptLimit} onChange={(e) => setAttemptLimit(e.target.value)} error={errors.attemptLimit} required />
+            <TextField id={`${idPrefix}-attempts`} label={f.attempts} inputMode="numeric" value={attemptLimit} onChange={(e) => setAttemptLimit(e.target.value)} error={errors.attemptLimit} required />
             <TextField
               id={`${idPrefix}-time-limit`}
-              label="Time limit in minutes (optional)"
+              label={f.timeLimit}
               inputMode="numeric"
               value={timeLimit}
               onChange={(e) => setTimeLimit(e.target.value)}
               error={errors.timeLimitMinutes}
-              hint="Enforced by the server. Leave empty for no limit."
+              hint={f.timeLimitHint}
             />
           </div>
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium text-slate-800">Order</legend>
+            <legend className="text-sm font-medium text-slate-800">{f.order}</legend>
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input type="checkbox" checked={shuffleQuestions} onChange={(e) => setShuffleQuestions(e.target.checked)} />
-              Shuffle question order for each attempt
+              {f.shuffleQuestions}
             </label>
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input type="checkbox" checked={shuffleOptions} onChange={(e) => setShuffleOptions(e.target.checked)} />
-              Shuffle answer options for each attempt
+              {f.shuffleOptions}
             </label>
           </fieldset>
-          {initial ? null : <p className="text-xs text-slate-500">Add questions after creating the quiz.</p>}
+          {initial ? null : <p className="text-xs text-slate-500">{f.questionsLater}</p>}
         </>
       ) : (
         <>
-          <TextField id={`${idPrefix}-url`} label="URL" type="url" value={url} onChange={(e) => setUrl(e.target.value)} error={errors.url} hint="Must start with http:// or https://" required />
-          <TextField id={`${idPrefix}-description`} label="Short description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} error={errors.description} maxLength={LIMITS.description} />
+          <TextField id={`${idPrefix}-url`} label={f.url} type="url" value={url} onChange={(e) => setUrl(e.target.value)} error={errors.url} hint={f.urlHint} required />
+          <TextField id={`${idPrefix}-description`} label={f.description} value={description} onChange={(e) => setDescription(e.target.value)} error={errors.description} maxLength={LIMITS.description} />
         </>
       )}
       <div className="flex flex-wrap gap-3">
         <Button type="submit" disabled={pending}>
-          {pending ? 'Saving…' : submitLabel}
+          {pending ? f.saving : submitLabel}
         </Button>
         {onCancel ? (
           <Button variant="secondary" onClick={onCancel} disabled={pending}>
-            Cancel
+            {t.common.cancel}
           </Button>
         ) : null}
       </div>

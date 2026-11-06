@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { LocalizedCourseStatusBadge as CourseStatusBadge } from '@/components/courses/LocalizedCourseStatusBadge';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError, useCsrfAction } from '@/components/session/useCsrfAction';
@@ -13,37 +14,41 @@ import { SelectField, TextField } from '@/components/ui/Field';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { Course, CourseTemplate, CourseTemplateDetail, Program, Term } from '@/lib/api/types';
+import { formatDate, type Messages } from '@/lib/i18n/messages';
 
 const CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const PERIODS = [
-  { value: '1', label: '1 — First semester' },
-  { value: '2', label: '2 — Second semester' },
-  { value: '0', label: '0 — Summer term (verano)' },
-];
+const PERIOD_VALUES = ['1', '2', '0'] as const;
+const periodOptions = (t: Messages) => {
+  const p = t.setup.hierarchy.periods;
+  return [
+    { value: '1', label: p.first },
+    { value: '2', label: p.second },
+    { value: '0', label: p.summer },
+  ];
+};
 type Errors = Record<string, string>;
 
-function codeError(code: string): string | undefined {
+function codeError(code: string, t: Messages): string | undefined {
   const value = code.trim();
-  if (!value) return 'Enter a code.';
-  if (value.length > 32 || !CODE_PATTERN.test(value)) return 'Use up to 32 letters, numbers, dots, hyphens or underscores, without spaces.';
+  if (!value) return t.errors.enterCode;
+  if (value.length > 32 || !CODE_PATTERN.test(value)) return t.errors.codeFormat;
   return undefined;
 }
 
-function textError(value: string, label: string, max = 200): string | undefined {
-  if (!value.trim()) return `Enter ${label}.`;
-  if (value.length > max) return `Use at most ${max} characters.`;
+/** `missing` is the localized "enter a name/title" message. */
+function textError(value: string, missing: string, t: Messages, max = 200): string | undefined {
+  if (!value.trim()) return missing;
+  if (value.length > max) return t.errors.maxChars(max);
   return undefined;
 }
 
-function datesError(startsOn: string, endsOn: string): Errors {
+function datesError(startsOn: string, endsOn: string, t: Messages): Errors {
   const errors: Errors = {};
-  if (!startsOn) errors.startsOn = 'Choose the start date.';
-  if (!endsOn) errors.endsOn = 'Choose the end date.';
-  else if (startsOn && endsOn < startsOn) errors.endsOn = 'The term cannot end before it starts.';
+  if (!startsOn) errors.startsOn = t.setup.dates.chooseStart;
+  if (!endsOn) errors.endsOn = t.setup.dates.chooseEnd;
+  else if (startsOn && endsOn < startsOn) errors.endsOn = t.setup.dates.endBeforeStart;
   return errors;
 }
-
-const formatDate = (value: string) => new Date(`${value}T00:00:00`).toLocaleDateString();
 const sectionLines = (text: string) =>
   text
     .split('\n')
@@ -95,8 +100,11 @@ function PanelHeader({ kicker, title, meta, badge }: { kicker: string; title: st
 // ---------------------------------------------------------------- Academic year
 
 export function YearPanel({ year, terms, onSelectTerm, onCreated }: { year: number; terms: Term[]; onSelectTerm: (id: string) => void; onCreated: (term: Term) => Promise<void> }) {
-  const free = PERIODS.filter((period) => !terms.some((term) => term.code === `${year}-${period.value}`));
-  const [period, setPeriod] = useState(free[0]?.value ?? '1');
+  const { t, locale } = useLocale();
+  const h = t.setup.hierarchy;
+  const f = t.setup.fields;
+  const free = PERIOD_VALUES.filter((period) => !terms.some((term) => term.code === `${year}-${period}`));
+  const [period, setPeriod] = useState<string>(free[0] ?? '1');
   const [name, setName] = useState('');
   const [startsOn, setStartsOn] = useState('');
   const [endsOn, setEndsOn] = useState('');
@@ -106,13 +114,13 @@ export function YearPanel({ year, terms, onSelectTerm, onCreated }: { year: numb
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const next = datesError(startsOn, endsOn);
-    if (name.length > 200) next.name = 'Use at most 200 characters.';
+    const next = datesError(startsOn, endsOn, t);
+    if (name.length > 200) next.name = t.errors.maxChars(200);
     setErrors(next);
     if (Object.keys(next).length) return;
     const created = await run(
       (csrf) => api.createTerm({ code, name: name.trim() || (period === '0' ? `Verano ${code}` : `Semestre ${code}`), academicYear: year, startsOn, endsOn }, csrf),
-      (term) => `Term ${term.code} created.`,
+      (term) => h.termCreated(term.code),
     );
     if (created) await onCreated(created);
   };
@@ -120,7 +128,7 @@ export function YearPanel({ year, terms, onSelectTerm, onCreated }: { year: numb
   return (
     <Card as="section" aria-labelledby="panel-heading" className="space-y-6">
       <div id="panel-heading">
-        <PanelHeader kicker="Academic year" title={String(year)} meta={`${terms.length} ${terms.length === 1 ? 'term' : 'terms'}`} />
+        <PanelHeader kicker={h.yearKicker} title={String(year)} meta={t.admin.termCount(terms.length)} />
       </div>
       {terms.length ? (
         <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
@@ -133,29 +141,29 @@ export function YearPanel({ year, terms, onSelectTerm, onCreated }: { year: numb
                 <span className="ml-2 text-sm text-slate-600">{term.name}</span>
               </div>
               <span className="text-xs text-slate-500">
-                {formatDate(term.startsOn)} – {formatDate(term.endsOn)}
+                {formatDate(term.startsOn, locale)} – {formatDate(term.endsOn, locale)}
               </span>
             </li>
           ))}
         </ul>
       ) : (
         <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
-          No terms in {year} yet. The academic year is saved together with its first term.
+          {h.noTermsInYear(year)}
         </p>
       )}
       <form noValidate onSubmit={submit} className="space-y-4 border-t border-slate-200 pt-4" aria-labelledby="new-term-heading">
         <h3 id="new-term-heading" className="font-semibold text-slate-900">
-          New term in {year}
+          {h.newTermIn(year)}
         </h3>
         <div className="grid gap-4 sm:grid-cols-2">
-          <SelectField id="term-period" label="Period" value={period} onChange={(event) => setPeriod(event.target.value)} options={PERIODS} hint={`Term code: ${code}`} />
-          <TextField id="term-name" label="Name (optional)" value={name} onChange={(e) => setName(e.target.value)} placeholder={period === '0' ? `Verano ${code}` : `Semestre ${code}`} error={errors.name} />
-          <TextField id="term-starts" label="Starts on" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} error={errors.startsOn} />
-          <TextField id="term-ends" label="Ends on" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} error={errors.endsOn} />
+          <SelectField id="term-period" label={h.period} value={period} onChange={(event) => setPeriod(event.target.value)} options={periodOptions(t)} hint={h.termCode(code)} />
+          <TextField id="term-name" label={f.nameOptional} value={name} onChange={(e) => setName(e.target.value)} placeholder={period === '0' ? `Verano ${code}` : `Semestre ${code}`} error={errors.name} />
+          <TextField id="term-starts" label={f.startsOn} type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} error={errors.startsOn} />
+          <TextField id="term-ends" label={f.endsOn} type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} error={errors.endsOn} />
         </div>
         {result ? <Alert tone={result.tone}>{result.message}</Alert> : null}
         <Button type="submit" disabled={pending}>
-          {pending ? 'Saving…' : `Create term ${code}`}
+          {pending ? f.saving : h.createTermCode(code)}
         </Button>
       </form>
     </Card>
@@ -184,15 +192,18 @@ export function TermPanel({
   const [endsOn, setEndsOn] = useState(term.endsOn);
   const [errors, setErrors] = useState<Errors>({});
   const edit = useCsrfAction();
+  const { t } = useLocale();
+  const h = t.setup.hierarchy;
+  const f = t.setup.fields;
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const next = datesError(startsOn, endsOn);
-    const nameError = textError(name, 'a name');
+    const next = datesError(startsOn, endsOn, t);
+    const nameError = textError(name, t.errors.enterName, t);
     if (nameError) next.name = nameError;
     setErrors(next);
     if (Object.keys(next).length) return;
-    const saved = await edit.run((csrf) => api.updateTerm(term.id, { name: name.trim(), startsOn, endsOn }, csrf), (t) => `Term ${t.code} saved.`);
+    const saved = await edit.run((csrf) => api.updateTerm(term.id, { name: name.trim(), startsOn, endsOn }, csrf), (saved) => h.termSaved(saved.code));
     if (saved) await onChanged();
   };
 
@@ -201,31 +212,31 @@ export function TermPanel({
       <Card as="section" aria-labelledby="panel-heading" className="space-y-4">
         <div id="panel-heading">
           <PanelHeader
-            kicker={`Term · academic year ${term.academicYear}`}
+            kicker={h.termKicker(term.academicYear)}
             title={term.code}
             meta={term.name}
-            badge={<Badge tone="brand">{offeringCount === null ? '…' : `${offeringCount} ${offeringCount === 1 ? 'offering' : 'offerings'}`}</Badge>}
+            badge={<Badge tone="brand">{offeringCount === null ? '…' : h.offerings(offeringCount)}</Badge>}
           />
         </div>
-        <form noValidate onSubmit={save} className="space-y-4" aria-label="Edit term">
+        <form noValidate onSubmit={save} className="space-y-4" aria-label={h.editTerm}>
           <div className="grid gap-4 sm:grid-cols-3">
-            <TextField id="edit-term-name" label="Name" value={name} onChange={(e) => setName(e.target.value)} error={errors.name} className="sm:col-span-3" />
-            <TextField id="edit-term-starts" label="Starts on" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} error={errors.startsOn} />
-            <TextField id="edit-term-ends" label="Ends on" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} error={errors.endsOn} />
+            <TextField id="edit-term-name" label={f.name} value={name} onChange={(e) => setName(e.target.value)} error={errors.name} className="sm:col-span-3" />
+            <TextField id="edit-term-starts" label={f.startsOn} type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} error={errors.startsOn} />
+            <TextField id="edit-term-ends" label={f.endsOn} type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} error={errors.endsOn} />
           </div>
-          <p className="text-xs text-slate-500">The code and academic year identify the term and cannot change.</p>
+          <p className="text-xs text-slate-500">{h.termFixed}</p>
           {edit.result ? <Alert tone={edit.result.tone}>{edit.result.message}</Alert> : null}
           <Button type="submit" variant="secondary" disabled={edit.pending}>
-            {edit.pending ? 'Saving…' : 'Save term'}
+            {edit.pending ? f.saving : h.saveTerm}
           </Button>
         </form>
       </Card>
 
       <Card as="section" aria-labelledby="programs-heading" className="space-y-4">
         <h3 id="programs-heading" className="text-lg font-semibold text-slate-900">
-          Programs
+          {h.programs}
         </h3>
-        <p className="text-sm text-slate-600">Programs are shared by every academic year and term. Counts show offerings in {term.code}.</p>
+        <p className="text-sm text-slate-600">{h.programsNote(term.code)}</p>
         {programs.length ? (
           <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
             {programs.map((program) => (
@@ -237,14 +248,14 @@ export function TermPanel({
                   <span className="ml-2 text-xs text-slate-500">{program.code}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {program.isActive ? null : <Badge tone="warning">Inactive</Badge>}
-                  <span className="text-xs text-slate-600">{programCounts.get(program.id) ?? 0} in this term</span>
+                  {program.isActive ? null : <Badge tone="warning">{h.inactive}</Badge>}
+                  <span className="text-xs text-slate-600">{h.inThisTerm(programCounts.get(program.id) ?? 0)}</span>
                 </div>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-slate-600">No programs yet.</p>
+          <p className="text-sm text-slate-600">{h.noPrograms}</p>
         )}
         <NewProgramForm onCreated={onChanged} />
       </Card>
@@ -258,19 +269,22 @@ function NewProgramForm({ onCreated }: { onCreated: () => Promise<void> }) {
   const [description, setDescription] = useState('');
   const [errors, setErrors] = useState<Errors>({});
   const { run, pending, result } = useCsrfAction();
+  const { t } = useLocale();
+  const h = t.setup.hierarchy;
+  const f = t.setup.fields;
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const next: Errors = {};
-    const c = codeError(code);
-    const n = textError(name, 'a name');
+    const c = codeError(code, t);
+    const n = textError(name, t.errors.enterName, t);
     if (c) next.code = c;
     if (n) next.name = n;
-    if (description.length > 2000) next.description = 'Use at most 2000 characters.';
+    if (description.length > 2000) next.description = t.errors.maxChars(2000);
     setErrors(next);
     if (Object.keys(next).length) return;
     const created = await run(
       (csrf) => api.createProgram({ code: code.trim(), name: name.trim(), ...(description.trim() ? { description: description.trim() } : {}) }, csrf),
-      (p) => `Program ${p.name} created.`,
+      (p) => h.programCreated(p.name),
     );
     if (created) {
       setCode('');
@@ -282,16 +296,16 @@ function NewProgramForm({ onCreated }: { onCreated: () => Promise<void> }) {
   return (
     <form noValidate onSubmit={submit} className="space-y-4 border-t border-slate-200 pt-4" aria-labelledby="new-program-heading">
       <h4 id="new-program-heading" className="font-semibold text-slate-900">
-        New program
+        {h.newProgram}
       </h4>
       <div className="grid gap-4 sm:grid-cols-2">
-        <TextField id="program-code" label="Code" value={code} onChange={(e) => setCode(e.target.value)} error={errors.code} placeholder="IT-MGMT" />
-        <TextField id="program-name" label="Name" value={name} onChange={(e) => setName(e.target.value)} error={errors.name} placeholder="IT Management" />
+        <TextField id="program-code" label={f.code} value={code} onChange={(e) => setCode(e.target.value)} error={errors.code} placeholder="IT-MGMT" />
+        <TextField id="program-name" label={f.name} value={name} onChange={(e) => setName(e.target.value)} error={errors.name} placeholder={h.programNamePlaceholder} />
       </div>
-      <Textarea id="program-description" label="Description (optional)" value={description} onChange={setDescription} error={errors.description} rows={2} />
+      <Textarea id="program-description" label={f.descriptionOptional} value={description} onChange={setDescription} error={errors.description} rows={2} />
       {result ? <Alert tone={result.tone}>{result.message}</Alert> : null}
       <Button type="submit" variant="secondary" disabled={pending}>
-        {pending ? 'Saving…' : 'Create program'}
+        {pending ? f.saving : h.createProgram}
       </Button>
     </form>
   );
@@ -319,18 +333,21 @@ export function ProgramPanel({
   const [isActive, setIsActive] = useState(program.isActive);
   const [errors, setErrors] = useState<Errors>({});
   const edit = useCsrfAction();
+  const { t } = useLocale();
+  const h = t.setup.hierarchy;
+  const f = t.setup.fields;
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const next: Errors = {};
-    const n = textError(name, 'a name');
+    const n = textError(name, t.errors.enterName, t);
     if (n) next.name = n;
-    if (description.length > 2000) next.description = 'Use at most 2000 characters.';
+    if (description.length > 2000) next.description = t.errors.maxChars(2000);
     setErrors(next);
     if (Object.keys(next).length) return;
     const saved = await edit.run(
       (csrf) => api.updateProgram(program.id, { name: name.trim(), description: description.trim() || null, isActive }, csrf),
-      (p) => `Program ${p.name} saved.`,
+      (p) => h.programSaved(p.name),
     );
     if (saved) await onChanged();
   };
@@ -340,32 +357,32 @@ export function ProgramPanel({
       <Card as="section" aria-labelledby="panel-heading" className="space-y-4">
         <div id="panel-heading">
           <PanelHeader
-            kicker={`Program · viewing term ${term.code}`}
+            kicker={h.programKicker(term.code)}
             title={program.name}
             meta={program.code}
-            badge={program.isActive ? <Badge tone="success">Active</Badge> : <Badge tone="warning">Inactive</Badge>}
+            badge={program.isActive ? <Badge tone="success">{h.active}</Badge> : <Badge tone="warning">{h.inactive}</Badge>}
           />
         </div>
-        <form noValidate onSubmit={save} className="space-y-4" aria-label="Edit program">
-          <TextField id="edit-program-name" label="Name" value={name} onChange={(e) => setName(e.target.value)} error={errors.name} />
-          <Textarea id="edit-program-description" label="Description (optional)" value={description} onChange={setDescription} error={errors.description} rows={2} />
+        <form noValidate onSubmit={save} className="space-y-4" aria-label={h.editProgram}>
+          <TextField id="edit-program-name" label={f.name} value={name} onChange={(e) => setName(e.target.value)} error={errors.name} />
+          <Textarea id="edit-program-description" label={f.descriptionOptional} value={description} onChange={setDescription} error={errors.description} rows={2} />
           <label className="flex items-center gap-2 text-sm text-slate-800">
             <input type="checkbox" checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />
-            Active (inactive programs keep their subjects and courses but cannot receive new offerings)
+            {h.activeLabel}
           </label>
-          <p className="text-xs text-slate-500">The code identifies the program and cannot change.</p>
+          <p className="text-xs text-slate-500">{h.programFixed}</p>
           {edit.result ? <Alert tone={edit.result.tone}>{edit.result.message}</Alert> : null}
           <Button type="submit" variant="secondary" disabled={edit.pending}>
-            {edit.pending ? 'Saving…' : 'Save program'}
+            {edit.pending ? f.saving : h.saveProgram}
           </Button>
         </form>
       </Card>
 
       <Card as="section" aria-labelledby="subjects-heading" className="space-y-4">
         <h3 id="subjects-heading" className="text-lg font-semibold text-slate-900">
-          Subjects
+          {h.subjects}
         </h3>
-        <p className="text-sm text-slate-600">Subjects are reusable templates of this program. Counts show offerings in {term.code}.</p>
+        <p className="text-sm text-slate-600">{h.subjectsNote(term.code)}</p>
         {subjects.length ? (
           <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
             {subjects.map((subject) => (
@@ -378,12 +395,12 @@ export function ProgramPanel({
                     {subject.code} · v{subject.latestVersion?.version ?? 0}
                   </span>
                 </div>
-                <span className="text-xs text-slate-600">{subjectCounts.get(subject.id) ?? 0} in this term</span>
+                <span className="text-xs text-slate-600">{h.inThisTerm(subjectCounts.get(subject.id) ?? 0)}</span>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-slate-600">No subjects in this program yet.</p>
+          <p className="text-sm text-slate-600">{h.noSubjects}</p>
         )}
         <SubjectForm mode={{ kind: 'create', programId: program.id }} onSaved={onChanged} />
       </Card>
@@ -403,19 +420,22 @@ function SubjectForm({ mode, onSaved }: { mode: SubjectFormMode; onSaved: () => 
   const [sections, setSections] = useState((detail?.latestVersion?.sections ?? []).map((s) => s.title).join('\n'));
   const [errors, setErrors] = useState<Errors>({});
   const { run, pending, result } = useCsrfAction();
+  const { t } = useLocale();
+  const h = t.setup.hierarchy;
+  const f = t.setup.fields;
   const baseVersion = detail ? (detail.latestVersion?.version ?? 0) : 0;
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const next: Errors = {};
-    const c = detail ? undefined : codeError(code);
-    const t = textError(title, 'a title');
+    const c = detail ? undefined : codeError(code, t);
+    const titleProblem = textError(title, t.errors.enterTitle, t);
     const lines = sectionLines(sections);
     if (c) next.code = c;
-    if (t) next.title = t;
-    if (description.length > 2000) next.description = 'Use at most 2000 characters.';
-    if (!lines.length) next.sections = 'Add at least one section (one per line).';
-    else if (lines.length > 100 || lines.some((line) => line.length > 200)) next.sections = 'Use at most 100 sections of up to 200 characters.';
+    if (titleProblem) next.title = titleProblem;
+    if (description.length > 2000) next.description = t.errors.maxChars(2000);
+    if (!lines.length) next.sections = h.sectionsRequired;
+    else if (lines.length > 100 || lines.some((line) => line.length > 200)) next.sections = h.sectionsLimit;
     setErrors(next);
     if (Object.keys(next).length) return;
     const programId = detail ? detail.programId : mode.kind === 'create' ? mode.programId : null;
@@ -432,7 +452,7 @@ function SubjectForm({ mode, onSaved }: { mode: SubjectFormMode; onSaved: () => 
           },
           csrf,
         ),
-      (version) => (detail ? `Saved as version ${version.version}. Existing offerings keep their version.` : `Subject ${version.code} created.`),
+      (version) => (detail ? h.savedVersion(version.version) : h.subjectCreated(version.code)),
     );
     if (saved) {
       if (!detail) {
@@ -449,17 +469,17 @@ function SubjectForm({ mode, onSaved }: { mode: SubjectFormMode; onSaved: () => 
   return (
     <form noValidate onSubmit={submit} className="space-y-4 border-t border-slate-200 pt-4" aria-labelledby={`${idp}-heading`}>
       <h4 id={`${idp}-heading`} className="font-semibold text-slate-900">
-        {detail ? `Edit subject (saves version ${baseVersion + 1})` : 'New subject'}
+        {detail ? h.editSubject(baseVersion + 1) : h.newSubject}
       </h4>
       <div className="grid gap-4 sm:grid-cols-2">
-        {detail ? null : <TextField id={`${idp}-code`} label="Code" value={code} onChange={(e) => setCode(e.target.value)} error={errors.code} placeholder="ITIL-F" />}
-        <TextField id={`${idp}-title`} label="Title" value={title} onChange={(e) => setTitle(e.target.value)} error={errors.title} placeholder="ITIL Foundation" className={detail ? 'sm:col-span-2' : undefined} />
+        {detail ? null : <TextField id={`${idp}-code`} label={f.code} value={code} onChange={(e) => setCode(e.target.value)} error={errors.code} placeholder="ITIL-F" />}
+        <TextField id={`${idp}-title`} label={f.title} value={title} onChange={(e) => setTitle(e.target.value)} error={errors.title} placeholder="ITIL Foundation" className={detail ? 'sm:col-span-2' : undefined} />
       </div>
-      <Textarea id={`${idp}-description`} label="Description (optional)" value={description} onChange={setDescription} error={errors.description} rows={2} />
-      <Textarea id={`${idp}-sections`} label="Sections" value={sections} onChange={setSections} error={errors.sections} hint="One section per line, in order." rows={4} />
+      <Textarea id={`${idp}-description`} label={f.descriptionOptional} value={description} onChange={setDescription} error={errors.description} rows={2} />
+      <Textarea id={`${idp}-sections`} label={h.sections} value={sections} onChange={setSections} error={errors.sections} hint={h.sectionsHint} rows={4} />
       {result ? <Alert tone={result.tone}>{result.message}</Alert> : null}
       <Button type="submit" variant={detail ? 'secondary' : 'primary'} disabled={pending}>
-        {pending ? 'Saving…' : detail ? 'Save new version' : 'Create subject'}
+        {pending ? f.saving : detail ? h.saveVersion : h.createSubject}
       </Button>
     </form>
   );
@@ -467,6 +487,8 @@ function SubjectForm({ mode, onSaved }: { mode: SubjectFormMode; onSaved: () => 
 
 export function SubjectPanel({ subjectId, program, term, offerings, onChanged }: { subjectId: string; program: Program; term: Term; offerings: Course[]; onChanged: () => Promise<void> }) {
   const { handleUnauthorized } = useSession();
+  const { t, locale } = useLocale();
+  const h = t.setup.hierarchy;
   const [detail, setDetail] = useState<{ status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; value: CourseTemplateDetail }>({ status: 'loading' });
 
   const load = useCallback(async () => {
@@ -474,9 +496,9 @@ export function SubjectPanel({ subjectId, program, term, offerings, onChanged }:
       setDetail({ status: 'ready', value: await api.getCourseTemplate(subjectId) });
     } catch (error) {
       if (isApiError(error, 401)) handleUnauthorized();
-      setDetail({ status: 'error', message: describeApiError(error) });
+      setDetail({ status: 'error', message: describeApiError(error, locale) });
     }
-  }, [subjectId, handleUnauthorized]);
+  }, [subjectId, handleUnauthorized, locale]);
 
   useEffect(() => {
     void load();
@@ -485,7 +507,7 @@ export function SubjectPanel({ subjectId, program, term, offerings, onChanged }:
   if (detail.status === 'loading') {
     return (
       <p role="status" className="text-sm text-slate-600">
-        Loading subject…
+        {h.loadingSubject}
       </p>
     );
   }
@@ -498,10 +520,10 @@ export function SubjectPanel({ subjectId, program, term, offerings, onChanged }:
       <Card as="section" aria-labelledby="panel-heading" className="space-y-4">
         <div id="panel-heading">
           <PanelHeader
-            kicker={`Subject · ${program.name}`}
+            kicker={h.subjectKicker(program.name)}
             title={latest?.title ?? subject.title}
-            meta={`${subject.code} · version ${latest?.version ?? 0} of ${subject.versionCount}`}
-            badge={<Badge tone="neutral">Reusable template</Badge>}
+            meta={h.subjectMeta(subject.code, latest?.version ?? 0, subject.versionCount)}
+            badge={<Badge tone="neutral">{h.reusable}</Badge>}
           />
         </div>
         {latest?.description ? <p className="text-sm text-slate-700">{latest.description}</p> : null}
@@ -510,7 +532,7 @@ export function SubjectPanel({ subjectId, program, term, offerings, onChanged }:
             {latest.sections.map((section) => (
               <li key={section.id}>
                 {section.title}
-                {section.isVisible ? null : <span className="ml-2 text-xs text-slate-500">(hidden)</span>}
+                {section.isVisible ? null : <span className="ml-2 text-xs text-slate-500">{h.hidden}</span>}
               </li>
             ))}
           </ol>
@@ -527,9 +549,9 @@ export function SubjectPanel({ subjectId, program, term, offerings, onChanged }:
 
       <Card as="section" aria-labelledby="offerings-heading" className="space-y-4">
         <h3 id="offerings-heading" className="text-lg font-semibold text-slate-900">
-          Offerings in {term.code}
+          {h.offeringsIn(term.code)}
         </h3>
-        <p className="text-sm text-slate-600">Each offering is a course for this term, created from the subject&rsquo;s current version.</p>
+        <p className="text-sm text-slate-600">{h.offeringsNote}</p>
         {offerings.length ? (
           <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
             {offerings.map((course) => (
@@ -541,10 +563,12 @@ export function SubjectPanel({ subjectId, program, term, offerings, onChanged }:
                 <div className="flex flex-wrap items-center gap-2">
                   <CourseStatusBadge status={course.status} />
                   <Link href={`/courses/${course.id}`} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
-                    Open course<span className="sr-only"> {course.code}</span>
+                    {h.openCourse}
+                    <span className="sr-only"> {course.code}</span>
                   </Link>
-                  <Link href="/admin/setup" className={buttonClasses({ variant: 'ghost', size: 'sm' })}>
-                    Enrollments<span className="sr-only"> for {course.code}</span>
+                  <Link href="/admin/courses" className={buttonClasses({ variant: 'ghost', size: 'sm' })}>
+                    {h.enrollments}
+                    <span className="sr-only"> {h.forCourse(course.code)}</span>
                   </Link>
                 </div>
               </li>
@@ -552,14 +576,14 @@ export function SubjectPanel({ subjectId, program, term, offerings, onChanged }:
           </ul>
         ) : (
           <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
-            {subject.code} is not offered in {term.code} yet.
+            {h.notOffered(subject.code, term.code)}
           </p>
         )}
         {program.isActive ? (
           // Keyed by version so the suggested title follows the subject's current version.
           <NewOfferingForm key={latest?.version ?? 0} subject={subject} program={program} term={term} onCreated={onChanged} />
         ) : (
-          <Alert tone="info">This program is inactive, so new offerings cannot be created. Reactivate it on the program page.</Alert>
+          <Alert tone="info">{h.programInactive}</Alert>
         )}
       </Card>
     </div>
@@ -573,43 +597,46 @@ function NewOfferingForm({ subject, program, term, onCreated }: { subject: Cours
   const [status, setStatus] = useState<'draft' | 'published'>('draft');
   const [errors, setErrors] = useState<Errors>({});
   const { run, pending, result } = useCsrfAction();
+  const { t } = useLocale();
+  const h = t.setup.hierarchy;
+  const f = t.setup.fields;
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const next: Errors = {};
-    const c = codeError(code);
-    const t = textError(title, 'a title');
+    const c = codeError(code, t);
+    const titleProblem = textError(title, t.errors.enterTitle, t);
     if (c) next.code = c;
-    if (t) next.title = t;
+    if (titleProblem) next.title = titleProblem;
     setErrors(next);
     if (Object.keys(next).length) return;
     const created = await run(
       (csrf) => api.createCourse({ programId: program.id, termId: term.id, templateId: subject.id, code: code.trim(), title: title.trim(), status }, csrf),
-      (course) => `Offering ${course.code} created in ${term.code}.`,
+      (course) => h.offeringCreated(course.code, term.code),
     );
     if (created) await onCreated();
   };
   return (
     <form noValidate onSubmit={submit} className="space-y-4 border-t border-slate-200 pt-4" aria-labelledby="new-offering-heading">
       <h4 id="new-offering-heading" className="font-semibold text-slate-900">
-        New offering in {term.code}
+        {h.newOfferingIn(term.code)}
       </h4>
       <div className="grid gap-4 sm:grid-cols-3">
-        <TextField id="offering-code" label="Course code" value={code} onChange={(e) => setCode(e.target.value)} error={errors.code} />
-        <TextField id="offering-title" label="Title" value={title} onChange={(e) => setTitle(e.target.value)} error={errors.title} />
+        <TextField id="offering-code" label={f.courseCode} value={code} onChange={(e) => setCode(e.target.value)} error={errors.code} />
+        <TextField id="offering-title" label={f.title} value={title} onChange={(e) => setTitle(e.target.value)} error={errors.title} />
         <SelectField
           id="offering-status"
-          label="Status"
+          label={f.status}
           value={status}
           onChange={(event) => setStatus(event.target.value === 'published' ? 'published' : 'draft')}
           options={[
-            { value: 'draft', label: 'Draft (staff only)' },
-            { value: 'published', label: 'Published' },
+            { value: 'draft', label: h.draftStaffOnly },
+            { value: 'published', label: t.status.published },
           ]}
         />
       </div>
       {result ? <Alert tone={result.tone}>{result.message}</Alert> : null}
       <Button type="submit" disabled={pending}>
-        {pending ? 'Saving…' : 'Create offering'}
+        {pending ? f.saving : h.createOffering}
       </Button>
     </form>
   );

@@ -3,6 +3,30 @@ import type { ReactNode } from 'react';
 
 export type Crumb = { label: string; href?: string };
 
+/** Breadcrumb trail; the last item is the current page. Long titles wrap instead of overflowing. */
+export function Breadcrumbs({ items, label = 'Breadcrumb' }: { items: Crumb[]; label?: string }) {
+  return (
+    <nav aria-label={label}>
+      <ol className="flex flex-wrap items-center gap-1 text-sm text-slate-500">
+        {items.map((crumb, index) => (
+          <li key={`${crumb.label}-${index}`} className="flex min-w-0 items-center gap-1">
+            {index > 0 ? <span aria-hidden="true">/</span> : null}
+            {crumb.href ? (
+              <Link href={crumb.href} className="break-words text-brand-700 hover:underline">
+                {crumb.label}
+              </Link>
+            ) : (
+              <span aria-current="page" className="font-medium break-words text-slate-900">
+                {crumb.label}
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
+    </nav>
+  );
+}
+
 /** Consistent page heading: optional breadcrumb, kicker, h1, description and actions. */
 export function PageHeader({
   title,
@@ -21,26 +45,7 @@ export function PageHeader({
 }) {
   return (
     <div className="space-y-3">
-      {breadcrumbs?.length ? (
-        <nav aria-label={breadcrumbLabel}>
-          <ol className="flex flex-wrap items-center gap-1 text-sm text-slate-500">
-            {breadcrumbs.map((crumb, index) => (
-              <li key={`${crumb.label}-${index}`} className="flex items-center gap-1">
-                {index > 0 ? <span aria-hidden="true">/</span> : null}
-                {crumb.href ? (
-                  <Link href={crumb.href} className="text-brand-700 hover:underline">
-                    {crumb.label}
-                  </Link>
-                ) : (
-                  <span aria-current="page" className="font-medium text-slate-900">
-                    {crumb.label}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ol>
-        </nav>
-      ) : null}
+      {breadcrumbs?.length ? <Breadcrumbs items={breadcrumbs} label={breadcrumbLabel} /> : null}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           {kicker ? <p className="text-xs font-semibold tracking-wider text-brand-600 uppercase">{kicker}</p> : null}
