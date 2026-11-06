@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { check, index, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import { check, index, pgTable, text, timestamp, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { primaryId, timestamps } from './columns.js';
 import { users } from './users.js';
 
@@ -42,5 +42,39 @@ export const sessions = pgTable(
     index('sessions_expires_at_idx').on(t.expiresAt),
     check('sessions_token_hash_format_check', sql`${t.tokenHash} ~ '^[0-9a-f]{64}$'`),
     check('sessions_expiry_check', sql`${t.expiresAt} > ${t.createdAt}`),
+  ],
+);
+
+/**
+ * Single-use account activation link ("invitation"): lets a new user set their first password.
+ * Only the SHA-256 hex digest of the random token is stored; the token itself is shown once to the
+ * issuing administrator (local synthetic-only delivery) and never logged or audited. A link is valid
+ * while unused, unrevoked and unexpired; claiming it sets `used_at` atomically, so it cannot be reused.
+ * At most one open (unused and unrevoked) link exists per user.
+ */
+export const accountInvitations = pgTable(
+  'account_invitations',
+  {
+    id: primaryId(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+    /** The administrator who issued the link (accounts with audit history cannot be deleted anyway). */
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, { onDelete: 'restrict' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    ...timestamps(),
+  },
+  (t) => [
+    unique('account_invitations_token_hash_unique').on(t.tokenHash),
+    index('account_invitations_user_id_idx').on(t.userId),
+    uniqueIndex('account_invitations_one_open_per_user')
+      .on(t.userId)
+      .where(sql`${t.usedAt} IS NULL AND ${t.revokedAt} IS NULL`),
+    check('account_invitations_token_hash_format_check', sql`${t.tokenHash} ~ '^[0-9a-f]{64}$'`),
+    check('account_invitations_expiry_check', sql`${t.expiresAt} > ${t.createdAt}`),
+    check('account_invitations_used_or_revoked_check', sql`${t.usedAt} IS NULL OR ${t.revokedAt} IS NULL`),
   ],
 );

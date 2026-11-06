@@ -36,7 +36,20 @@ export type AppConfig = {
     /** Hard limit for validating and extracting one document (the worker is terminated after it). */
     extractionTimeoutMs: number;
   };
+  /** Administrator-managed accounts. */
+  accounts: {
+    /**
+     * How single-use activation links reach new users. `local_link`: the API returns the link once to
+     * the issuing administrator, for synthetic addresses only (local demonstration). `disabled`: no
+     * links are issued. Production allows only `disabled` until secure delivery and identity
+     * verification are configured.
+     */
+    invitationDelivery: InvitationDelivery;
+    invitationTtlHours: number;
+  };
 };
+
+export type InvitationDelivery = 'local_link' | 'disabled';
 
 export const SESSION_COOKIE_NAMES = {
   development: 'ap_session',
@@ -85,6 +98,19 @@ function parseOrigins(raw: string): string[] {
         throw new Error(`APP_ORIGINS contains an invalid origin: ${value}`);
       }
     });
+}
+
+function parseInvitationDelivery(raw: string | undefined, isProduction: boolean): InvitationDelivery {
+  const value = raw?.trim() || (isProduction ? 'disabled' : 'local_link');
+  if (value !== 'local_link' && value !== 'disabled') {
+    throw new Error('ACCOUNT_INVITATION_DELIVERY must be local_link or disabled');
+  }
+  if (isProduction && value === 'local_link') {
+    throw new Error(
+      'ACCOUNT_INVITATION_DELIVERY=local_link is for synthetic local demonstration only; production requires a secure delivery and identity-verification mechanism',
+    );
+  }
+  return value;
 }
 
 function parseTrustProxy(raw: string | undefined): false | string {
@@ -140,6 +166,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       storageDir: parseStorageDir(env.DOCUMENT_STORAGE_DIR, isProduction),
       maxUploadBytes: readPositiveInt(env, 'DOCUMENT_MAX_UPLOAD_MB', 10, 100) * 1024 * 1024,
       extractionTimeoutMs: readPositiveInt(env, 'DOCUMENT_EXTRACTION_TIMEOUT_SECONDS', 20, 300) * 1000,
+    },
+    accounts: {
+      invitationDelivery: parseInvitationDelivery(env.ACCOUNT_INVITATION_DELIVERY, isProduction),
+      invitationTtlHours: readPositiveInt(env, 'ACCOUNT_INVITATION_TTL_HOURS', 72, 24 * 7),
     },
   };
 }

@@ -156,6 +156,9 @@ function OverviewContent() {
               <Link href="/admin/academics" className={buttonClasses({ className: 'justify-start' })}>
                 {t.admin.manageStructure}
               </Link>
+              <Link href="/admin/users" className={buttonClasses({ variant: 'secondary', className: 'justify-start' })}>
+                {t.admin.manageUsers}
+              </Link>
               <Link href="/admin/courses" className={buttonClasses({ variant: 'secondary', className: 'justify-start' })}>
                 {t.admin.manageCourses}
               </Link>
