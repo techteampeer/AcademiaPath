@@ -46,6 +46,42 @@ Keep these steps for a new environment, such as a university's own project.
 3. In Cloud Shell, run `bash infra/setup-demo.sh`. It creates Cloud SQL, the database and user, the `academiapath-db-url` secret and the documents bucket. It is safe to re-run, and it never prints the database password.
 4. Create a JSON key for `academiapath-deployer` and save its full content as the GitHub repository secret `GCP_SA_KEY`. Delete the local key file afterwards.
 
+## Firebase Authentication (Identity Platform)
+
+Firebase is attached to the same project (`elearning-514315`), and Authentication is upgraded to **Identity Platform**. The application does not use it yet: sign-in still runs on the API's own password and session tables until the integration described in the functional spec (Authentication section) is built.
+
+### Configured in the Firebase console
+
+| Setting | Value |
+| --- | --- |
+| Sign-in providers | Email/Password and Google enabled. Microsoft and the university's SAML or OIDC SSO come later. |
+| Public-facing name | `AcademiaPath`. Shown on the Google sign-in screen and used as `%APP_NAME%` in emails. |
+| Support email | `claudio.obregon@peer-consulting.com`. Change it later in Project settings → General; the list only offers project members or Google Groups you manage. |
+| User account linking | Link accounts that use the same email, so one person stays one user across providers. |
+| Authorized domains | `localhost`, plus `academiapath-web-871079669510.us-central1.run.app` (check it is listed; Firebase sign-in fails on any domain that is not). |
+| Email sender name | `AcademiaPath`, from `noreply@elearning-514315.firebaseapp.com` |
+
+### Email templates and language
+
+The platform is bilingual, and Firebase handles this with **one template per email type**. Firebase ships its own translated version of each template.
+
+- **Template language (Spanish):** in Authentication → Templates, the template language is set to **Spanish**. That only sets the default language; it does not replace the English template.
+- **Per-user language:** when the web app requests a verification or password-reset email, it must set the user's language first, with `auth.languageCode = 'es'` or `auth.languageCode = 'en'`, from the user's language preference in AcademiaPath. Firebase then sends that language's version.
+- **No language set:** Firebase uses the default, Spanish.
+- **Keep subject and body unmodified.** Firebase only translates its default text. A subject typed by hand is sent as-is to every user, whatever their language. The body of the email verification template cannot be edited at all, to prevent spam.
+- **Full control:** for custom content or design, generate the action links in the API with the Firebase Admin SDK (`generateEmailVerificationLink`, `generatePasswordResetLink`) and send the emails through a transactional email service. SMTP settings in the console only change the sending server, not the text.
+
+### Still to do for the integration
+
+- Grant the API's runtime account the Firebase Auth admin role. It needs no key; the Admin SDK uses Application Default Credentials:
+  ```bash
+  gcloud projects add-iam-policy-binding elearning-514315 \
+    --member=serviceAccount:academiapath-runtime@elearning-514315.iam.gserviceaccount.com \
+    --role=roles/firebaseauth.admin
+  ```
+- Register the web app in Project settings → Your apps → Web (`academiapath-web`), and copy its config into the `NEXT_PUBLIC_FIREBASE_*` variables listed in `cloud-run.env.example`. These values are public by design, not secrets.
+- Do not create keys for the `firebase-adminsdk-…` service account that Firebase created.
+
 ## Rules for changing the deployment
 
 - **No secrets in Git:** they go to Secret Manager and are mounted with `--set-secrets`.
@@ -65,7 +101,7 @@ Keep these steps for a new environment, such as a university's own project.
 
 - [ ] Seed job for demo users and courses (needed for the November 20 demo)
 - [ ] Remove the project-wide `roles/storage.objectAdmin` from `academiapath-runtime`; it keeps access to its own bucket
-- [ ] Firebase Authentication on Identity Platform (see the functional spec, Authentication section)
+- [ ] Firebase Authentication on Identity Platform: console setup done; integration pending (see "Firebase Authentication" above and the functional spec)
 - [ ] Vertex AI for the tutor and document summaries (the API uses a local mock today)
 - [ ] Workload Identity Federation instead of the JSON key
 - [ ] Load balancer, custom domain and Cloud Armor before production
