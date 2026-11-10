@@ -29,6 +29,8 @@ declare module 'fastify' {
   interface FastifyInstance {
     config: AppConfig;
     db: Database;
+    /** The API server clock: quiz deadlines and answer times use it (never the browser clock). */
+    now: () => Date;
     /** Resolves the session cookie into `request.auth`; responds 401 otherwise. */
     requireAuth: preHandlerAsyncHookHandler;
     /** Requires a valid `X-CSRF-Token` for the current session. Use after `requireAuth`. */

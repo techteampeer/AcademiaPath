@@ -97,6 +97,12 @@ const en = {
     QUIZ_POOL_POINTS_MIXED: 'When questions are drawn at random, every question must be worth the same points.',
     QUIZ_SOURCE_INVALID: 'Choose another approved quiz of this course as the source.',
     FEEDBACK_NOT_AVAILABLE: 'Feedback for this attempt is not available yet.',
+    GRADE_CATEGORY_DUPLICATE: 'Each grade category needs a different name.',
+    GRADE_CATEGORY_ACTIVITY_DUPLICATE: 'An activity can belong to only one grade category.',
+    GRADE_CATEGORY_ACTIVITY_INVALID: 'Grade categories can only contain quizzes and assignments of this course.',
+    GRADE_WEIGHTS_INVALID: 'A published weighting needs at least one category and weights that total exactly 100 %.',
+    GRADE_RELEASE_DUPLICATE: 'Each student and activity can appear only once in a release.',
+    GRADING_POLICY_CONFLICT: 'Someone else changed the grading policy. Reload it and try again.',
   } as Record<string, string>,
 };
 
@@ -197,6 +203,12 @@ const es: ErrorMessages = {
     QUIZ_POOL_POINTS_MIXED: 'Si las preguntas se eligen al azar, todas deben valer los mismos puntos.',
     QUIZ_SOURCE_INVALID: 'Elige otro cuestionario aprobado de este curso como origen.',
     FEEDBACK_NOT_AVAILABLE: 'La retroalimentación de este intento aún no está disponible.',
+    GRADE_CATEGORY_DUPLICATE: 'Cada categoría de calificación necesita un nombre distinto.',
+    GRADE_CATEGORY_ACTIVITY_DUPLICATE: 'Una actividad solo puede pertenecer a una categoría de calificación.',
+    GRADE_CATEGORY_ACTIVITY_INVALID: 'Las categorías solo pueden contener cuestionarios y tareas de este curso.',
+    GRADE_WEIGHTS_INVALID: 'Una ponderación publicada necesita al menos una categoría y pesos que sumen exactamente 100 %.',
+    GRADE_RELEASE_DUPLICATE: 'Cada estudiante y actividad puede aparecer solo una vez en una publicación.',
+    GRADING_POLICY_CONFLICT: 'Otra persona cambió la política de calificación. Vuelve a cargarla e inténtalo otra vez.',
   },
 };
 

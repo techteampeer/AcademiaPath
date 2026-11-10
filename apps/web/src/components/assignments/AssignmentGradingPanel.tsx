@@ -18,7 +18,7 @@ type Load<T> = { status: 'loading' } | { status: 'error'; message: string } | { 
 const FEEDBACK_LIMIT = 5000;
 
 /** Submissions with grading status. Graders score each rubric criterion; the server computes the grade. */
-export function AssignmentGradingPanel({ courseId, assignmentId, canGrade }: { courseId: string; assignmentId: string; canGrade: boolean }) {
+export function AssignmentGradingPanel({ courseId, assignmentId, canGrade, canRelease }: { courseId: string; assignmentId: string; canGrade: boolean; canRelease: boolean }) {
   const { handleUnauthorized } = useSession();
   const { t, locale } = useLocale();
   const g = t.assignments.grading;
@@ -67,7 +67,7 @@ export function AssignmentGradingPanel({ courseId, assignmentId, canGrade }: { c
       <p className="text-sm text-slate-600">
         {g.note}
       </p>
-      {canGrade ? <ReleaseGradesButton courseId={courseId} activityId={assignmentId} label={g.release} onReleased={() => void load()} /> : null}
+      {canRelease ? <ReleaseGradesButton courseId={courseId} activityId={assignmentId} label={g.release} onReleased={() => void load()} /> : null}
       {list.status === 'loading' ? (
         <p role="status" className="text-sm text-slate-600">
           {g.loading}

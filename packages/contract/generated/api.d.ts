@@ -1527,13 +1527,14 @@ export interface paths {
         put?: never;
         /**
          * Release the current grades of a quiz or assignment to its students
-         * @description Requires `grades.release` (instructor, non-editing instructor; never the administrator or
-         *     design-team roles). In one transaction, copies each graded student's current grade (points,
-         *     feedback and rubric scores; for quizzes the best attempt's score) to the released grade the
-         *     student can see. Grades given or changed later stay hidden until the next release, and
-         *     releasing again without changes releases nothing. Answer keys are never released. For quizzes,
-         *     attempts whose time limit has passed are finalized and graded first, so the release includes them.
-         *     Audited as `grades.released`. No request body.
+         * @description Requires `grades.release` (instructors only since 0.16.0; never non-editing instructors, the
+         *     administrator or design-team roles). In one transaction, copies each graded student's current grade
+         *     (points, feedback and rubric scores; for quizzes the best attempt's score, and which attempt it was)
+         *     to the released grade the student can see. Grades given or changed later stay hidden until the next
+         *     release, and releasing again without changes releases nothing. Ungraded work has no grade and is
+         *     never released. Answer keys are never released. For quizzes, attempts whose time limit has passed
+         *     are finalized and graded first, so the release includes them. Audited as `grades.released` (one
+         *     entry per call) and `grade.released` (one per released grade). No request body.
          */
         post: operations["releaseGrades"];
         delete?: never;
@@ -1552,10 +1553,13 @@ export interface paths {
         /**
          * Course gradebook (staff)
          * @description Requires `grades.view` (instructor, non-editing instructor) or the administrator role
-         *     (read-only). Columns are the course's approved quizzes and assignments; rows are active
-         *     students ordered by email and paginated. Cells hold the current server-calculated grade and
-         *     its release status. A quiz counts the best submitted attempt, once per student. The total
-         *     sums points over graded items and converts them to the 0–20 scale.
+         *     (read-only); program-management grants give no access. Columns are the course's approved quizzes
+         *     and assignments (with their visibility and published category); rows are active students ordered by
+         *     email and paginated. Cells hold the current server-calculated grade, its revision and its release
+         *     status. A quiz counts the best submitted attempt, once per student. `total` is the original
+         *     unweighted sum of points over graded items (unchanged); `courseGrade` applies the course's
+         *     published grading policy and is labeled `final` or `provisional`; `counts` summarizes pending and
+         *     unreleased work.
          */
         get: operations["getGradebook"];
         put?: never;
@@ -1576,12 +1580,133 @@ export interface paths {
         /**
          * The signed-in student's released grades in a course
          * @description Students only (`grades.viewOwn`). Lists the course's quizzes and assignments. Released items
-         *     include points, the 0–20 grade and, for assignments, feedback and rubric scores; everything
-         *     else is `pending` without numbers. Answer keys are never included. The total uses released
-         *     grades only. Activities in sections that a prerequisite still locks are omitted unless their
-         *     grade was released.
+         *     include points, the 0–20 grade, for assignments feedback and rubric scores, and for quizzes whether
+         *     the released result passed (by the threshold saved with the released attempt); everything else is
+         *     `pending` without numbers. `workStatus` tells apart work not submitted, in progress, submitted and
+         *     awaiting a result, and released. Answer keys are never included. `total` and `courseGrade` use
+         *     released grades only (`courseGrade` applies the published weighting, whose categories are listed in
+         *     `policy`; drafts are never shown). Activities in sections that a prerequisite still locks are omitted
+         *     unless their grade was released. Completion progress is reported separately (`/progress`).
          */
         get: operations["getMyGrades"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/grading-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The course grading policy (grade categories and weights)
+         * @description Requires `grades.view` (instructor, non-editing instructor) or the administrator role. Returns the
+         *     saved policy, draft or published, or `status: none` (version 0) when the course has none and uses the
+         *     unweighted calculation.
+         */
+        get: operations["getGradingPolicy"];
+        /**
+         * Save the whole grading policy (categories, weights and memberships)
+         * @description Requires `grades.configure` (instructor) or the administrator role; never non-editing instructors.
+         *     Replaces every category at once. `expectedVersion` is the version the edit was based on (0 when the
+         *     course has no policy); a different current version returns `409 GRADING_POLICY_CONFLICT`. Weights are
+         *     integers from 1 to 100; names are unique per course (`422 GRADE_CATEGORY_DUPLICATE`); an activity may
+         *     be in at most one category (`422 GRADE_CATEGORY_ACTIVITY_DUPLICATE`) and must be a quiz or assignment
+         *     of this course (`422 GRADE_CATEGORY_ACTIVITY_INVALID`). A `published` policy needs at least one
+         *     category and weights totalling exactly 100 (`422 GRADE_WEIGHTS_INVALID`); a `draft` may total
+         *     anything and never affects grades. Grades, attempts and submissions are never changed. Audited as
+         *     `grading_policy.updated` with the previous and new policy.
+         */
+        put: operations["saveGradingPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/gradebook/students/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One student's gradebook (staff drilldown)
+         * @description Requires `grades.view` (instructor, non-editing instructor) or the administrator role. For an active
+         *     student of the course: every gradebook activity with its status, current grade and revision, released
+         *     grade, submission time, attempts used and (quizzes) the pass/fail status by the threshold saved with
+         *     the counted attempt; the course grade on current grades, and `releasedCourseGrade`, exactly what the
+         *     student sees. Never includes answer keys or attempt contents. Other users return 404.
+         */
+        get: operations["getStudentGradebook"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/grades/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release selected grades (individually or in bulk)
+         * @description Requires `grades.release` (instructors of the course only). Each item names a student, an activity and
+         *     the grade revision the instructor reviewed (from the gradebook). In one transaction, with the grade
+         *     rows locked, each item is released only if its grade exists and still has that revision; otherwise it
+         *     is reported, not released: `already_released` (nothing to do; repeated requests are safe),
+         *     `stale` (the grade changed since it was reviewed), `not_graded` (not submitted or awaiting grading:
+         *     ungraded work is never released) or `not_found` (not a quiz or assignment of this course). Expired
+         *     quiz attempts are finalized first. Each released grade is audited as `grade.released`, and the
+         *     request as `grades.released_selection`. A student or activity pair may appear once
+         *     (`422 GRADE_RELEASE_DUPLICATE`).
+         */
+        post: operations["releaseSelectedGrades"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/gradebook/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export the course gradebook as CSV
+         * @description Requires `grades.export` (instructor, non-editing instructor) or the administrator role (read-only);
+         *     program-management grants give no access. One row per active student of this course, ordered by
+         *     email. Columns, in this order:
+         *     `student_id`, `student_email`, `student_name`; for each gradebook activity n (course order)
+         *     `An <title> [quiz|assignment] points`, `... max_points` and `... status` (`not_submitted`,
+         *     `needs_grading`, `unreleased`, `released`, `changed_since_release`); for each published category
+         *     `Category <name> (<weight>%) percent`; then `course_grade_method`, `course_grade_0_20`,
+         *     `course_grade_percent`, `course_grade_status` (`final` or `provisional`), `graded_items`,
+         *     `pending_items`, `released_items`, `unreleased_items`, `needs_grading_items`. Empty fields mean "no
+         *     grade". UTF-8 with a byte order mark, every field quoted, CRLF line ends. Text that a spreadsheet
+         *     could run as a formula (starting with `=`, `+`, `-`, `@`, tab or carriage return) is prefixed with
+         *     an apostrophe. No answer keys, attempt contents or data from other courses. Nothing is stored or sent
+         *     anywhere. Audited as `gradebook.exported`.
+         */
+        get: operations["exportGradebook"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1878,7 +2003,7 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE" | "QUIZ_POOL_TOO_SMALL" | "QUIZ_POOL_POINTS_MIXED" | "QUIZ_SOURCE_INVALID" | "FEEDBACK_NOT_AVAILABLE";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE" | "QUIZ_POOL_TOO_SMALL" | "QUIZ_POOL_POINTS_MIXED" | "QUIZ_SOURCE_INVALID" | "FEEDBACK_NOT_AVAILABLE" | "GRADE_CATEGORY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_INVALID" | "GRADE_WEIGHTS_INVALID" | "GRADE_RELEASE_DUPLICATE" | "GRADING_POLICY_CONFLICT";
         };
         /**
          * @description What a link points to. Every kind is only a link opened in a new tab; nothing is embedded, fetched or executed.
@@ -2694,8 +2819,11 @@ export interface components {
             attemptsUsed: number;
             attemptsRemaining: number;
             questionsPerAttempt: number | null;
+            /** @description The current quiz setting, which applies to new attempts. */
             passingScorePercent: number | null;
-            /** @description Whether the released grade meets the passing threshold; null until released or without a threshold. */
+            /** @description The threshold saved with the released attempt, which decides `passed` (null until released or without a threshold). */
+            releasedPassingScorePercent: number | null;
+            /** @description Whether the released grade meets the threshold saved with the released attempt; null until released or without a threshold. */
             passed: boolean | null;
             /** @description True once staff have released this student's grade for the quiz. */
             gradeReleased: boolean;
@@ -2912,6 +3040,13 @@ export interface components {
             type: components["schemas"]["GradableType"];
             /** @description Points of the approved version. */
             maxPoints: number;
+            /** @description Whether students can see the activity (it and its section are visible). */
+            visible: boolean;
+            /**
+             * Format: uuid
+             * @description Category of the published grading policy; null without one or when not in a category.
+             */
+            categoryId: string | null;
         };
         GradebookCell: {
             /** Format: uuid */
@@ -2922,6 +3057,8 @@ export interface components {
             grade20: components["schemas"]["Grade20"] | null;
             /** Format: date-time */
             releasedAt: string | null;
+            /** @description The grade's current revision (name it when releasing selected grades); null without a grade. */
+            revision: number | null;
         };
         /** @description Sum of points over the counted items, converted to the 0–20 scale (null when none). */
         CourseTotal: {
@@ -2935,10 +3072,153 @@ export interface components {
             /** @description One cell per column, in column order. */
             cells: components["schemas"]["GradebookCell"][];
             total: components["schemas"]["CourseTotal"];
+            courseGrade: components["schemas"]["CourseGrade"];
+            counts: components["schemas"]["GradeCounts"];
+        };
+        /** @description Activities of one student by status (`unreleased` includes grades changed since their release). */
+        GradeCounts: {
+            notSubmitted: number;
+            needsGrading: number;
+            unreleased: number;
+            released: number;
+        };
+        GradeCategoryRef: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            weightPercent: number;
+        };
+        /** @description The policy status and the categories that currently weight grades (published only). */
+        GradingPolicySummary: {
+            /** @enum {string} */
+            status: "none" | "draft" | "published";
+            version: number;
+            /** @enum {string} */
+            method: "points" | "weighted";
+            categories: components["schemas"]["GradeCategoryRef"][];
+        };
+        GradeCategorySummary: {
+            /** Format: uuid */
+            categoryId: string;
+            name: string;
+            weightPercent: number;
+            points: number;
+            maxPoints: number;
+            gradedItems: number;
+            countedItems: number;
+            /** @description Graded points / graded maxima (one decimal); null while the category has no graded work. */
+            percent: number | null;
+            grade20: components["schemas"]["Grade20"] | null;
+        };
+        /**
+         * @description The course grade under the course's grading policy (see "Advanced gradebook" above). `points`: the
+         *     unweighted sum; `weighted`: the published categories. Pending work is never counted as zero.
+         */
+        CourseGrade: {
+            /** @enum {string} */
+            method: "points" | "weighted";
+            /** @enum {string} */
+            status: "final" | "provisional";
+            grade20: components["schemas"]["Grade20"] | null;
+            percent: number | null;
+            countedItems: number;
+            gradedItems: number;
+            /** @description Counted activities that students can see (or that have a grade) without a released, current grade. */
+            pendingItems: number;
+            categories: components["schemas"]["GradeCategorySummary"][];
+        };
+        GradingPolicy: {
+            /** @enum {string} */
+            status: "none" | "draft" | "published";
+            version: number;
+            /** Format: date-time */
+            publishedAt: string | null;
+            /** Format: date-time */
+            updatedAt: string | null;
+            totalWeightPercent: number;
+            categories: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                weightPercent: number;
+                activityIds: string[];
+            }[];
+        };
+        GradingPolicyInput: {
+            expectedVersion: number;
+            /** @enum {string} */
+            status: "draft" | "published";
+            categories: {
+                name: string;
+                weightPercent: number;
+                activityIds: string[];
+            }[];
+        };
+        StudentGradebookActivity: {
+            activity: components["schemas"]["GradebookColumn"];
+            status: components["schemas"]["GradeStatus"];
+            grade: {
+                points: number;
+                maxPoints: number;
+                grade20: components["schemas"]["Grade20"];
+                revision: number;
+                /** Format: date-time */
+                gradedAt: string;
+            } | null;
+            released: {
+                points: number;
+                maxPoints: number;
+                grade20: components["schemas"]["Grade20"];
+                revision: number;
+                /** Format: date-time */
+                releasedAt: string;
+            } | null;
+            /** Format: date-time */
+            submittedAt: string | null;
+            isLate: boolean;
+            inProgress: boolean;
+            attemptsUsed: number | null;
+            /** @description Quizzes only; the threshold saved with the counted attempt. */
+            passingScorePercent: number | null;
+            passed: boolean | null;
+        };
+        StudentGradebook: {
+            /** @constant */
+            scaleMax: 20;
+            student: components["schemas"]["QuizResultStudent"];
+            policy: components["schemas"]["GradingPolicySummary"];
+            courseGrade: components["schemas"]["CourseGrade"];
+            releasedCourseGrade: components["schemas"]["CourseGrade"];
+            counts: components["schemas"]["GradeCounts"];
+            activities: components["schemas"]["StudentGradebookActivity"][];
+        };
+        GradeSelectionRelease: {
+            items: {
+                /** Format: uuid */
+                activityId: string;
+                /** Format: uuid */
+                userId: string;
+                revision: number;
+            }[];
+        };
+        GradeSelectionReleaseResult: {
+            releasedCount: number;
+            /** Format: date-time */
+            releasedAt: string | null;
+            results: {
+                /** Format: uuid */
+                activityId: string;
+                /** Format: uuid */
+                userId: string;
+                revision: number;
+                /** @enum {string} */
+                outcome: "released" | "already_released" | "stale" | "not_graded" | "not_found";
+            }[];
         };
         Gradebook: {
             /** @constant */
             scaleMax: 20;
+            policy: components["schemas"]["GradingPolicySummary"];
             columns: components["schemas"]["GradebookColumn"][];
             items: components["schemas"]["GradebookRow"][];
             nextCursor: string | null;
@@ -2948,14 +3228,29 @@ export interface components {
             activityId: string;
             title: string;
             type: components["schemas"]["GradableType"];
+            /** Format: uuid */
+            categoryId: string | null;
             status: components["schemas"]["StudentGradeStatus"];
+            /**
+             * @description `submitted` means submitted and awaiting a released result (whether it is graded yet is not shown).
+             * @enum {string}
+             */
+            workStatus: "not_submitted" | "in_progress" | "submitted" | "released";
             grade: components["schemas"]["ReleasedGrade"] | null;
+            /** @description Released quizzes only; by the threshold saved with the released attempt. */
+            passed: boolean | null;
         };
         StudentGrades: {
             /** @constant */
             scaleMax: 20;
+            policy: {
+                /** @enum {string} */
+                method: "points" | "weighted";
+                categories: components["schemas"]["GradeCategoryRef"][];
+            };
             items: components["schemas"]["StudentGradeItem"][];
             total: components["schemas"]["CourseTotal"];
+            courseGrade: components["schemas"]["CourseGrade"];
         };
         /**
          * @description Response language. Sources are never translated.
@@ -3563,7 +3858,8 @@ export interface components {
          *     `IMPORT_CONFLICT`, `ENROLLMENT_HAS_HISTORY`; or a course lifecycle rule:
          *     `COURSE_VERSION_CONFLICT`, `INVALID_COURSE_TRANSITION`, `COURSE_CODE_LOCKED`,
          *     `SECTION_ORDER_STALE`; or `PROGRAM_MANAGER_EXISTS` (the user already manages the program); or a
-         *     learning-resource rule: `RESOURCE_FOLDER_NOT_EMPTY`, `RESOURCE_ORDER_STALE`.
+         *     learning-resource rule: `RESOURCE_FOLDER_NOT_EMPTY`, `RESOURCE_ORDER_STALE`; or
+         *     `GRADING_POLICY_CONFLICT` (the grading policy changed since it was loaded).
          */
         Conflict: {
             headers: {
@@ -3597,7 +3893,9 @@ export interface components {
          *     `COMPLETION_AUTOMATIC` (quizzes and assignments complete on submission), `PREREQUISITE_SELF`,
          *     `PREREQUISITE_SECTION_NOT_FOUND` or `PREREQUISITE_CYCLE`; or a learning-resource rule:
          *     `RESOURCE_FOLDER_NOT_FOUND` or `RESOURCE_NOT_ORGANIZABLE`; or an assessment rule:
-         *     `QUIZ_POOL_TOO_SMALL`, `QUIZ_POOL_POINTS_MIXED` or `QUIZ_SOURCE_INVALID`.
+         *     `QUIZ_POOL_TOO_SMALL`, `QUIZ_POOL_POINTS_MIXED` or `QUIZ_SOURCE_INVALID`; or a gradebook rule:
+         *     `GRADE_CATEGORY_DUPLICATE`, `GRADE_CATEGORY_ACTIVITY_DUPLICATE`, `GRADE_CATEGORY_ACTIVITY_INVALID`,
+         *     `GRADE_WEIGHTS_INVALID` or `GRADE_RELEASE_DUPLICATE`.
          */
         UnprocessableContent: {
             headers: {
@@ -6049,6 +6347,145 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StudentGrades"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getGradingPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The grading policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradingPolicy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    saveGradingPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GradingPolicyInput"];
+            };
+        };
+        responses: {
+            /** @description The saved policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradingPolicy"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    getStudentGradebook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                userId: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The student's gradebook. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentGradebook"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    releaseSelectedGrades: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GradeSelectionRelease"];
+            };
+        };
+        responses: {
+            /** @description What was released, and why anything else was not. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradeSelectionReleaseResult"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    exportGradebook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The gradebook as a CSV file (`Content-Disposition` attachment). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
                 };
             };
             401: components["responses"]["Unauthorized"];

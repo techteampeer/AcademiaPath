@@ -1,4 +1,4 @@
-import { API_BASE, apiRequest, apiUpload } from './client';
+import { API_BASE, ApiError, apiRequest, apiUpload } from './client';
 import type {
   AccountInvitation,
   Activity,
@@ -65,6 +65,11 @@ import type {
   StudentAssignmentStatus,
   StudentAssignmentSubmission,
   StudentGrades,
+  GradingPolicy,
+  GradingPolicyInput,
+  StudentGradebook,
+  GradeSelectionRelease,
+  GradeSelectionReleaseResult,
   StudentProgressPage,
   StudentQuizAttempt,
   StudentQuizAttemptSummary,
@@ -249,6 +254,24 @@ export const api = {
     apiRequest<GradeReleaseResult>('POST', `${activity(courseId, activityId)}/grades/release`, { csrfToken }),
   getGradebook: (courseId: string, page?: PageRequest) => apiRequest<Gradebook>('GET', withPage(`${course(courseId)}/gradebook`, page)),
   myGrades: (courseId: string) => apiRequest<StudentGrades>('GET', `${course(courseId)}/grades/mine`),
+  // Advanced gradebook (AP-023): every calculation and permission check happens in the API.
+  getGradingPolicy: (courseId: string) => apiRequest<GradingPolicy>('GET', `${course(courseId)}/grading-policy`),
+  saveGradingPolicy: (courseId: string, body: GradingPolicyInput, csrfToken: string) =>
+    apiRequest<GradingPolicy>('PUT', `${course(courseId)}/grading-policy`, { body, csrfToken }),
+  getStudentGradebook: (courseId: string, userId: string) => apiRequest<StudentGradebook>('GET', `${course(courseId)}/gradebook/students/${userId}`),
+  releaseSelectedGrades: (courseId: string, body: GradeSelectionRelease, csrfToken: string) =>
+    apiRequest<GradeSelectionReleaseResult>('POST', `${course(courseId)}/grades/release`, { body, csrfToken }),
+  /** The CSV as a Blob (same-origin, sent with the session cookie); the browser saves it as a file. */
+  exportGradebookCsv: async (courseId: string) => {
+    const response = await fetch(`${API_BASE}${course(courseId)}/gradebook/export.csv`, { credentials: 'same-origin', headers: { accept: 'text/csv' } });
+    if (!response.ok) {
+      const problem = await response.json().catch(() => null);
+      throw new ApiError(response.status, problem && typeof problem === 'object' && 'status' in problem ? problem : null);
+    }
+    const disposition = response.headers.get('content-disposition') ?? '';
+    const fileName = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'gradebook.csv';
+    return { blob: await response.blob(), fileName };
+  },
 
   // Documents: uploaded and validated by the API, which extracts the text and creates mock summaries.
   uploadDocument: (courseId: string, sectionId: string, file: File, title: string, csrfToken: string) => {

@@ -41,6 +41,8 @@ export const quizAttemptStatusEnum = pgEnum('quiz_attempt_status', ['in_progress
 
 /** Where a gradebook entry comes from: the best quiz attempt or a graded assignment submission. */
 export const gradeSourceEnum = pgEnum('grade_source', ['quiz', 'assignment']);
+/** A course grading policy (AP-023): a draft never affects grades; a published one weights categories. */
+export const gradingPolicyStatusEnum = pgEnum('grading_policy_status', ['draft', 'published']);
 
 /** Tutor usage accounting: request kind and grounding outcome (never the question text). */
 export const tutorRequestKindEnum = pgEnum('tutor_request_kind', ['message', 'practice']);

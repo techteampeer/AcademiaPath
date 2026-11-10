@@ -1,9 +1,9 @@
 import { sql } from 'drizzle-orm';
-import { boolean, check, foreignKey, index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, foreignKey, index, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { primaryId, timestamps } from './columns.js';
 import { activities } from './content.js';
 import { courses, enrollments } from './courses.js';
-import { gradeSourceEnum } from './enums.js';
+import { gradeSourceEnum, gradingPolicyStatusEnum } from './enums.js';
 import { quizAttempts } from './quizzes.js';
 import { users } from './users.js';
 
@@ -125,6 +125,11 @@ export const grades = pgTable(
     releasedDetail: jsonb('released_detail').$type<ReleasedGradeDetail>(),
     releasedAt: timestamp('released_at', { withTimezone: true }),
     releasedByUserId: uuid('released_by_user_id').references(() => users.id, { onDelete: 'restrict' }),
+    /**
+     * Quizzes (AP-023): the attempt whose score was released. Its own saved passing threshold decides the
+     * released pass/fail status, so later changes to the quiz never alter it retroactively.
+     */
+    releasedQuizAttemptId: uuid('released_quiz_attempt_id'),
     ...timestamps(),
   },
   (t) => [
@@ -141,6 +146,12 @@ export const grades = pgTable(
       columns: [t.quizAttemptId, t.activityId, t.userId],
       foreignColumns: [quizAttempts.id, quizAttempts.activityId, quizAttempts.userId],
     }).onDelete('restrict'),
+    foreignKey({
+      name: 'grades_released_quiz_attempt_fk',
+      columns: [t.releasedQuizAttemptId, t.activityId, t.userId],
+      foreignColumns: [quizAttempts.id, quizAttempts.activityId, quizAttempts.userId],
+    }).onDelete('restrict'),
+    check('grades_released_quiz_attempt_check', sql`${t.releasedQuizAttemptId} IS NULL OR (${t.source} = 'quiz' AND ${t.releasedRevision} IS NOT NULL)`),
     foreignKey({
       name: 'grades_submission_fk',
       columns: [t.submissionId, t.activityId, t.userId],
@@ -159,5 +170,78 @@ export const grades = pgTable(
         OR (${t.releasedRevision} BETWEEN 1 AND ${t.revision} AND ${t.releasedMaxPoints} >= 1 AND ${t.releasedPoints} BETWEEN 0 AND ${t.releasedMaxPoints}
           AND ${t.releasedDetail} IS NOT NULL AND ${t.releasedAt} IS NOT NULL AND ${t.releasedByUserId} IS NOT NULL)`,
     ),
+  ],
+);
+
+/**
+ * A course's grading policy (AP-023). Without a row, or while it is a draft, the course grade is the
+ * unweighted sum of points (the original calculation). When published, grade categories are weighted
+ * (their weights total 100, checked by the API under this row's lock). `version` increases on every save
+ * (optimistic concurrency: a save names the version it was based on).
+ */
+export const courseGradingPolicies = pgTable(
+  'course_grading_policies',
+  {
+    courseId: uuid('course_id')
+      .primaryKey()
+      .references(() => courses.id, { onDelete: 'restrict' }),
+    status: gradingPolicyStatusEnum('status').notNull(),
+    version: integer('version').notNull().default(1),
+    updatedByUserId: uuid('updated_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    ...timestamps(),
+  },
+  (t) => [
+    check('course_grading_policies_version_check', sql`${t.version} >= 1`),
+    check('course_grading_policies_published_check', sql`(${t.status} = 'published') = (${t.publishedAt} IS NOT NULL)`),
+  ],
+);
+
+/** A weighted grade category of a course policy (for example "Quizzes", 40 %). */
+export const gradeCategories = pgTable(
+  'grade_categories',
+  {
+    id: primaryId(),
+    courseId: uuid('course_id')
+      .notNull()
+      .references(() => courseGradingPolicies.courseId, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    weightPercent: integer('weight_percent').notNull(),
+    position: integer('position').notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    unique('grade_categories_id_course_unique').on(t.id, t.courseId),
+    unique('grade_categories_course_position_unique').on(t.courseId, t.position),
+    uniqueIndex('grade_categories_course_name_unique').on(t.courseId, sql`lower(${t.name})`),
+    check('grade_categories_name_check', sql`char_length(${t.name}) BETWEEN 1 AND 80`),
+    check('grade_categories_weight_check', sql`${t.weightPercent} BETWEEN 1 AND 100`),
+    check('grade_categories_position_check', sql`${t.position} >= 0`),
+  ],
+);
+
+/**
+ * Which category a graded activity belongs to: at most one (the activity is the primary key). A trigger
+ * (migration 0023) checks that the activity is a quiz or assignment of the category's course.
+ */
+export const gradeCategoryActivities = pgTable(
+  'grade_category_activities',
+  {
+    activityId: uuid('activity_id')
+      .primaryKey()
+      .references(() => activities.id, { onDelete: 'cascade' }),
+    categoryId: uuid('category_id').notNull(),
+    courseId: uuid('course_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('grade_category_activities_category_idx').on(t.categoryId),
+    foreignKey({
+      name: 'grade_category_activities_category_fk',
+      columns: [t.categoryId, t.courseId],
+      foreignColumns: [gradeCategories.id, gradeCategories.courseId],
+    }).onDelete('cascade'),
   ],
 );

@@ -14,8 +14,17 @@ export const QUIZ_LIMITS = {
   points: 100,
 } as const;
 
-/** Grace period for in-flight requests after a server-side deadline. */
-export const DEADLINE_GRACE_SECONDS = 10;
+/*
+ * Quiz timer semantics (AP-023; replaces the AP-022 10-second grace period):
+ * - The answer window of a timed attempt is [startedAt, deadlineAt], both set by the API server clock
+ *   (`app.now()`); the browser clock is never used. The deadline instant itself is inside the window.
+ * - An answer is accepted only if the server clock, read after the attempt row is locked, is at or before
+ *   deadlineAt; the answer is stored with that instant (answered_at). One millisecond later it is refused.
+ * - There is no grace period: nothing extends the answer window. Network latency is the browser's concern
+ *   (it saves answers as they change); a late save or submit returns ATTEMPT_EXPIRED / closes the attempt.
+ * - An attempt past its deadline is finalized by the first request that touches it (idempotently), graded
+ *   only with answers saved in time, marked closedByTimeLimit, and recorded as submitted at its deadline.
+ */
 
 export type QuizSettings = {
   instructions: string | null;

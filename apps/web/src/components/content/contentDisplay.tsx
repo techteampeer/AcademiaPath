@@ -24,8 +24,12 @@ export function contentAbilities(user: CurrentUser, viewerRole: CourseRole | nul
     attempt: role === 'student',
     /** Gradebook and submissions (administrators read only). */
     viewGrades: admin || role === 'instructor' || role === 'non_editing_instructor',
-    /** Grading and releasing grades need the course role itself; the administrator role never grants them. */
+    /** Grading needs the course role itself; the administrator role never grants it. */
     grade: role === 'instructor' || role === 'non_editing_instructor',
+    /** Releasing grades: instructors only (AP-023; non-editing instructors have read-only gradebook access). */
+    release: role === 'instructor',
+    /** Grade categories and weights: instructors and administrators. */
+    configureGrading: admin || role === 'instructor',
     /** Course tutor: students, instructors and non-editing instructors (never via the administrator role). */
     tutor: role === 'student' || role === 'instructor' || role === 'non_editing_instructor',
     /** Own learning progress and completion marks: enrolled students only. */

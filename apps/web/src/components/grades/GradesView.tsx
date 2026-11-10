@@ -17,6 +17,7 @@ import { Breadcrumbs } from '@/components/ui/PageHeader';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { Course, CurrentUser, Gradebook, StudentGrades } from '@/lib/api/types';
+import { CategoryList, CourseGradeValue, ExportCsvButton, ReleaseSelection } from './gradebookDisplay';
 import { ReleaseGradesButton } from './ReleaseGradesButton';
 
 type Load<T> = { status: 'loading' } | { status: 'not-found' } | { status: 'error'; message: string } | { status: 'ready'; data: T };
@@ -78,7 +79,7 @@ function GradesContent({ courseId, user }: { courseId: string; user: CurrentUser
         <p className="mt-1 text-sm text-slate-600">{b.scale}</p>
       </div>
       {abilities.viewGrades ? (
-        <StaffGradebook courseId={courseId} canRelease={abilities.grade} />
+        <StaffGradebook courseId={courseId} canRelease={abilities.release} />
       ) : abilities.attempt ? (
         <StudentGradesList courseId={courseId} />
       ) : (
@@ -106,10 +107,11 @@ function useLoad<T>(fetcher: () => Promise<T>) {
   return { state, load };
 }
 
-/** Instructor view: one row per student, one column per approved quiz or assignment. */
+/** Instructor view: one row per student, one column per approved quiz or assignment, and the policy's course grade. */
 function StaffGradebook({ courseId, canRelease }: { courseId: string; canRelease: boolean }) {
   const { t } = useLocale();
   const b = t.assignments.book;
+  const g = t.gradebook;
   const fetcher = useCallback(() => api.getGradebook(courseId, { limit: 100 }), [courseId]);
   const { state, load } = useLoad<Gradebook>(fetcher);
   if (state.status === 'loading') {
@@ -121,15 +123,55 @@ function StaffGradebook({ courseId, canRelease }: { courseId: string; canRelease
   }
   if (state.status !== 'ready') return <Alert tone="error">{state.status === 'error' ? state.message : b.notAvailable}</Alert>;
   const book = state.data;
-  if (!book.columns.length) return <EmptyState title={b.nothingTitle} description={b.nothingDescription} />;
+  const categoryName = new Map(book.policy.categories.map((category) => [category.id, category]));
+  // Everything graded but not (or no longer) released, each with the revision shown here.
+  const releasable = book.items.flatMap((row) =>
+    row.cells
+      .filter((cell) => (cell.status === 'unreleased' || cell.status === 'changed_since_release') && cell.revision !== null)
+      .map((cell) => ({ activityId: cell.activityId, userId: row.student.id, revision: cell.revision! })),
+  );
+  const toolbar = (
+    <div className="flex flex-wrap items-start gap-2">
+      <Button variant="secondary" size="sm" onClick={() => void load()}>
+        {b.refresh}
+      </Button>
+      <ExportCsvButton courseId={courseId} />
+      <Link href={`/courses/${courseId}/grades/categories`} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
+        {g.toolbar.categories}
+      </Link>
+    </div>
+  );
+  if (!book.columns.length) {
+    return (
+      <div className="space-y-4">
+        {toolbar}
+        <EmptyState title={b.nothingTitle} description={b.nothingDescription} />
+      </div>
+    );
+  }
   return (
     <Card as="section" aria-label={b.gradebookLabel} className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-slate-600">{b.note}</p>
-        <Button variant="secondary" size="sm" onClick={() => void load()}>
-          {b.refresh}
-        </Button>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1 text-sm text-slate-600">
+          <p data-policy-status={book.policy.status}>
+            <span className="font-medium text-slate-900">{g.policyStatus[book.policy.status]}</span>
+            {book.policy.method === 'weighted' ? `: ${book.policy.categories.map((category) => g.categoryWeight(category.name, category.weightPercent)).join(', ')}` : null}
+          </p>
+          <p>{b.note}</p>
+          <p>{g.pendingWorkNote}</p>
+        </div>
+        {toolbar}
       </div>
+      {canRelease ? (
+        // Always mounted, so the result of a release (and any skipped items) stays visible after the reload.
+        <ReleaseSelection
+          courseId={courseId}
+          items={releasable}
+          label={`${g.toolbar.releaseAll} (${releasable.length})`}
+          emptyLabel={g.toolbar.nothingToRelease}
+          onReleased={() => void load()}
+        />
+      ) : null}
       <div className="relative overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200 align-bottom text-slate-500">
@@ -145,6 +187,12 @@ function StaffGradebook({ courseId, canRelease }: { courseId: string; canRelease
                   <span className="block text-xs font-normal">
                     {column.type === 'quiz' ? b.quiz : b.assignment} · {b.pts(column.maxPoints)}
                   </span>
+                  {book.policy.method === 'weighted' ? (
+                    <span className="block text-xs font-normal text-slate-500">
+                      {column.categoryId ? categoryName.get(column.categoryId)?.name : g.notCounted}
+                    </span>
+                  ) : null}
+                  {!column.visible ? <span className="block text-xs font-normal text-amber-700">{g.hidden}</span> : null}
                   {canRelease ? (
                     <div className="mt-2 font-normal">
                       <ReleaseGradesButton courseId={courseId} activityId={column.activityId} label={b.release} onReleased={() => void load()} />
@@ -152,19 +200,23 @@ function StaffGradebook({ courseId, canRelease }: { courseId: string; canRelease
                   ) : null}
                 </th>
               ))}
-              <th scope="col" className="py-2 font-medium">
-                {b.courseTotal}
+              <th scope="col" className="min-w-44 py-2 pr-4 font-medium">
+                {g.courseGrade}
+              </th>
+              <th scope="col" className="min-w-32 py-2 font-medium">
+                {g.unweightedTotal}
               </th>
             </tr>
           </thead>
           <tbody>
             {book.items.map((row) => (
-              <tr key={row.student.id} className="border-b border-slate-100 align-top">
+              <tr key={row.student.id} className="border-b border-slate-100 align-top" data-student={row.student.email}>
                 <th scope="row" className="py-2 pr-4 font-normal">
-                  <span className="block text-slate-900">
+                  <Link href={`/courses/${courseId}/grades/students/${row.student.id}`} className="block text-brand-700 hover:underline">
                     {row.student.givenName} {row.student.familyName}
-                  </span>
+                  </Link>
                   <span className="block text-xs break-all text-slate-500">{row.student.email}</span>
+                  <span className="block text-xs text-slate-500">{g.counts(row.counts.needsGrading, row.counts.unreleased)}</span>
                 </th>
                 {row.cells.map((cell) => (
                   <td key={cell.activityId} className="py-2 pr-4">
@@ -179,7 +231,10 @@ function StaffGradebook({ courseId, canRelease }: { courseId: string; canRelease
                     <GradeStatusBadge status={cell.status} />
                   </td>
                 ))}
-                <td className="py-2 font-semibold text-slate-900">
+                <td className="py-2 pr-4">
+                  <CourseGradeValue grade={row.courseGrade} compact />
+                </td>
+                <td className="py-2 text-slate-900">
                   {formatGrade20(row.total.grade20)}
                   <span className="block text-xs font-normal text-slate-500">
                     {b.totalDetail(row.total.points, row.total.maxPoints, row.total.gradedItems)}
@@ -199,6 +254,7 @@ function StaffGradebook({ courseId, canRelease }: { courseId: string; canRelease
 function StudentGradesList({ courseId }: { courseId: string }) {
   const { t } = useLocale();
   const b = t.assignments.book;
+  const g = t.gradebook;
   const fetcher = useCallback(() => api.myGrades(courseId), [courseId]);
   const { state } = useLoad<StudentGrades>(fetcher);
   if (state.status === 'loading') {
@@ -210,23 +266,33 @@ function StudentGradesList({ courseId }: { courseId: string }) {
   }
   if (state.status !== 'ready') return <Alert tone="error">{state.status === 'error' ? state.message : b.notAvailable}</Alert>;
   const grades = state.data;
+  const categoryName = new Map(grades.policy.categories.map((category) => [category.id, category]));
+  const workTone = { not_submitted: 'neutral', in_progress: 'brand', submitted: 'warning', released: 'success' } as const;
   return (
     <div className="space-y-4">
       <Card as="section" aria-labelledby="total-heading">
         <h2 id="total-heading" className="text-sm font-medium text-slate-500">
-          {b.totalHeading}
+          {g.student.heading}
         </h2>
-        <p className="mt-1 text-2xl font-bold text-slate-900">{formatGrade20(grades.total.grade20)}</p>
-        <p className="text-xs text-slate-500">
-          {b.totalMine(grades.total.points, grades.total.maxPoints, grades.total.gradedItems)}
-        </p>
+        <div className="mt-1">
+          <CourseGradeValue grade={grades.courseGrade} />
+        </div>
+        <p className="mt-1 text-xs text-slate-500">{g.method[grades.courseGrade.method]}</p>
+        {grades.courseGrade.method === 'weighted' ? (
+          <>
+            <h3 className="mt-3 text-sm font-medium text-slate-700">{g.student.weighting}</h3>
+            <CategoryList grade={grades.courseGrade} />
+          </>
+        ) : null}
+        <p className="mt-3 text-xs text-slate-500">{g.pendingWorkNote}</p>
+        <p className="text-xs text-slate-500">{g.student.progressNote}</p>
       </Card>
       {grades.items.length === 0 ? (
         <p className="text-sm text-slate-600">{b.noItems}</p>
       ) : (
         <ul className="space-y-3">
           {grades.items.map((item) => (
-            <li key={item.activityId}>
+            <li key={item.activityId} data-activity={item.title} data-work-status={item.workStatus}>
               <Card as="article" aria-labelledby={`grade-${item.activityId}`} className="space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h2 id={`grade-${item.activityId}`} className="font-semibold text-slate-900">
@@ -234,8 +300,14 @@ function StudentGradesList({ courseId }: { courseId: string }) {
                       {item.title}
                     </Link>
                     <span className="ml-2 text-xs font-normal text-slate-500">{item.type === 'quiz' ? b.quiz : b.assignment}</span>
+                    {item.categoryId && categoryName.get(item.categoryId) ? (
+                      <span className="ml-2 text-xs font-normal text-slate-500">· {categoryName.get(item.categoryId)!.name}</span>
+                    ) : null}
                   </h2>
-                  <Badge tone={item.grade ? 'success' : 'neutral'}>{item.grade ? b.released : b.pending}</Badge>
+                  <span className="flex flex-wrap gap-2">
+                    {item.passed !== null ? <Badge tone={item.passed ? 'success' : 'warning'}>{item.passed ? g.student.passed : g.student.notPassed}</Badge> : null}
+                    <Badge tone={workTone[item.workStatus]}>{g.student.workStatus[item.workStatus]}</Badge>
+                  </span>
                 </div>
                 {item.grade ? <ReleasedGradeView grade={item.grade} /> : <p className="text-sm text-slate-600">{b.notReleased}</p>}
               </Card>

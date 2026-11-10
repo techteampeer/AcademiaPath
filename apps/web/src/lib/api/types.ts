@@ -68,6 +68,12 @@ export type ReleasedGrade = Schemas['ReleasedGrade'];
 export type CourseTotal = Schemas['CourseTotal'];
 export type Gradebook = Schemas['Gradebook'];
 export type StudentGrades = Schemas['StudentGrades'];
+export type CourseGrade = Schemas['CourseGrade'];
+export type GradingPolicy = Schemas['GradingPolicy'];
+export type GradingPolicyInput = Schemas['GradingPolicyInput'];
+export type StudentGradebook = Schemas['StudentGradebook'];
+export type GradeSelectionRelease = Schemas['GradeSelectionRelease'];
+export type GradeSelectionReleaseResult = Schemas['GradeSelectionReleaseResult'];
 
 export type TutorLanguage = Schemas['TutorLanguage'];
 export type TutorCitation = Schemas['TutorCitation'];

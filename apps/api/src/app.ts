@@ -16,6 +16,7 @@ import { mockSummaryProvider } from './documents/summary.js';
 import { healthRoutes } from './routes/health.js';
 import { meRoutes } from './routes/me.js';
 import { gradingRoutes } from './routes/grading.js';
+import { gradebookRoutes } from './routes/gradebook.js';
 import { quizRoutes } from './routes/quizzes.js';
 import { tutorRoutes } from './routes/tutor.js';
 import { courseLifecycleRoutes } from './routes/course-lifecycle.js';
@@ -45,9 +46,11 @@ export type BuildAppOptions = {
   logger?: false | { level: string; stream?: { write(message: string): void } };
   /** Defaults: private local storage from config, no malware scanner connected, mock summary provider. */
   documents?: Partial<DocumentRouteOptions>;
+  /** The API server clock (default: the system clock). Tests inject a controlled clock for timer boundaries. */
+  clock?: () => Date;
 };
 
-export function buildApp({ config, database, logger = false, documents = {} }: BuildAppOptions) {
+export function buildApp({ config, database, logger = false, documents = {}, clock = () => new Date() }: BuildAppOptions) {
   const app = Fastify({
     logger: logger === false ? false : { ...logger, redact: { paths: LOG_REDACT_PATHS, censor: '[REDACTED]' } },
     trustProxy: config.trustProxy,
@@ -57,6 +60,7 @@ export function buildApp({ config, database, logger = false, documents = {} }: B
 
   app.decorate('config', config);
   app.decorate('db', database);
+  app.decorate('now', clock);
   app.decorateRequest('auth', null);
 
   const hooks = createAuthHooks({ db: database, config });
@@ -85,6 +89,7 @@ export function buildApp({ config, database, logger = false, documents = {} }: B
   app.register(activityRoutes, { prefix: API_PREFIX });
   app.register(quizRoutes, { prefix: API_PREFIX });
   app.register(gradingRoutes, { prefix: API_PREFIX });
+  app.register(gradebookRoutes, { prefix: API_PREFIX });
   app.register(tutorRoutes, { prefix: API_PREFIX });
   app.register(progressRoutes, { prefix: API_PREFIX });
   app.register(resourceRoutes, { prefix: API_PREFIX });
