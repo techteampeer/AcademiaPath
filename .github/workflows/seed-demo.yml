@@ -111,9 +111,13 @@ jobs:
       - name: Run the seed job
         env:
           MODE: ${{ inputs.mode }}
-          CONFIRM: ${{ inputs.confirm }}
-          CONFIRM_RESET: ${{ inputs.confirm_reset }}
         run: |
-          gcloud run jobs execute "$SEED_JOB" --region="$REGION" --wait \
-            --update-env-vars="DEMO_SEED_MODE=${MODE},DEMO_SEED_CONFIRM=${CONFIRM},DEMO_SEED_CONFIRM_RESET=${CONFIRM_RESET}"
+          # Only fixed values reach the job (never the free-text inputs), after the check in the first step.
+          case "$MODE" in
+            check) OVERRIDES="DEMO_SEED_MODE=check,DEMO_SEED_CONFIRM=,DEMO_SEED_CONFIRM_RESET=" ;;
+            create) OVERRIDES="DEMO_SEED_MODE=create,DEMO_SEED_CONFIRM=academiapath-demo,DEMO_SEED_CONFIRM_RESET=" ;;
+            reset-credentials) OVERRIDES="DEMO_SEED_MODE=reset-credentials,DEMO_SEED_CONFIRM=academiapath-demo,DEMO_SEED_CONFIRM_RESET=reset-demo-credentials" ;;
+            *) exit 1 ;;
+          esac
+          gcloud run jobs execute "$SEED_JOB" --region="$REGION" --wait --update-env-vars="$OVERRIDES"
           echo "Seed job finished (mode ${MODE}). Its output is in Cloud Logging under the Cloud Run job ${SEED_JOB}; it contains no passwords."
