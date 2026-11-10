@@ -14,6 +14,7 @@ import { after, before, describe, it } from 'node:test';
 import type { LightMyRequestResponse } from 'fastify';
 import { ACCOUNTS, type Persona } from '../../scripts/demo/content.js';
 import { seedDemo, type DemoReport } from '../../scripts/seed-demo.js';
+import { upsertSyntheticUsers } from '../../scripts/seed-dev-users.js';
 import { buildApp } from '../../src/app.js';
 import { loadConfig } from '../../src/config.js';
 import { createTestDatabase, testServerUrl } from '../helpers/database.js';
@@ -36,6 +37,8 @@ const ITIL = 'ITIL4-F-2026-2-A';
 const PMF = 'PMF-2026-2-A';
 const IAI = 'IAI-2026-2-A';
 const DRAFT = 'ITIL4-F-2026-2-B';
+/** Synthetic account that only ever receives a program-management grant (AP-019), never a course role. */
+const PROGRAM_MANAGER = { email: 'program.manager@academiapath.example', givenName: 'Demo', familyName: 'Program Manager', systemRole: 'user' as const };
 
 describe('learning progress (PostgreSQL, demo dataset)', { skip: testServerUrl ? false : 'TEST_DATABASE_URL not set' }, () => {
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
@@ -46,6 +49,7 @@ describe('learning progress (PostgreSQL, demo dataset)', { skip: testServerUrl ?
   let startedAt: Date;
   let snapshot: { grades: string; attempts: string; submissions: string; audit: string; ids: Record<string, string[]> };
   let emptyCourseId: string;
+  let manager: Session;
 
   const courseId = (code: string) => report.courses.find((c) => c.code === code)!.id;
   const request = (method: Method, url: string, options: { session?: Session; body?: unknown; csrf?: string | null; origin?: string | null } = {}) =>
@@ -69,8 +73,9 @@ describe('learning progress (PostgreSQL, demo dataset)', { skip: testServerUrl ?
     assert.equal(res.statusCode, status, res.body);
     assert.equal(res.json().code, code, res.body);
   };
-  const login = async (persona: Persona): Promise<Session> => {
-    const res = await request('POST', '/auth/login', { body: { email: ACCOUNTS[persona], password: PASSWORD } });
+  const login = async (persona: Persona | { email: string }): Promise<Session> => {
+    const email = typeof persona === 'string' ? ACCOUNTS[persona] : persona.email;
+    const res = await request('POST', '/auth/login', { body: { email, password: PASSWORD } });
     assert.equal(res.statusCode, 200, res.body);
     return { token: res.cookies.find((c) => c.name === 'ap_session')!.value, csrf: res.json().csrfToken, userId: res.json().user.id };
   };
@@ -104,9 +109,11 @@ describe('learning progress (PostgreSQL, demo dataset)', { skip: testServerUrl ?
     root = await mkdtemp(join(tmpdir(), 'ap-progress-'));
     const env = { NODE_ENV: 'test', APP_ORIGINS: ORIGIN, DOCUMENT_STORAGE_DIR: join(root, 'store') };
     report = await seedDemo(database.db, { password: PASSWORD, env, uploadFilesDir: null });
+    await upsertSyntheticUsers(database.db, PASSWORD, [PROGRAM_MANAGER]);
     app = buildApp({ config: { ...loadConfig(env), loginRateLimit: { max: 1000, windowMs: 60_000 } }, database: database.db });
     await app.ready();
     for (const persona of Object.keys(ACCOUNTS) as Persona[]) as[persona] = await login(persona);
+    manager = await login(PROGRAM_MANAGER);
     startedAt = new Date();
     const rowsOf = async (table: string) => JSON.stringify(await query(`SELECT * FROM ${table} ORDER BY id`));
     snapshot = {
@@ -375,6 +382,45 @@ describe('learning progress (PostgreSQL, demo dataset)', { skip: testServerUrl ?
     expectProblem(await completion('admin', 'PUT', ITIL, lesson), 403, 'FORBIDDEN');
     expectProblem(await call('admin', 'GET', `/courses/${courseId(ITIL)}/progress`), 403, 'FORBIDDEN');
     assert.equal(await count('SELECT count(*)::int AS n FROM activity_completions WHERE user_id = $1', [as.admin.userId]), 0);
+  });
+
+  it('17b. program-management grants alone never expose or change private student progress', async () => {
+    const id = courseId(ITIL);
+    const programId = (await query<{ programId: string }>('SELECT program_id AS "programId" FROM courses WHERE id = $1', [id]))[0]!.programId;
+    // The administrator grants the program that owns the course: to an account without any course role, and to the
+    // course's design-team reviewer (a course role that itself has no progress permission).
+    for (const email of [PROGRAM_MANAGER.email, ACCOUNTS.reviewer]) await ok('admin', 'POST', `/programs/${programId}/managers`, { email }, 201);
+    const managed = await request('GET', '/me/managed-programs', { session: manager });
+    assert.deepEqual([managed.statusCode, managed.json().scope, managed.json().items.map((p: { id: string }) => p.id)], [200, 'granted', [programId]], 'the grant is in effect');
+    const section = (await progress('student', ITIL)).sections[0]!.sectionId;
+    const lesson = await activityId(ITIL, 'Value, outcomes, costs and risks');
+
+    // Program manager without separate course authorization: the course and its students' progress do not exist for them.
+    for (const url of [`/courses/${id}/progress/students`, `/courses/${id}/progress`, `/courses/${id}/sections/${section}/progress`, `/courses/${id}/section-prerequisites`]) {
+      expectProblem(await request('GET', url, { session: manager }), 404, 'NOT_FOUND');
+    }
+    expectProblem(await request('PUT', `/courses/${id}/activities/${lesson}/completion`, { session: manager }), 404, 'NOT_FOUND');
+    expectProblem(await request('DELETE', `/courses/${id}/activities/${lesson}/completion`, { session: manager }), 404, 'NOT_FOUND');
+    expectProblem(await request('PUT', `/courses/${id}/sections/${section}/prerequisites`, { session: manager, body: { requiredSectionIds: [] } }), 403, 'FORBIDDEN');
+    assert.deepEqual((await request('GET', '/me/progress', { session: manager })).json().items, []);
+
+    // Design team plus a program grant: still no student progress, own progress or prerequisite changes.
+    expectProblem(await call('reviewer', 'GET', `/courses/${id}/progress/students`), 403, 'FORBIDDEN');
+    expectProblem(await call('reviewer', 'GET', `/courses/${id}/progress`), 403, 'FORBIDDEN');
+    expectProblem(await completion('reviewer', 'PUT', ITIL, lesson), 403, 'FORBIDDEN');
+    expectProblem(await call('reviewer', 'PUT', `/courses/${id}/sections/${section}/prerequisites`, { requiredSectionIds: [] }), 403, 'FORBIDDEN');
+
+    // The program-management endpoints themselves carry no progress or student data.
+    const subjects = await request('GET', `/course-templates?programId=${programId}&limit=100`, { session: manager });
+    assert.equal(subjects.statusCode, 200, subjects.body);
+    const template = subjects.json().items[0] as { id: string };
+    const bodies = [managed.body, subjects.body, (await request('GET', `/course-templates/${template.id}`, { session: manager })).body, (await request('GET', `/course-templates/${template.id}/versions`, { session: manager })).body];
+    for (const body of bodies) {
+      assert.doesNotMatch(body, /completedCount|percent|completedAt|continueAt/, 'no progress fields');
+      for (const persona of ['student', 'learnerA', 'learnerB'] as const) assert.ok(!body.includes(ACCOUNTS[persona]), 'no student identities');
+    }
+    assert.equal(await count('SELECT count(*)::int AS n FROM activity_completions WHERE user_id = $1', [manager.userId]), 0);
+    assert.equal(rowOf((await overview('instructor', ITIL)).items, 'student')?.completedCount, 7, 'student progress is unchanged');
   });
 
   it('19. a course without eligible activities reports no percentage', async () => {
