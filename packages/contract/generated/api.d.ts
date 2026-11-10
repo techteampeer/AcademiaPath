@@ -869,6 +869,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{id}/sections/{sectionId}/resource-folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resource folders of a section
+         * @description Staff (`content.viewUnapproved`) and administrators see every folder. Students see only folders
+         *     that contain at least one approved, visible activity, in a visible section that no prerequisite
+         *     still locks (`403 SECTION_LOCKED` otherwise; hidden sections respond `404`).
+         */
+        get: operations["listResourceFolders"];
+        put?: never;
+        /**
+         * Create a resource folder in a section
+         * @description Requires `content.edit` (instructor, design team) or the administrator role. The folder is added last. Audited as `resource_folder.created`.
+         */
+        post: operations["createResourceFolder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/sections/{sectionId}/resource-folders/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder a section's resource folders
+         * @description Requires `content.edit` or the administrator role. `folderIds` must list every folder of the
+         *     section exactly once; otherwise `409 RESOURCE_ORDER_STALE`. Audited as `resource_folder.reordered`.
+         */
+        put: operations["orderResourceFolders"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/resource-folders/{folderId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rename a resource folder
+         * @description Requires `content.edit` or the administrator role. Audited as `resource_folder.renamed`.
+         */
+        put: operations["renameResourceFolder"];
+        post?: never;
+        /**
+         * Delete an empty resource folder
+         * @description Requires `content.edit` or the administrator role. Only empty folders can be deleted
+         *     (`409 RESOURCE_FOLDER_NOT_EMPTY`); content is never deleted with a folder. Audited as
+         *     `resource_folder.deleted`.
+         */
+        delete: operations["deleteResourceFolder"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/sections/{sectionId}/activities/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder a section's activities
+         * @description Requires `content.edit` or the administrator role. `activityIds` must list every activity of the
+         *     section (all types, as staff see them) exactly once; otherwise `409 RESOURCE_ORDER_STALE`.
+         *     Audited as `activity.reordered`.
+         */
+        put: operations["orderActivities"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/activities/{activityId}/organization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Place a reading activity in a folder, or show or hide it
+         * @description Requires `content.edit` or the administrator role. Lessons, links and documents only
+         *     (`422 RESOURCE_NOT_ORGANIZABLE` for quizzes and assignments). `folderId` must be a folder of the
+         *     activity's own section (`422 RESOURCE_FOLDER_NOT_FOUND`); `null` takes it out of its folder.
+         *     Hiding removes it from students, their progress totals and the tutor; showing it again only ever
+         *     reveals its approved version. Not a content change, so no review is needed. Audited as
+         *     `activity.organized`.
+         */
+        put: operations["organizeActivity"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{id}/activities/{activityId}": {
         parameters: {
             query?: never;
@@ -1708,7 +1828,44 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE";
+        };
+        /**
+         * @description What a link points to. Every kind is only a link opened in a new tab; nothing is embedded, fetched or executed.
+         * @enum {string}
+         */
+        ResourceKind: "website" | "video" | "interactive";
+        ResourceFolder: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            sectionId: string;
+            title: string;
+            position: number;
+        };
+        ResourceFolderList: {
+            items: components["schemas"]["ResourceFolder"][];
+        };
+        ResourceFolderInput: {
+            title: string;
+        };
+        ResourceFolderOrder: {
+            folderIds: string[];
+        };
+        ActivityOrder: {
+            activityIds: string[];
+        };
+        ActivityOrganization: {
+            /** Format: uuid */
+            folderId?: string | null;
+            isVisible?: boolean;
+        };
+        ActivityOrganizationResult: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            folderId: string | null;
+            isVisible: boolean;
         };
         /**
          * @description `no_activities` when the course or section has no eligible activities (no percentage is shown).
@@ -2070,11 +2227,12 @@ export interface components {
         PageContent: {
             body: string;
         };
-        /** @description External resource. `url` is an absolute http(s) URL. */
+        /** @description External resource. `url` is an absolute https URL (http only for links stored before AP-021). */
         LinkContent: {
             /** Format: uri */
             url: string;
             description: string | null;
+            kind: components["schemas"]["ResourceKind"];
         };
         /** @description Quiz settings and totals. Questions and answer keys are never part of an activity. */
         QuizContent: {
@@ -2125,9 +2283,10 @@ export interface components {
         };
         LinkContentInput: {
             title: string;
-            /** @description Absolute http or https URL without embedded credentials. */
+            /** @description Absolute `https:` URL on a domain name (no IP addresses or localhost), without embedded credentials. */
             url: string;
             description?: string;
+            kind?: components["schemas"]["ResourceKind"];
         };
         QuizSettingsInput: {
             title: string;
@@ -2165,9 +2324,19 @@ export interface components {
         ActivityCreate: (components["schemas"]["PageContentInput"] & {
             /** @constant */
             type: "page";
+            /**
+             * Format: uuid
+             * @description Optional resource folder of the same section.
+             */
+            folderId?: string;
         }) | (components["schemas"]["LinkContentInput"] & {
             /** @constant */
             type: "link";
+            /**
+             * Format: uuid
+             * @description Optional resource folder of the same section.
+             */
+            folderId?: string;
         }) | (components["schemas"]["QuizSettingsInput"] & {
             /** @constant */
             type: "quiz";
@@ -2214,6 +2383,11 @@ export interface components {
             courseId: string;
             /** Format: uuid */
             sectionId: string;
+            /**
+             * Format: uuid
+             * @description Resource folder (reading activities only), or null.
+             */
+            folderId: string | null;
             type: components["schemas"]["ActivityType"];
             position: number;
             isVisible: boolean;
@@ -3271,7 +3445,8 @@ export interface components {
          *     `ACCOUNT_ALREADY_ACTIVATED`; or an enrollment rule: `ENROLLMENT_HAS_STUDENT_WORK`,
          *     `IMPORT_CONFLICT`, `ENROLLMENT_HAS_HISTORY`; or a course lifecycle rule:
          *     `COURSE_VERSION_CONFLICT`, `INVALID_COURSE_TRANSITION`, `COURSE_CODE_LOCKED`,
-         *     `SECTION_ORDER_STALE`; or `PROGRAM_MANAGER_EXISTS` (the user already manages the program).
+         *     `SECTION_ORDER_STALE`; or `PROGRAM_MANAGER_EXISTS` (the user already manages the program); or a
+         *     learning-resource rule: `RESOURCE_FOLDER_NOT_EMPTY`, `RESOURCE_ORDER_STALE`.
          */
         Conflict: {
             headers: {
@@ -3303,7 +3478,8 @@ export interface components {
          *     `COURSE_NOT_FOUND`, `DUPLICATE_COURSE`, `INVITATION_SYNTHETIC_ONLY`, `PASSWORD_TOO_WEAK`,
          *     `IMPORT_HAS_ERRORS`, `IMPORT_TOO_LARGE` or `INVALID_SECTION_ORDER`; or a progress rule:
          *     `COMPLETION_AUTOMATIC` (quizzes and assignments complete on submission), `PREREQUISITE_SELF`,
-         *     `PREREQUISITE_SECTION_NOT_FOUND` or `PREREQUISITE_CYCLE`.
+         *     `PREREQUISITE_SECTION_NOT_FOUND` or `PREREQUISITE_CYCLE`; or a learning-resource rule:
+         *     `RESOURCE_FOLDER_NOT_FOUND` or `RESOURCE_NOT_ORGANIZABLE`.
          */
         UnprocessableContent: {
             headers: {
@@ -3330,6 +3506,7 @@ export interface components {
         Cursor: string;
         CourseId: string;
         SectionId: string;
+        FolderId: string;
         ActivityId: string;
         QuestionId: string;
         ProgramId: string;
@@ -4672,6 +4849,216 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Activity"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    listResourceFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                sectionId: components["parameters"]["SectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Folders in display order. */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceFolderList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createResourceFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                sectionId: components["parameters"]["SectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResourceFolderInput"];
+            };
+        };
+        responses: {
+            /** @description The new folder. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceFolder"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    orderResourceFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                sectionId: components["parameters"]["SectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResourceFolderOrder"];
+            };
+        };
+        responses: {
+            /** @description Folders in their new order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceFolderList"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    renameResourceFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                folderId: components["parameters"]["FolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResourceFolderInput"];
+            };
+        };
+        responses: {
+            /** @description The renamed folder. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceFolder"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteResourceFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                folderId: components["parameters"]["FolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    orderActivities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                sectionId: components["parameters"]["SectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivityOrder"];
+            };
+        };
+        responses: {
+            /** @description The new order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityOrder"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    organizeActivity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivityOrganization"];
+            };
+        };
+        responses: {
+            /** @description The activity's folder and visibility. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityOrganizationResult"];
                 };
             };
             400: components["responses"]["ValidationError"];

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.13.0
+  version: 0.14.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -110,6 +110,15 @@ info:
     While a section is locked, students' requests for its activities, documents, quizzes and
     assignments respond `403 SECTION_LOCKED` without content, and the tutor does not use its
     lessons. Staff and administrators are never locked. Courses without prerequisites behave as before.
+
+    Learning resources: links declare a `kind` (`website`, `video` or `interactive`) and remain ordinary
+    `link` activities with the same review, visibility, prerequisite and progress rules. Videos and
+    interactive tools are referenced by URL only; nothing is embedded, hosted, fetched or executed. New and
+    edited links must use `https:` on a domain name without embedded credentials (`422 INVALID_URL`;
+    links stored earlier stay readable). Course editors group lessons, links and documents into resource
+    folders inside a section, reorder folders and activities, and show or hide reading activities.
+    Folders only organize content: students see a folder only when it holds an approved, visible activity
+    in a visible, open section, and content is never deleted with a folder.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -1699,6 +1708,242 @@ paths:
           $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/sections/{sectionId}/resource-folders:
+    get:
+      operationId: listResourceFolders
+      summary: Resource folders of a section
+      description: |
+        Staff (`content.viewUnapproved`) and administrators see every folder. Students see only folders
+        that contain at least one approved, visible activity, in a visible section that no prerequisite
+        still locks (`403 SECTION_LOCKED` otherwise; hidden sections respond `404`).
+      tags: [Content]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SectionId"
+      responses:
+        "200":
+          description: Folders in display order.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceFolderList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createResourceFolder
+      summary: Create a resource folder in a section
+      description: Requires `content.edit` (instructor, design team) or the administrator role. The folder is added last. Audited as `resource_folder.created`.
+      tags: [Content]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SectionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResourceFolderInput"
+      responses:
+        "201":
+          description: The new folder.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceFolder"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/sections/{sectionId}/resource-folders/order:
+    put:
+      operationId: orderResourceFolders
+      summary: Reorder a section's resource folders
+      description: |
+        Requires `content.edit` or the administrator role. `folderIds` must list every folder of the
+        section exactly once; otherwise `409 RESOURCE_ORDER_STALE`. Audited as `resource_folder.reordered`.
+      tags: [Content]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SectionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResourceFolderOrder"
+      responses:
+        "200":
+          description: Folders in their new order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceFolderList"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/courses/{id}/resource-folders/{folderId}:
+    put:
+      operationId: renameResourceFolder
+      summary: Rename a resource folder
+      description: Requires `content.edit` or the administrator role. Audited as `resource_folder.renamed`.
+      tags: [Content]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/FolderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResourceFolderInput"
+      responses:
+        "200":
+          description: The renamed folder.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceFolder"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteResourceFolder
+      summary: Delete an empty resource folder
+      description: |
+        Requires `content.edit` or the administrator role. Only empty folders can be deleted
+        (`409 RESOURCE_FOLDER_NOT_EMPTY`); content is never deleted with a folder. Audited as
+        `resource_folder.deleted`.
+      tags: [Content]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/FolderId"
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/courses/{id}/sections/{sectionId}/activities/order:
+    put:
+      operationId: orderActivities
+      summary: Reorder a section's activities
+      description: |
+        Requires `content.edit` or the administrator role. `activityIds` must list every activity of the
+        section (all types, as staff see them) exactly once; otherwise `409 RESOURCE_ORDER_STALE`.
+        Audited as `activity.reordered`.
+      tags: [Content]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SectionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityOrder"
+      responses:
+        "200":
+          description: The new order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityOrder"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/courses/{id}/activities/{activityId}/organization:
+    put:
+      operationId: organizeActivity
+      summary: Place a reading activity in a folder, or show or hide it
+      description: |
+        Requires `content.edit` or the administrator role. Lessons, links and documents only
+        (`422 RESOURCE_NOT_ORGANIZABLE` for quizzes and assignments). `folderId` must be a folder of the
+        activity's own section (`422 RESOURCE_FOLDER_NOT_FOUND`); `null` takes it out of its folder.
+        Hiding removes it from students, their progress totals and the tutor; showing it again only ever
+        reveals its approved version. Not a content change, so no review is needed. Audited as
+        `activity.organized`.
+      tags: [Content]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityOrganization"
+      responses:
+        "200":
+          description: The activity's folder and visibility.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityOrganizationResult"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
   /api/v1/courses/{id}/activities/{activityId}:
     get:
       operationId: getActivity
@@ -2998,6 +3243,13 @@ components:
       schema:
         type: string
         format: uuid
+    FolderId:
+      name: folderId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     ActivityId:
       name: activityId
       in: path
@@ -3199,7 +3451,8 @@ components:
         `ACCOUNT_ALREADY_ACTIVATED`; or an enrollment rule: `ENROLLMENT_HAS_STUDENT_WORK`,
         `IMPORT_CONFLICT`, `ENROLLMENT_HAS_HISTORY`; or a course lifecycle rule:
         `COURSE_VERSION_CONFLICT`, `INVALID_COURSE_TRANSITION`, `COURSE_CODE_LOCKED`,
-        `SECTION_ORDER_STALE`; or `PROGRAM_MANAGER_EXISTS` (the user already manages the program).
+        `SECTION_ORDER_STALE`; or `PROGRAM_MANAGER_EXISTS` (the user already manages the program); or a
+        learning-resource rule: `RESOURCE_FOLDER_NOT_EMPTY`, `RESOURCE_ORDER_STALE`.
       content:
         application/problem+json:
           schema:
@@ -3224,7 +3477,8 @@ components:
         `COURSE_NOT_FOUND`, `DUPLICATE_COURSE`, `INVITATION_SYNTHETIC_ONLY`, `PASSWORD_TOO_WEAK`,
         `IMPORT_HAS_ERRORS`, `IMPORT_TOO_LARGE` or `INVALID_SECTION_ORDER`; or a progress rule:
         `COMPLETION_AUTOMATIC` (quizzes and assignments complete on submission), `PREREQUISITE_SELF`,
-        `PREREQUISITE_SECTION_NOT_FOUND` or `PREREQUISITE_CYCLE`.
+        `PREREQUISITE_SECTION_NOT_FOUND` or `PREREQUISITE_CYCLE`; or a learning-resource rule:
+        `RESOURCE_FOLDER_NOT_FOUND` or `RESOURCE_NOT_ORGANIZABLE`.
       content:
         application/problem+json:
           schema:
@@ -3449,6 +3703,96 @@ components:
             - PREREQUISITE_SELF
             - PREREQUISITE_SECTION_NOT_FOUND
             - PREREQUISITE_CYCLE
+            - RESOURCE_FOLDER_NOT_FOUND
+            - RESOURCE_FOLDER_NOT_EMPTY
+            - RESOURCE_ORDER_STALE
+            - RESOURCE_NOT_ORGANIZABLE
+    ResourceKind:
+      type: string
+      description: What a link points to. Every kind is only a link opened in a new tab; nothing is embedded, fetched or executed.
+      enum: [website, video, interactive]
+    ResourceFolder:
+      type: object
+      required: [id, sectionId, title, position]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        sectionId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        position:
+          type: integer
+          minimum: 0
+    ResourceFolderList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceFolder"
+    ResourceFolderInput:
+      type: object
+      required: [title]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+          pattern: "\\S"
+    ResourceFolderOrder:
+      type: object
+      required: [folderIds]
+      additionalProperties: false
+      properties:
+        folderIds:
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+    ActivityOrder:
+      type: object
+      required: [activityIds]
+      additionalProperties: false
+      properties:
+        activityIds:
+          type: array
+          maxItems: 500
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+    ActivityOrganization:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        folderId:
+          type: [string, "null"]
+          format: uuid
+        isVisible:
+          type: boolean
+    ActivityOrganizationResult:
+      type: object
+      required: [id, folderId, isVisible]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        folderId:
+          type: [string, "null"]
+          format: uuid
+        isVisible:
+          type: boolean
     ProgressState:
       type: string
       description: "`no_activities` when the course or section has no eligible activities (no percentage is shown)."
@@ -4201,8 +4545,8 @@ components:
           type: string
     LinkContent:
       type: object
-      description: External resource. `url` is an absolute http(s) URL.
-      required: [url, description]
+      description: External resource. `url` is an absolute https URL (http only for links stored before AP-021).
+      required: [url, description, kind]
       additionalProperties: false
       properties:
         url:
@@ -4210,6 +4554,8 @@ components:
           format: uri
         description:
           type: [string, "null"]
+        kind:
+          $ref: "#/components/schemas/ResourceKind"
     QuizContent:
       type: object
       description: Quiz settings and totals. Questions and answer keys are never part of an activity.
@@ -4323,10 +4669,12 @@ components:
           type: string
           minLength: 1
           maxLength: 2048
-          description: Absolute http or https URL without embedded credentials.
+          description: Absolute `https:` URL on a domain name (no IP addresses or localhost), without embedded credentials.
         description:
           type: string
           maxLength: 1000
+        kind:
+          $ref: "#/components/schemas/ResourceKind"
     QuizSettingsInput:
       type: object
       required: [title, attemptLimit]
@@ -4414,6 +4762,10 @@ components:
                 type:
                   type: string
                   const: page
+                folderId:
+                  type: string
+                  format: uuid
+                  description: Optional resource folder of the same section.
         - allOf:
             - $ref: "#/components/schemas/LinkContentInput"
             - type: object
@@ -4422,6 +4774,10 @@ components:
                 type:
                   type: string
                   const: link
+                folderId:
+                  type: string
+                  format: uuid
+                  description: Optional resource folder of the same section.
         - allOf:
             - $ref: "#/components/schemas/QuizSettingsInput"
             - type: object
@@ -4499,7 +4855,7 @@ components:
       description: |
         For staff, `title`/`content` are the working copy and `review`/`liveVersion` are present.
         For students, `title`/`content` are the approved live version and `review`/`liveVersion` are null.
-      required: [id, courseId, sectionId, type, position, isVisible, title, content, review, liveVersion, createdAt, updatedAt]
+      required: [id, courseId, sectionId, folderId, type, position, isVisible, title, content, review, liveVersion, createdAt, updatedAt]
       additionalProperties: false
       properties:
         id:
@@ -4511,6 +4867,10 @@ components:
         sectionId:
           type: string
           format: uuid
+        folderId:
+          type: [string, "null"]
+          format: uuid
+          description: Resource folder (reading activities only), or null.
         type:
           $ref: "#/components/schemas/ActivityType"
         position:

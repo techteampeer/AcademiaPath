@@ -71,6 +71,7 @@ describe('database schema (static checks)', () => {
     );
     assert.deepEqual(fks.sort(), [
       'activities.approved_by_user_id -> users (restrict)',
+      'activities.folder_id,section_id -> resource_folders (no action)',
       'activities.reviewed_by_user_id -> users (restrict)',
       'activities.section_id -> sections (cascade)',
       'activities.submitted_by_user_id -> users (restrict)',

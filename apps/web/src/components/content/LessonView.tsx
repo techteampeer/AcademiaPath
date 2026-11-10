@@ -49,12 +49,15 @@ function ContentBody({ activity }: { activity: Activity }) {
     return <div className="whitespace-pre-wrap break-words text-slate-800">{content.body}</div>;
   }
   const href = safeHttpUrl(content.url);
+  const kind = content.kind ?? 'website';
   return (
     <div className="space-y-3">
+      <Badge tone={kind === 'website' ? 'neutral' : 'brand'}>{t.resources.kindBadge[kind]}</Badge>
       {content.description ? <p className="text-slate-700">{content.description}</p> : null}
       {href ? (
+        // Videos and interactive tools are linked, never embedded: they open on their own site in a new tab.
         <a href={href} target="_blank" rel="noopener noreferrer" className={buttonClasses({ variant: 'secondary' })}>
-          {t.content.view.openResource}
+          {t.resources.open[kind]}
           <span className="sr-only"> {t.content.view.newTab}</span>
         </a>
       ) : null}

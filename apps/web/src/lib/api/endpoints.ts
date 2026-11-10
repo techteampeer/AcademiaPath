@@ -11,6 +11,8 @@ import type {
   ActivityReviewDecision,
   ActivityUpdate,
   ActivityCompletion,
+  ActivityOrganization,
+  ActivityOrganizationResult,
   Course,
   CourseCreate,
   CourseLifecycle,
@@ -49,6 +51,8 @@ import type {
   QuizQuestionInput,
   QuizQuestionList,
   QuizResultPage,
+  ResourceFolder,
+  ResourceFolderList,
   Section,
   SectionCreate,
   SectionList,
@@ -283,4 +287,20 @@ export const api = {
       body: { requiredSectionIds },
       csrfToken,
     }),
+
+  // Learning resources: folders, ordering and visibility (the API enforces every rule).
+  listResourceFolders: (courseId: string, sectionId: string) =>
+    apiRequest<ResourceFolderList>('GET', `${course(courseId)}/sections/${encodeURIComponent(sectionId)}/resource-folders`),
+  createResourceFolder: (courseId: string, sectionId: string, title: string, csrfToken: string) =>
+    apiRequest<ResourceFolder>('POST', `${course(courseId)}/sections/${encodeURIComponent(sectionId)}/resource-folders`, { body: { title }, csrfToken }),
+  renameResourceFolder: (courseId: string, folderId: string, title: string, csrfToken: string) =>
+    apiRequest<ResourceFolder>('PUT', `${course(courseId)}/resource-folders/${encodeURIComponent(folderId)}`, { body: { title }, csrfToken }),
+  deleteResourceFolder: (courseId: string, folderId: string, csrfToken: string) =>
+    apiRequest<void>('DELETE', `${course(courseId)}/resource-folders/${encodeURIComponent(folderId)}`, { csrfToken }),
+  orderResourceFolders: (courseId: string, sectionId: string, folderIds: string[], csrfToken: string) =>
+    apiRequest<ResourceFolderList>('PUT', `${course(courseId)}/sections/${encodeURIComponent(sectionId)}/resource-folders/order`, { body: { folderIds }, csrfToken }),
+  orderActivities: (courseId: string, sectionId: string, activityIds: string[], csrfToken: string) =>
+    apiRequest<{ activityIds: string[] }>('PUT', `${course(courseId)}/sections/${encodeURIComponent(sectionId)}/activities/order`, { body: { activityIds }, csrfToken }),
+  organizeActivity: (courseId: string, activityId: string, body: ActivityOrganization, csrfToken: string) =>
+    apiRequest<ActivityOrganizationResult>('PUT', `${activity(courseId, activityId)}/organization`, { body, csrfToken }),
 };

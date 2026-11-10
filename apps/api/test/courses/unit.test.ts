@@ -9,7 +9,7 @@ import {
 } from '../../src/auth/authorization.js';
 import { courseRoleEnum } from '../../src/db/schema/index.js';
 import { ApiProblem } from '../../src/http/errors.js';
-import { normalizeSafeHttpUrl } from '../../src/content/urls.js';
+import { normalizeResourceUrl, normalizeSafeHttpUrl } from '../../src/content/urls.js';
 import { gradeResponse, normalizeResponse } from '../../src/quizzes/grading.js';
 import { assignmentFromInput, validateScores } from '../../src/assignments/model.js';
 import { courseTotal, toScale20 } from '../../src/grading/scale.js';
@@ -236,5 +236,33 @@ describe('learning progress rules', () => {
     assert.equal(hasCycle([edge('a', 'a')]), true);
     assert.equal(hasCycle([edge('a', 'b'), edge('b', 'a')]), true);
     assert.equal(hasCycle([edge('b', 'a'), edge('c', 'b'), edge('a', 'c')]), true);
+  });
+});
+
+describe('learning resource URLs (AP-021)', () => {
+  it('accepts https URLs on domain names and normalizes them', () => {
+    assert.equal(normalizeResourceUrl('  https://www.YouTube.com/watch?v=abc#t=10 '), 'https://www.youtube.com/watch?v=abc#t=10');
+    assert.equal(normalizeResourceUrl('https://phet.colorado.edu/en/simulations/projectile-motion'), 'https://phet.colorado.edu/en/simulations/projectile-motion');
+  });
+
+  it('rejects dangerous schemes, plain http, credentials, IP literals, localhost and single-label hosts', () => {
+    for (const value of [
+      'javascript:alert(1)',
+      'data:text/html,<script>alert(1)</script>',
+      'vbscript:msgbox(1)',
+      'blob:https://example.edu/uuid',
+      'file:///etc/passwd',
+      'http://example.edu/',
+      'https://user:pass@example.edu/',
+      'https://10.0.0.1/',
+      'https://[2001:db8::1]/',
+      'https://localhost/',
+      'https://app.localhost/',
+      'https://intranet/',
+      '//example.edu/',
+      'https://example.edu/\nx',
+    ]) {
+      assert.equal(normalizeResourceUrl(value.replace('\\n', '\n')), null, value);
+    }
   });
 });
