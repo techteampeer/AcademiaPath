@@ -3,9 +3,9 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { recordAudit } from '../audit.js';
 import { canInCourse, getCourseAccess, type CourseAccess, type CoursePermission } from '../auth/authorization.js';
 import { getAuth } from '../auth/hooks.js';
-import { normalizeSafeHttpUrl } from '../content/urls.js';
+import { normalizeResourceUrl, RESOURCE_KINDS, type ResourceKind } from '../content/urls.js';
 import type { Database } from '../db/client.js';
-import { activities, quizQuestions, sections, type ActivityConfig } from '../db/schema/index.js';
+import { activities, quizQuestions, resourceFolders, sections, type ActivityConfig } from '../db/schema/index.js';
 import { ApiProblem } from '../http/errors.js';
 import { decodeCursor, paginationQuerySchema, toPage, type PaginationQuery } from '../http/pagination.js';
 import {
@@ -27,10 +27,10 @@ import { assertSectionOpen } from '../progress/model.js';
 type SectionParams = { id: string; sectionId: string };
 type ActivityParams = { id: string; activityId: string };
 type PageInput = { title: string; body: string };
-type LinkInput = { title: string; url: string; description?: string };
+type LinkInput = { title: string; url: string; description?: string; kind?: ResourceKind };
 type CreateBody =
-  | ({ type: 'page' } & PageInput)
-  | ({ type: 'link' } & LinkInput)
+  | ({ type: 'page'; folderId?: string } & PageInput)
+  | ({ type: 'link'; folderId?: string } & LinkInput)
   | ({ type: 'quiz' } & QuizSettingsInput)
   | ({ type: 'assignment' } & AssignmentInput);
 type UpdateBody = PageInput | LinkInput | QuizSettingsInput | AssignmentInput;
@@ -52,12 +52,16 @@ function buildContent(type: ContentType, input: UpdateBody): ActivityConfig {
   if ('body' in input) return { body: input.body };
   if ('rubric' in input) return assignmentFromInput(input);
   if (!('url' in input)) return settingsFromInput(input);
-  const url = normalizeSafeHttpUrl(input.url);
+  // AP-021: new and edited resources must use https on a registered domain (stored links stay readable).
+  const url = normalizeResourceUrl(input.url);
   if (!url) {
-    throw new ApiProblem(422, 'INVALID_URL', 'Only absolute http or https URLs without embedded credentials are allowed.');
+    throw new ApiProblem(422, 'INVALID_URL', 'Only https URLs on a domain name, without embedded credentials, are allowed.');
   }
-  return { url, description: input.description?.trim() || null };
+  return { url, description: input.description?.trim() || null, kind: input.kind ?? 'website' };
 }
+
+const readKind = (config: ActivityConfig): ResourceKind =>
+  (RESOURCE_KINDS as readonly string[]).includes(String(config.kind)) ? (config.kind as ResourceKind) : 'website';
 
 const snapshotStats = (config: ActivityConfig | null): QuizStats => {
   const questions = readSnapshotQuestions(config);
@@ -74,6 +78,8 @@ function presentContent(type: ActivityRecord['type'], config: ActivityConfig | n
     const assignment = readAssignment(config);
     return { ...assignment, totalPoints: rubricTotal(assignment.rubric) };
   }
+  // Links stored before AP-021 have no kind: they are general websites.
+  if (type === 'link') return config ? { ...config, kind: readKind(config) } : config;
   if (type !== 'quiz') return config;
   return { ...readSettings(config), ...stats };
 }
@@ -104,6 +110,7 @@ function toResponse(row: ActivityRecord, courseId: string, staffView: boolean, w
     type: row.type,
     position: row.position,
     isVisible: row.isVisible,
+    folderId: row.folderId,
     createdAt: row.createdAt,
   };
   if (!staffView) {
@@ -246,7 +253,8 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
     async (request, reply) => {
       const access = await courseAccess(request, request.params.id);
       requirePermission(access, 'content.edit');
-      const { type, ...input } = request.body;
+      // `folderId` is accepted for lessons and links only (the request schema refuses it elsewhere).
+      const { type, folderId, ...input } = request.body as CreateBody & { folderId?: string };
       const config = buildContent(type, input);
 
       const created = await db.transaction(async (tx) => {
@@ -257,13 +265,20 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
           .where(and(eq(sections.id, request.params.sectionId), eq(sections.courseId, access.course.id)))
           .for('update');
         if (!section) throw notFound('Section');
+        if (folderId) {
+          const [folder] = await tx
+            .select({ id: resourceFolders.id })
+            .from(resourceFolders)
+            .where(and(eq(resourceFolders.id, folderId), eq(resourceFolders.sectionId, section.id), eq(resourceFolders.courseId, access.course.id)));
+          if (!folder) throw new ApiProblem(422, 'RESOURCE_FOLDER_NOT_FOUND', 'The folder does not exist in this section.');
+        }
         const [{ last } = { last: null }] = await tx
           .select({ last: max(activities.position) })
           .from(activities)
           .where(eq(activities.sectionId, section.id));
         const [row] = await tx
           .insert(activities)
-          .values({ sectionId: section.id, type, title: input.title.trim(), config, position: (last ?? -1) + 1, reviewStatus: 'draft' })
+          .values({ sectionId: section.id, type, title: input.title.trim(), config, position: (last ?? -1) + 1, reviewStatus: 'draft', folderId: folderId ?? null })
           .returning();
         if (!row) throw new Error('Activity was not created');
         await recordAudit(tx, request, {
@@ -271,7 +286,7 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
           entityType: 'activity',
           entityId: row.id,
           before: null,
-          after: { courseId: access.course.id, sectionId: section.id, type, ...snapshot(row) },
+          after: { courseId: access.course.id, sectionId: section.id, folderId: row.folderId, type, ...snapshot(row) },
         });
         return row;
       });

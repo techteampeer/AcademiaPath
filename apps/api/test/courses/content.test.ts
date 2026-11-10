@@ -182,7 +182,7 @@ describe('course content review and publication (PostgreSQL)', { skip: testServe
     });
     assert.equal(link.type, 'link');
     assert.equal(link.review.status, 'draft');
-    assert.deepEqual(link.content, { url: 'https://www.axelos.com/itil-glossary', description: 'Official glossary of ITIL terms.' });
+    assert.deepEqual(link.content, { url: 'https://www.axelos.com/itil-glossary', description: 'Official glossary of ITIL terms.', kind: 'website' });
     assert.equal(link.position, 1, 'appended after the lesson');
     ids.link = link.id;
   });

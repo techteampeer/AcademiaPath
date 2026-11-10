@@ -121,3 +121,9 @@ export type MyProgressList = Schemas['MyProgressList'];
 export type StudentProgressPage = Schemas['StudentProgressPage'];
 export type SectionPrerequisites = Schemas['SectionPrerequisites'];
 export type SectionPrerequisiteList = Schemas['SectionPrerequisiteList'];
+
+export type ResourceKind = Schemas['ResourceKind'];
+export type ResourceFolder = Schemas['ResourceFolder'];
+export type ResourceFolderList = Schemas['ResourceFolderList'];
+export type ActivityOrganization = Schemas['ActivityOrganization'];
+export type ActivityOrganizationResult = Schemas['ActivityOrganizationResult'];

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { fromLocalInput, toLocalInput } from '@/components/assignments/assignmentDisplay';
 import { emptyCriterion, RubricEditor, validateRubric, type CriterionDraft } from '@/components/assignments/RubricEditor';
-import type { Activity, ActivityCreate } from '@/lib/api/types';
+import type { Activity, ActivityCreate, ResourceKind } from '@/lib/api/types';
 import { safeHttpUrl } from './contentDisplay';
 
 type ActivityType = Activity['type'];
@@ -44,9 +44,12 @@ export function ActivityForm({
   pending,
   onSubmit,
   onCancel,
+  folders,
 }: {
   idPrefix: string;
   initial?: Activity;
+  /** Resource folders of the section (creating lessons and links only; organization is not reviewed content). */
+  folders?: Array<{ id: string; title: string }>;
   /** Set when editing: the type cannot change. */
   fixedType?: ActivityType;
   submitLabel: string;
@@ -64,6 +67,8 @@ export function ActivityForm({
   const [description, setDescription] = useState(
     initialContent && 'url' in initialContent ? (initialContent.description ?? '') : '',
   );
+  const [kind, setKind] = useState<ResourceKind>(initialContent && 'url' in initialContent ? (initialContent.kind ?? 'website') : 'website');
+  const [folderId, setFolderId] = useState('');
   const quiz = initialContent && 'attemptLimit' in initialContent ? initialContent : null;
   const assignment = initialContent && 'rubric' in initialContent ? initialContent : null;
   const [instructions, setInstructions] = useState(quiz?.instructions ?? assignment?.instructions ?? '');
@@ -105,7 +110,8 @@ export function ActivityForm({
       }
     } else {
       if (!url.trim()) next.url = f.enterUrl;
-      else if (url.length > LIMITS.url || !safeHttpUrl(url.trim())) next.url = f.invalidUrl;
+      // Convenience check only: the API enforces https on a domain name for new and edited links.
+      else if (url.length > LIMITS.url || !safeHttpUrl(url.trim()) || !url.trim().toLowerCase().startsWith('https://')) next.url = f.invalidUrl;
       if (description.length > LIMITS.description) next.description = t.errors.maxChars(LIMITS.description);
     }
     return next;
@@ -142,13 +148,16 @@ export function ActivityForm({
               shuffleQuestions,
               shuffleOptions,
             }
-          : { type: 'link', title: title.trim(), url: url.trim(), ...(description.trim() ? { description: description.trim() } : {}) };
-    const saved = await onSubmit(value);
+          : { type: 'link', title: title.trim(), url: url.trim(), kind, ...(description.trim() ? { description: description.trim() } : {}) };
+    // A folder is chosen only when creating a lesson or link (the update endpoint takes content only).
+    const placed = !initial && folderId && (value.type === 'page' || value.type === 'link') ? { ...value, folderId } : value;
+    const saved = await onSubmit(placed);
     if (saved && !initial) {
       setTitle('');
       setBody('');
       setUrl('');
       setDescription('');
+      setKind('website');
       setInstructions('');
       setDueAt('');
       setLateUntil('');
@@ -298,10 +307,28 @@ export function ActivityForm({
         </>
       ) : (
         <>
+          <SelectField
+            id={`${idPrefix}-kind`}
+            label={t.resources.kindLabel}
+            hint={t.resources.kindHint}
+            value={kind}
+            onChange={(event) => setKind(event.target.value as ResourceKind)}
+            options={(['website', 'video', 'interactive'] as const).map((value) => ({ value, label: t.resources.kinds[value] }))}
+          />
           <TextField id={`${idPrefix}-url`} label={f.url} type="url" value={url} onChange={(e) => setUrl(e.target.value)} error={errors.url} hint={f.urlHint} required />
           <TextField id={`${idPrefix}-description`} label={f.description} value={description} onChange={(e) => setDescription(e.target.value)} error={errors.description} maxLength={LIMITS.description} />
         </>
       )}
+      {!initial && folders && folders.length > 0 && (type === 'page' || type === 'link') ? (
+        <SelectField
+          id={`${idPrefix}-folder`}
+          label={t.resources.folder}
+          hint={t.resources.folderHint}
+          value={folderId}
+          onChange={(event) => setFolderId(event.target.value)}
+          options={[{ value: '', label: t.resources.noFolder }, ...folders.map((folder) => ({ value: folder.id, label: folder.title }))]}
+        />
+      ) : null}
       <div className="flex flex-wrap gap-3">
         <Button type="submit" disabled={pending}>
           {pending ? f.saving : submitLabel}

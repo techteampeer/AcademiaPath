@@ -107,6 +107,7 @@ describe('database migrations (PostgreSQL)', { skip: testServerUrl ? false : 'TE
         'quiz_attempt_answers',
         'quiz_attempts',
         'quiz_questions',
+        'resource_folders',
         'section_prerequisites',
         'sections',
         'sessions',

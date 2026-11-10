@@ -33,7 +33,7 @@ const en = {
     SELF_REVIEW_NOT_ALLOWED: 'You submitted this content, so another reviewer must approve it.',
     REVIEW_COMMENT_REQUIRED: 'Explain what needs to change when returning content.',
     CONTENT_TYPE_MISMATCH: 'The changes do not match this type of content.',
-    INVALID_URL: 'Enter a full http:// or https:// URL without credentials.',
+    INVALID_URL: 'Enter a full https:// address on a domain name, without credentials.',
     QUIZ_HAS_NO_QUESTIONS: 'Add at least one question before submitting the quiz for review.',
     QUIZ_QUESTION_LIMIT: 'This quiz already has the maximum number of questions.',
     INVALID_ANSWER_KEY: 'Check the correct answers of the question.',
@@ -89,6 +89,10 @@ const en = {
     PREREQUISITE_SELF: 'A section cannot require itself.',
     PREREQUISITE_SECTION_NOT_FOUND: 'Every required section must belong to this course.',
     PREREQUISITE_CYCLE: 'These requirements would create a loop, so some sections could never open.',
+    RESOURCE_FOLDER_NOT_FOUND: 'That folder does not exist in this section.',
+    RESOURCE_FOLDER_NOT_EMPTY: 'Move or remove the folder’s content before deleting it.',
+    RESOURCE_ORDER_STALE: 'The content changed in the meantime. Reload the course and try again.',
+    RESOURCE_NOT_ORGANIZABLE: 'Only lessons, links and documents can be placed in folders or shown and hidden.',
   } as Record<string, string>,
 };
 
@@ -125,7 +129,7 @@ const es: ErrorMessages = {
     SELF_REVIEW_NOT_ALLOWED: 'Tú enviaste este contenido, así que otra persona revisora debe aprobarlo.',
     REVIEW_COMMENT_REQUIRED: 'Explica qué debe cambiar al devolver el contenido.',
     CONTENT_TYPE_MISMATCH: 'Los cambios no corresponden a este tipo de contenido.',
-    INVALID_URL: 'Ingresa una URL completa http:// o https:// sin credenciales.',
+    INVALID_URL: 'Ingresa una dirección https:// completa con un nombre de dominio y sin credenciales.',
     QUIZ_HAS_NO_QUESTIONS: 'Agrega al menos una pregunta antes de enviar el cuestionario a revisión.',
     QUIZ_QUESTION_LIMIT: 'Este cuestionario ya tiene el número máximo de preguntas.',
     INVALID_ANSWER_KEY: 'Revisa las respuestas correctas de la pregunta.',
@@ -181,6 +185,10 @@ const es: ErrorMessages = {
     PREREQUISITE_SELF: 'Una sección no puede requerirse a sí misma.',
     PREREQUISITE_SECTION_NOT_FOUND: 'Cada sección requerida debe pertenecer a este curso.',
     PREREQUISITE_CYCLE: 'Estos requisitos formarían un ciclo y algunas secciones nunca se abrirían.',
+    RESOURCE_FOLDER_NOT_FOUND: 'Esa carpeta no existe en esta sección.',
+    RESOURCE_FOLDER_NOT_EMPTY: 'Mueve o quita el contenido de la carpeta antes de eliminarla.',
+    RESOURCE_ORDER_STALE: 'El contenido cambió mientras tanto. Recarga el curso e inténtalo de nuevo.',
+    RESOURCE_NOT_ORGANIZABLE: 'Solo las lecciones, los enlaces y los documentos se pueden poner en carpetas u ocultar y mostrar.',
   },
 };
 

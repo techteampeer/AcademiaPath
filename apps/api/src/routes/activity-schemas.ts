@@ -1,3 +1,4 @@
+import { RESOURCE_KINDS } from '../content/urls.js';
 import { activityReviewStatusEnum } from '../db/schema/index.js';
 
 // JSON schemas mirroring the content endpoints in packages/contract/openapi.yaml.
@@ -18,6 +19,8 @@ const linkFields = {
   title: text(200),
   url: { type: 'string', minLength: 1, maxLength: 2048 },
   description: { type: 'string', maxLength: 1000 },
+  /** AP-021: what the link points to. Every kind is only a link; nothing is embedded. */
+  kind: { type: 'string', enum: RESOURCE_KINDS },
 } as const;
 
 const quizSettingsFields = {
@@ -67,13 +70,13 @@ export const activityCreateSchema = {
       type: 'object',
       required: ['type', 'title', 'body'],
       additionalProperties: false,
-      properties: { type: { type: 'string', const: 'page' }, ...pageFields },
+      properties: { type: { type: 'string', const: 'page' }, ...pageFields, folderId: uuid },
     },
     {
       type: 'object',
       required: ['type', 'title', 'url'],
       additionalProperties: false,
-      properties: { type: { type: 'string', const: 'link' }, ...linkFields },
+      properties: { type: { type: 'string', const: 'link' }, ...linkFields, folderId: uuid },
     },
     {
       type: 'object',
@@ -122,6 +125,7 @@ const contentSchema = {
     body: { type: 'string' },
     url: { type: 'string' },
     description: { type: ['string', 'null'] },
+    kind: { type: 'string', enum: RESOURCE_KINDS },
     instructions: { type: ['string', 'null'] },
     attemptLimit: { type: 'integer' },
     timeLimitMinutes: { type: ['integer', 'null'] },
@@ -145,12 +149,13 @@ const contentSchema = {
 
 export const activitySchema = {
   type: 'object',
-  required: ['id', 'courseId', 'sectionId', 'type', 'position', 'isVisible', 'title', 'content', 'review', 'liveVersion', 'createdAt', 'updatedAt'],
+  required: ['id', 'courseId', 'sectionId', 'folderId', 'type', 'position', 'isVisible', 'title', 'content', 'review', 'liveVersion', 'createdAt', 'updatedAt'],
   additionalProperties: false,
   properties: {
     id: uuid,
     courseId: uuid,
     sectionId: uuid,
+    folderId: nullableUuid,
     type: { type: 'string', enum: CONTENT_TYPES },
     position: { type: 'integer' },
     isVisible: { type: 'boolean' },

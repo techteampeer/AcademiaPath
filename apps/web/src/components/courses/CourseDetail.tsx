@@ -17,13 +17,14 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Breadcrumbs } from '@/components/ui/PageHeader';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
-import type { Activity, ActivityProgress, Course, CourseProgress, CurrentUser, Section } from '@/lib/api/types';
+import type { Activity, ActivityProgress, Course, CourseProgress, CurrentUser, ResourceFolder, Section } from '@/lib/api/types';
 import { LocalizedCourseStatusBadge as CourseStatusBadge } from '@/components/courses/LocalizedCourseStatusBadge';
 
 /** Upper bound on pages fetched per list (100 items per page). */
 const MAX_PAGES = 10;
 
 type ActivitiesBySection = Record<string, Activity[]>;
+type FoldersBySection = Record<string, ResourceFolder[]>;
 type CompletionByActivity = Record<string, ActivityProgress>;
 /** A student's progress (from the API) and the completion state of each activity in open sections. */
 type StudentProgress = { course: CourseProgress; completion: CompletionByActivity };
@@ -32,7 +33,7 @@ type DetailState =
   | { status: 'loading' }
   | { status: 'not-found' }
   | { status: 'error' }
-  | { status: 'ready'; course: Course; sections: Section[]; activities: ActivitiesBySection; progress: StudentProgress | null };
+  | { status: 'ready'; course: Course; sections: Section[]; activities: ActivitiesBySection; folders: FoldersBySection; progress: StudentProgress | null };
 
 async function loadAll<T>(fetchPage: (cursor: string | null) => Promise<{ items: T[]; nextCursor: string | null }>): Promise<T[]> {
   const items: T[] = [];
@@ -59,6 +60,24 @@ async function loadActivities(courseId: string, sections: Section[], locked: Rea
             if (isApiError(error, 403) && error.code === 'SECTION_LOCKED') return [] as Activity[];
             throw error;
           }),
+    ),
+  );
+  return Object.fromEntries(sections.map((section, index) => [section.id, lists[index] ?? []]));
+}
+
+/** Resource folders per section (students only receive folders holding visible content; locked sections are skipped). */
+async function loadFolders(courseId: string, sections: Section[], locked: ReadonlySet<string> = new Set()): Promise<FoldersBySection> {
+  const lists = await Promise.all(
+    sections.map((section) =>
+      locked.has(section.id)
+        ? Promise.resolve([] as ResourceFolder[])
+        : api
+            .listResourceFolders(courseId, section.id)
+            .then((list) => list.items)
+            .catch((error: unknown) => {
+              if (isApiError(error, 403) && error.code === 'SECTION_LOCKED') return [] as ResourceFolder[];
+              throw error;
+            }),
     ),
   );
   return Object.fromEntries(sections.map((section, index) => [section.id, lists[index] ?? []]));
@@ -91,8 +110,8 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
       const course = await api.getCourse(courseId);
       const sections = await loadAll((cursor) => api.listSections(courseId, { limit: 100, cursor }));
       const progress = course.viewerRole === 'student' ? await loadStudentProgress(courseId) : null;
-      const activities = await loadActivities(courseId, sections, lockedIn(progress));
-      setState({ status: 'ready', course, sections, activities, progress });
+      const [activities, folders] = await Promise.all([loadActivities(courseId, sections, lockedIn(progress)), loadFolders(courseId, sections, lockedIn(progress))]);
+      setState({ status: 'ready', course, sections, activities, folders, progress });
     } catch (error) {
       if (isApiError(error, 401)) handleUnauthorized();
       // The API answers 404 both for missing courses and for courses this user may not access.
@@ -110,8 +129,8 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
     try {
       // Completing work can open sections, so progress is reloaded before the activity lists.
       const progress = state.progress ? await loadStudentProgress(courseId) : null;
-      const activities = await loadActivities(courseId, state.sections, lockedIn(progress));
-      setState({ ...state, activities, progress });
+      const [activities, folders] = await Promise.all([loadActivities(courseId, state.sections, lockedIn(progress)), loadFolders(courseId, state.sections, lockedIn(progress))]);
+      setState({ ...state, activities, folders, progress });
     } catch (error) {
       if (isApiError(error, 401)) handleUnauthorized();
     }
@@ -144,7 +163,7 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
     );
   }
 
-  const { course, sections, activities, progress } = state;
+  const { course, sections, activities, folders, progress } = state;
   const sectionProgress = new Map(progress?.course.sections.map((section) => [section.sectionId, section]) ?? []);
   const continueAt = progress?.course.continueAt ?? null;
   const abilities = contentAbilities(user, course.viewerRole);
@@ -268,6 +287,7 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
                       sectionId={section.id}
                       sectionTitle={section.title}
                       items={activities[section.id] ?? []}
+                      folders={folders[section.id] ?? []}
                       abilities={abilities}
                       completion={progress?.completion}
                       onChanged={refreshActivities}

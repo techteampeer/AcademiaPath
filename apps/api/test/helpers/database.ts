@@ -32,6 +32,10 @@ export async function createTestDatabase() {
   url.pathname = `/${name}`;
   const database = createDatabase(url.toString());
   const drop = async () => {
+    // Teardown only: a pooled connection still closing when the database is force-dropped reports
+    // "terminating connection due to administrator command"; without a listener that late error would
+    // crash the test file after all of its tests have finished.
+    database.pool.on('error', () => {});
     await database.pool.end();
     await runOnServer(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
   };
