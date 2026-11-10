@@ -31,7 +31,31 @@ Bilingual (ES/EN) institutional LMS for a university in Peru. Customer demo dead
 | Havisha | Beginner-friendly shared frontend UI components | `apps/web/src/components/ui/` |
 | Atharva | Beginner-friendly course and student UI components, plus test data | `apps/web/src/components/courses/`, `apps/web/src/components/students/`, `apps/web/src/mocks/` |
 
-Changes outside your area (including `apps/web/src/app/`, root config and the contract) need Sagar's review.
+Changes outside your area (including `apps/web/src/app/`, root config and the contract) need technical-lead review. For Claude Code pull requests, the standing authorization in **Development review policy** replaces individual approval comments from Sagar.
+
+## Development review policy
+
+Claude Code is authorized by Sagar Patel to implement, review, test and merge routine AcademiaPath development pull requests without individual manual approval comments, provided all applicable quality and security checks pass.
+
+This authorization applies exclusively to local development using synthetic data.
+
+Before merging any feature, Claude must:
+
+- Review the complete diff.
+- Confirm the intended functionality.
+- Check authorization and security boundaries.
+- Run relevant API and browser regression tests.
+- Validate TypeScript and builds.
+- Validate OpenAPI contracts.
+- Validate database migrations where applicable.
+- Confirm no secrets or unrelated changes are included.
+- Respect all actual GitHub branch protections.
+
+Claude must not claim that Sagar personally reviewed or approved changes unless he actually did.
+
+If tests fail, material security findings remain open, migrations are destructive or unsafe, or important conflicts remain unresolved, Claude must stop and report the blocker.
+
+Sagar's explicit approval remains mandatory for cloud provisioning or deployment, paid services, production operations, irreversible production-data changes and production releases.
 
 ## Commands (repo root)
 
