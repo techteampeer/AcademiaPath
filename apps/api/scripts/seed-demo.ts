@@ -20,6 +20,7 @@ import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { createDatabase, type Database } from '../src/db/client.js';
 import { signIn, type Actor } from './demo/api.js';
+import { DEMO_COMMUNICATIONS, seedCommunications } from './demo/communications.js';
 import {
   ACCOUNTS,
   COURSES,
@@ -177,6 +178,9 @@ export async function seedDemo(db: Database, options: SeedDemoOptions): Promise<
       }
       for (const action of course.actions) await runAction(actors, courseId, activities, action, tally);
     }
+
+    // ---------------------------------------------------------------- Announcements and calendar (AP-025)
+    await seedCommunications({ instructor, admin }, courseIds.get(DEMO_COMMUNICATIONS.courseCode)!, tally);
 
     // ---------------------------------------------------------------- Files for the live upload step
     const uploadFiles: string[] = [];

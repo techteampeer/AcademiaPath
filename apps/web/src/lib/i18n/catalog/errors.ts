@@ -109,6 +109,14 @@ const en = {
     CERTIFICATE_ALREADY_REVOKED: 'This certificate has already been revoked.',
     CERTIFICATE_REVOKED: 'This certificate has been revoked and can no longer be downloaded.',
     CERTIFICATE_NOT_FOUND: 'No certificate matches this reference.',
+    ANNOUNCEMENT_ARCHIVED: 'This announcement is archived and can no longer change.',
+    ANNOUNCEMENT_NOT_SCHEDULED: 'This announcement is not scheduled.',
+    PUBLISH_AT_INVALID: 'Choose a publication time in the future, within the next year.',
+    EVENT_TIME_INVALID: 'Check the dates: the end must be after the start, and an event can last at most 366 days.',
+    INVALID_TIME_ZONE: 'Choose a valid time zone.',
+    RANGE_INVALID: 'The calendar period is not valid.',
+    EVENT_CANCELLED: 'This event is cancelled and can no longer change.',
+    EVENT_WAS_PUBLISHED: 'This event was published, so it can only be cancelled.',
   } as Record<string, string>,
 };
 
@@ -221,6 +229,14 @@ const es: ErrorMessages = {
     CERTIFICATE_ALREADY_REVOKED: 'Este certificado ya fue revocado.',
     CERTIFICATE_REVOKED: 'Este certificado fue revocado y ya no se puede descargar.',
     CERTIFICATE_NOT_FOUND: 'Ningún certificado coincide con esta referencia.',
+    ANNOUNCEMENT_ARCHIVED: 'Este anuncio está archivado y ya no se puede cambiar.',
+    ANNOUNCEMENT_NOT_SCHEDULED: 'Este anuncio no está programado.',
+    PUBLISH_AT_INVALID: 'Elige una hora de publicación futura, dentro del próximo año.',
+    EVENT_TIME_INVALID: 'Revisa las fechas: el fin debe ser posterior al inicio y un evento puede durar como máximo 366 días.',
+    INVALID_TIME_ZONE: 'Elige una zona horaria válida.',
+    RANGE_INVALID: 'El periodo del calendario no es válido.',
+    EVENT_CANCELLED: 'Este evento está cancelado y ya no se puede cambiar.',
+    EVENT_WAS_PUBLISHED: 'Este evento ya se publicó, así que solo se puede cancelar.',
   },
 };
 

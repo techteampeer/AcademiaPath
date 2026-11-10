@@ -11,3 +11,4 @@ export * from './tutor.js';
 export * from './documents.js';
 export * from './progress.js';
 export * from './certificates.js';
+export * from './communications.js';

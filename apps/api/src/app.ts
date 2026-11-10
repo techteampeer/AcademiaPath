@@ -18,6 +18,8 @@ import { meRoutes } from './routes/me.js';
 import { gradingRoutes } from './routes/grading.js';
 import { gradebookRoutes } from './routes/gradebook.js';
 import { certificateRoutes } from './routes/certificates.js';
+import { announcementRoutes } from './routes/announcements.js';
+import { calendarRoutes } from './routes/calendar.js';
 import { quizRoutes } from './routes/quizzes.js';
 import { tutorRoutes } from './routes/tutor.js';
 import { courseLifecycleRoutes } from './routes/course-lifecycle.js';
@@ -92,6 +94,8 @@ export function buildApp({ config, database, logger = false, documents = {}, clo
   app.register(gradingRoutes, { prefix: API_PREFIX });
   app.register(gradebookRoutes, { prefix: API_PREFIX });
   app.register(certificateRoutes, { prefix: API_PREFIX });
+  app.register(announcementRoutes, { prefix: API_PREFIX });
+  app.register(calendarRoutes, { prefix: API_PREFIX });
   app.register(tutorRoutes, { prefix: API_PREFIX });
   app.register(progressRoutes, { prefix: API_PREFIX });
   app.register(resourceRoutes, { prefix: API_PREFIX });

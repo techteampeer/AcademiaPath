@@ -15,6 +15,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { LoadingCards, Skeleton } from '@/components/ui/Skeleton';
 import { ProgressBar } from '@/components/progress/ProgressDisplay';
+import { DashboardCommunications } from '@/components/communications/DashboardCommunications';
 import { isApiError } from '@/lib/api/client';
 import { api, loadAll } from '@/lib/api/endpoints';
 import type { Activity, Course, CourseRole, CurrentUser, GradeStatus } from '@/lib/api/types';
@@ -61,6 +62,7 @@ function DashboardContent({ user }: { user: CurrentUser }) {
   return (
     <div className="space-y-10">
       {header}
+      <DashboardCommunications user={user} />
       {roles.length === 0 ? (
         user.systemRole === 'administrator' ? (
           <Card className="flex flex-wrap items-center justify-between gap-4">
@@ -353,6 +355,22 @@ function TeachingCard({ course, role }: { course: Course; role: 'instructor' | '
           <Link href={`/courses/${course.id}/tutor`} className={linkClass}>
             {t.nav.tutor}
           </Link>
+          <Link href={`/courses/${course.id}/announcements`} className={linkClass}>
+            {t.nav.announcements}
+          </Link>
+          <Link href={`/courses/${course.id}/calendar`} className={linkClass}>
+            {t.nav.calendar}
+          </Link>
+          {role === 'instructor' ? (
+            <>
+              <Link href={`/courses/${course.id}/announcements#new-announcement`} className={linkClass} data-new-announcement={course.code}>
+                {t.communications.dashboard.newAnnouncement}
+              </Link>
+              <Link href={`/courses/${course.id}/calendar#new-event`} className={linkClass} data-new-event={course.code}>
+                {t.communications.dashboard.newEvent}
+              </Link>
+            </>
+          ) : null}
         </>
       }
     >
@@ -430,6 +448,12 @@ function StudentCard({ course }: { course: Course }) {
           </Link>
           <Link href={`/courses/${course.id}/tutor`} className={linkClass}>
             {t.nav.tutor}
+          </Link>
+          <Link href={`/courses/${course.id}/announcements`} className={linkClass}>
+            {t.nav.announcements}
+          </Link>
+          <Link href={`/courses/${course.id}/calendar`} className={linkClass}>
+            {t.nav.calendar}
           </Link>
         </>
       }

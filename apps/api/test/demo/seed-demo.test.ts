@@ -85,6 +85,9 @@ describe('demo dataset seed (PostgreSQL)', { skip: testServerUrl ? false : 'TEST
     assert.equal(first.counts.courses?.created, 4);
     assert.equal(first.counts.documents?.created, 3);
     assert.equal(first.counts['quiz attempts']?.created, 6);
+    // AP-025: a pinned and a scheduled course announcement, one institution-wide; a course and an institution event.
+    assert.equal(first.counts.announcements?.created, 3);
+    assert.equal(first.counts['calendar events']?.created, 2);
   });
 
   it('is repeatable: a second run creates nothing and leaves every table unchanged', async () => {

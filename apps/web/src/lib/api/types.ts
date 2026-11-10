@@ -86,6 +86,18 @@ export type MyCourseCertificates = Schemas['MyCourseCertificates'];
 export type MyCertificates = Schemas['MyCertificates'];
 export type CertificateVerification = Schemas['CertificateVerification'];
 
+export type Announcement = Schemas['Announcement'];
+export type AnnouncementPage = Schemas['AnnouncementPage'];
+export type AnnouncementInput = Schemas['AnnouncementInput'];
+export type AnnouncementUpdate = Schemas['AnnouncementUpdate'];
+export type AnnouncementStatus = Announcement['status'];
+export type UnreadCount = Schemas['UnreadCount'];
+export type CalendarEvent = Schemas['CalendarEvent'];
+export type CalendarEventInput = Schemas['CalendarEventInput'];
+export type CalendarEventList = Schemas['CalendarEventList'];
+export type CalendarDueDate = Schemas['CalendarDueDate'];
+export type Calendar = Schemas['Calendar'];
+
 export type TutorLanguage = Schemas['TutorLanguage'];
 export type TutorCitation = Schemas['TutorCitation'];
 export type TutorMessageResponse = Schemas['TutorMessageResponse'];

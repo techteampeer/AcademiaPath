@@ -110,6 +110,18 @@ Student work, graded on the server:
 | Introduction to AI | student | 2/4 | – | No |
 | Introduction to AI | ta (as a student) | 1/4 | – | No |
 
+Announcements and calendar (AP-025), in ITIL 4 Foundation and institution-wide. Dates are relative to when the seed runs, in Lima time (America/Lima):
+
+| Item | Scope | State |
+| --- | --- | --- |
+| Announcement "Bienvenidos al módulo de práctica" | ITIL 4 Foundation | Published and pinned (instructor) |
+| Announcement "Recordatorio: entrega de la tarea" | ITIL 4 Foundation | Scheduled for 08:00 three days after seeding; students cannot see it before then |
+| Announcement "Cierre del semestre 2026-2" | Institution | Published (administrator) |
+| Event "Sesión de repaso en vivo: ITIL 4" | ITIL 4 Foundation | Published, 19:00–20:30 two days after seeding |
+| Event "Fin del semestre 2026-2" | Institution | Published, all day on 11 Dec 2026 |
+
+The assignment due date (4 Dec 2026) also appears in the course calendar; due dates come only from approved assignments.
+
 ## 4. Demo script
 
 Course paths below are relative to http://localhost:3000. The seed prints each course's ID, and the **My courses** and **Dashboard** pages link to every course.
@@ -182,10 +194,24 @@ Release publishes the current grades of every graded student for that activity. 
 ### Student
 **16. Open the approved document.** As `student@`, open the document in ITIL 4 Foundation. The approved summary and **Download original** are available. Unapproved revisions are never shown to students.
 
+### Announcements and academic calendar (AP-025)
+**17. Instructor publishes an announcement.** As `instructor@`, open **Dashboard → Teaching → New announcement** for ITIL 4 Foundation (or **Course → Announcements**).
+- Enter a title and a plain-text message and choose **Save draft**. The draft is listed with the status **Draft**; students cannot see it.
+- Choose **Publish now**. **Schedule** instead sets a future date and time in an explicit time zone (America/Lima by default); the seeded reminder shows the **Scheduled** state. **Pin**, **Edit** and **Archive** are also available.
+
+**18. Student sees it and marks it read.** As `student@`, the **Dashboard → Announcements and upcoming events** panel shows the new announcement with an **Unread** badge and the unread count. Open it (or go to **Announcements** in the sidebar) and choose **Mark as read**; the unread count goes down and stays down after reloading. The scheduled reminder is not listed until its publication time.
+
+**19. Instructor creates an event.** As `instructor@`, open ITIL 4 Foundation → **Calendar** (or **New event** on the dashboard). Enter a title, the date, start and end times and the time zone, choose **Published** and **Add event**. **Hidden** events are visible to staff only; a published event can later be hidden or **cancelled** (students then see it struck through as cancelled), and only never-published events can be deleted.
+
+**20. Student sees it on the calendar.** As `student@`, open **Calendar** in the sidebar. The agenda groups upcoming events and the assignment due date by day, each with its time zone; the **Course** filter narrows it to one enrolled course. The institutional "Fin del semestre 2026-2" all-day event appears on 11 Dec 2026 (use **Next 30 days**).
+
+Administrators publish institution-wide announcements and events under **Administration → Announcements & calendar**. Non-editing instructors (`ta@`) read every announcement and event of their courses but cannot publish; program managers and the design team get no publishing rights from their grants. No e-mail or push notifications are sent.
+
 ## 5. Notes and limitations
 
 - **Bilingual UI.** The header's EN/ES switch translates the whole interface (AP-015). Course material stays in the language it was written in: English (ITIL, Project Management) and Spanish (Introduction to AI).
 - **Course lifecycle (optional extra step).** As `admin@`, **Courses & enrollments → Manage** on a course shows its status, sections and roster. Unpublishing ITIL 4 Foundation hides it from students at once without deleting anything; publishing it again restores the same view. Do this only on a rehearsal database.
 - **No malware scanning.** No malware scanner is connected, so uploads are recorded as `not_scanned`. Only use the synthetic demo files.
 - **Mock AI only.** Mock summaries and tutor answers quote approved course text. They are not AI-generated and must be presented as mock functionality.
+- **Announcement scheduling without a scheduler.** A scheduled announcement becomes visible as soon as the server clock reaches its publication time; no background job runs. Re-seeding a fresh database regenerates the relative dates.
 - **Wall-clock dates.** Due dates and quiz time limits use real time. The assignment due date (4 Dec 2026, 23:59 Lima time) keeps submissions open for the November demo.
