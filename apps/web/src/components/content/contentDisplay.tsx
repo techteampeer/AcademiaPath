@@ -30,6 +30,10 @@ export function contentAbilities(user: CurrentUser, viewerRole: CourseRole | nul
     release: role === 'instructor',
     /** Grade categories and weights: instructors and administrators. */
     configureGrading: admin || role === 'instructor',
+    /** Certificate policy, eligibility and issued certificates (read-only for non-editing instructors). */
+    viewCertificates: admin || role === 'instructor' || role === 'non_editing_instructor',
+    /** Configure the certificate policy, issue and revoke certificates: instructors and administrators. */
+    manageCertificates: admin || role === 'instructor',
     /** Course tutor: students, instructors and non-editing instructors (never via the administrator role). */
     tutor: role === 'student' || role === 'instructor' || role === 'non_editing_instructor',
     /** Own learning progress and completion marks: enrolled students only. */

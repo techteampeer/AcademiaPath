@@ -17,6 +17,7 @@ import { progress } from './catalog/progress';
 import { resources } from './catalog/resources';
 import { assessment } from './catalog/assessment';
 import { gradebook } from './catalog/gradebook';
+import { certificates } from './catalog/certificates';
 
 export type Locale = 'en' | 'es';
 export const LOCALES: Locale[] = ['en', 'es'];
@@ -87,6 +88,8 @@ const en = {
     gradebook: 'Gradebook',
     myGrades: 'My grades',
     tutor: 'Tutor',
+    certificates: 'Certificates',
+    myCertificates: 'My certificates',
     home: 'Home',
   },
   session: {
@@ -259,6 +262,7 @@ const en = {
   resources: resources.en,
   assessment: assessment.en,
   gradebook: gradebook.en,
+  certificates: certificates.en,
   academics: {
     hierarchy: 'Hierarchy',
     treeLabel: 'Academic hierarchy',
@@ -521,6 +525,8 @@ const es: Messages = {
     courseContent: 'Contenido del curso',
     gradebook: 'Libro de calificaciones',
     myGrades: 'Mis calificaciones',
+    certificates: 'Certificados',
+    myCertificates: 'Mis certificados',
     tutor: 'Tutor',
     home: 'Inicio',
   },
@@ -694,6 +700,7 @@ const es: Messages = {
   resources: resources.es,
   assessment: assessment.es,
   gradebook: gradebook.es,
+  certificates: certificates.es,
   academics: {
     hierarchy: 'Jerarquía',
     treeLabel: 'Jerarquía académica',

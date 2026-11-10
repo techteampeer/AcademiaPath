@@ -103,6 +103,12 @@ const en = {
     GRADE_WEIGHTS_INVALID: 'A published weighting needs at least one category and weights that total exactly 100 %.',
     GRADE_RELEASE_DUPLICATE: 'Each student and activity can appear only once in a release.',
     GRADING_POLICY_CONFLICT: 'Someone else changed the grading policy. Reload it and try again.',
+    CERTIFICATE_POLICY_INVALID: 'A certificate policy must require course completion, a final released grade, or both; a minimum grade needs a final grade.',
+    CERTIFICATE_POLICY_CONFLICT: 'Someone else changed the certificate policy. Reload it and try again.',
+    CERTIFICATE_NOT_ELIGIBLE: 'This student does not meet the certificate requirements yet.',
+    CERTIFICATE_ALREADY_REVOKED: 'This certificate has already been revoked.',
+    CERTIFICATE_REVOKED: 'This certificate has been revoked and can no longer be downloaded.',
+    CERTIFICATE_NOT_FOUND: 'No certificate matches this reference.',
   } as Record<string, string>,
 };
 
@@ -209,6 +215,12 @@ const es: ErrorMessages = {
     GRADE_WEIGHTS_INVALID: 'Una ponderación publicada necesita al menos una categoría y pesos que sumen exactamente 100 %.',
     GRADE_RELEASE_DUPLICATE: 'Cada estudiante y actividad puede aparecer solo una vez en una publicación.',
     GRADING_POLICY_CONFLICT: 'Otra persona cambió la política de calificación. Vuelve a cargarla e inténtalo otra vez.',
+    CERTIFICATE_POLICY_INVALID: 'Una política de certificados debe exigir completar el curso, una nota final publicada o ambas; la nota mínima requiere nota final.',
+    CERTIFICATE_POLICY_CONFLICT: 'Otra persona cambió la política de certificados. Vuelve a cargarla e inténtalo otra vez.',
+    CERTIFICATE_NOT_ELIGIBLE: 'Este estudiante aún no cumple los requisitos del certificado.',
+    CERTIFICATE_ALREADY_REVOKED: 'Este certificado ya fue revocado.',
+    CERTIFICATE_REVOKED: 'Este certificado fue revocado y ya no se puede descargar.',
+    CERTIFICATE_NOT_FOUND: 'Ningún certificado coincide con esta referencia.',
   },
 };
 

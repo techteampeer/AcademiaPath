@@ -155,7 +155,7 @@ Course paths below are relative to http://localhost:3000. The seed prints each c
 - Open **Mapping a service to the value chain**, write a short answer and choose **Submit assignment** → **Confirm submission**.
 
 ### Instructor
-**11. Release grades.** Sign in as `instructor@` (or `ta@`). In ITIL 4 Foundation:
+**11. Release grades.** Sign in as `instructor@` (releasing is for instructors only; `ta@` can grade but not release). In ITIL 4 Foundation:
 - Grade the student's assignment.
 - Choose **Release assignment grades**. Then release the quiz with **Release quiz grades** on the quiz page, or **Release** in its **Gradebook** column.
 

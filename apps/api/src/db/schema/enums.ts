@@ -43,6 +43,8 @@ export const quizAttemptStatusEnum = pgEnum('quiz_attempt_status', ['in_progress
 export const gradeSourceEnum = pgEnum('grade_source', ['quiz', 'assignment']);
 /** A course grading policy (AP-023): a draft never affects grades; a published one weights categories. */
 export const gradingPolicyStatusEnum = pgEnum('grading_policy_status', ['draft', 'published']);
+/** A course completion certificate (AP-024): issued, or revoked by authorized staff (never deleted). */
+export const certificateStatusEnum = pgEnum('certificate_status', ['issued', 'revoked']);
 
 /** Tutor usage accounting: request kind and grounding outcome (never the question text). */
 export const tutorRequestKindEnum = pgEnum('tutor_request_kind', ['message', 'practice']);

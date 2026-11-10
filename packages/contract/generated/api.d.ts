@@ -1715,6 +1715,238 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{id}/certificate-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The course's certificate policy
+         * @description Requires `certificates.view` (instructor, non-editing instructor) or the administrator role. Without a
+         *     saved policy, `configured` is false and no certificate can be issued.
+         */
+        get: operations["getCertificatePolicy"];
+        /**
+         * Configure the course's certificate policy
+         * @description Requires `certificates.manage` (instructor) or the administrator role; never non-editing instructors,
+         *     the design team or program managers. The policy must require completion, a final grade, or both; a
+         *     minimum grade needs a final grade (`422 CERTIFICATE_POLICY_INVALID`). `expectedVersion` is the version
+         *     the edit was based on (0 when none exists; otherwise `409 CERTIFICATE_POLICY_CONFLICT`). Certificates
+         *     already issued keep the policy version they were issued under. Audited as `certificate_policy.updated`.
+         */
+        put: operations["saveCertificatePolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/certificates/eligibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Certificate eligibility of every active student (staff)
+         * @description Requires `certificates.view` (instructor, non-editing instructor) or the administrator role. Each active
+         *     student with their evaluated requirements, progress, released course grade and valid certificate.
+         */
+        get: operations["getCertificateEligibility"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/certificates/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in student's certificate status in a course
+         * @description Students of the course only (`certificates.own`, a role-only check). The policy, the student's own
+         *     eligibility (null without a policy) and their certificates. Eligibility uses released grades only, so
+         *     it never reveals unreleased results.
+         */
+        get: operations["getMyCourseCertificates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/certificates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Certificates issued in a course (staff)
+         * @description Requires `certificates.view` (instructor, non-editing instructor) or the administrator role. Newest first, valid and revoked.
+         */
+        get: operations["listCourseCertificates"];
+        put?: never;
+        /**
+         * Issue a certificate to an eligible student
+         * @description Requires `certificates.manage` (instructor) or the administrator role. In one transaction, with the
+         *     course, policy and the student's enrollment locked, the server re-evaluates eligibility; an ineligible
+         *     student gets `422 CERTIFICATE_NOT_ELIGIBLE`. If the student already has a valid certificate for the
+         *     course, it is returned with `200` and nothing is created (repeated and concurrent requests are safe);
+         *     otherwise `201`. The certificate stores a snapshot of the recipient name, course, program, term,
+         *     issuer and policy. Students of other courses are `404`. Audited as `certificate.issued`.
+         */
+        post: operations["issueCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/certificates/{certificateId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke a certificate
+         * @description Requires `certificates.manage` (instructor) or the administrator role. Records the reason, time and
+         *     staff member; the certificate is kept and verifies as revoked from then on. A revoked certificate
+         *     cannot change again (`409 CERTIFICATE_ALREADY_REVOKED`). Audited as `certificate.revoked`.
+         */
+        post: operations["revokeCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/certificates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user's certificates and certificate status per course
+         * @description The caller's own certificates (valid and revoked), and for each published course they study (active
+         *     student enrollment) whether certificates are enabled, whether they are eligible (released grades only)
+         *     and their valid certificate.
+         */
+        get: operations["getMyCertificates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certificates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every certificate (administrators)
+         * @description Administrators only. Newest first, optionally filtered by status or course. Paginated.
+         */
+        get: operations["listAllCertificates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certificates/{certificateId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One certificate's details
+         * @description The recipient, the course's staff with `certificates.view`, or an administrator. Staff and administrators
+         *     also get the issue and revocation history (from the audit log). Anyone else gets
+         *     `404 CERTIFICATE_NOT_FOUND`.
+         */
+        get: operations["getCertificate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certificates/{certificateId}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a certificate as PDF
+         * @description Same access as the details. The PDF is generated locally from the stored certificate snapshot (name,
+         *     course, period, issue date, certificate number and verification reference); it never contains e-mail
+         *     addresses or grades. A revoked certificate cannot be downloaded (`409 CERTIFICATE_REVOKED`).
+         */
+        get: operations["downloadCertificate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certificates/verify/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Verify a certificate (public)
+         * @description No authentication. `token` is the certificate's opaque verification token (43 base64url characters);
+         *     malformed and unknown tokens get the same `404 CERTIFICATE_NOT_FOUND`, revealing nothing. Returns only
+         *     the status (`valid` or `revoked`), recipient name, course title, academic period, issuer, issue date
+         *     and certificate number. Rate limited per client.
+         */
+        get: operations["verifyCertificate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{id}/progress": {
         parameters: {
             query?: never;
@@ -2003,7 +2235,7 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE" | "QUIZ_POOL_TOO_SMALL" | "QUIZ_POOL_POINTS_MIXED" | "QUIZ_SOURCE_INVALID" | "FEEDBACK_NOT_AVAILABLE" | "GRADE_CATEGORY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_INVALID" | "GRADE_WEIGHTS_INVALID" | "GRADE_RELEASE_DUPLICATE" | "GRADING_POLICY_CONFLICT";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE" | "QUIZ_POOL_TOO_SMALL" | "QUIZ_POOL_POINTS_MIXED" | "QUIZ_SOURCE_INVALID" | "FEEDBACK_NOT_AVAILABLE" | "GRADE_CATEGORY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_INVALID" | "GRADE_WEIGHTS_INVALID" | "GRADE_RELEASE_DUPLICATE" | "GRADING_POLICY_CONFLICT" | "CERTIFICATE_POLICY_INVALID" | "CERTIFICATE_POLICY_CONFLICT" | "CERTIFICATE_NOT_ELIGIBLE" | "CERTIFICATE_ALREADY_REVOKED" | "CERTIFICATE_REVOKED" | "CERTIFICATE_NOT_FOUND";
         };
         /**
          * @description What a link points to. Every kind is only a link opened in a new tab; nothing is embedded, fetched or executed.
@@ -3110,6 +3342,159 @@ export interface components {
             percent: number | null;
             grade20: components["schemas"]["Grade20"] | null;
         };
+        CertificatePolicyRules: {
+            /** @description Certificates can be issued only while the policy is enabled. */
+            enabled: boolean;
+            /** @description Every progress-tracked activity must be complete (a course without such activities never qualifies). */
+            requireCompletion: boolean;
+            /** @description The course grade must be final (every counted activity graded, released and unchanged since release). */
+            requireFinalGrade: boolean;
+            /** @description Optional minimum final course grade (percent), compared exactly before rounding. Needs requireFinalGrade. */
+            minimumGradePercent: number | null;
+            /** @description The issuing institution printed on certificates (for example "AcademiaPath"). */
+            issuerName: string;
+        };
+        CertificatePolicy: components["schemas"]["CertificatePolicyRules"] & {
+            configured: boolean;
+            version: number;
+            /** Format: date-time */
+            updatedAt: string | null;
+        };
+        CertificatePolicyInput: components["schemas"]["CertificatePolicyRules"] & {
+            expectedVersion: number;
+        };
+        CertificateRequirement: {
+            /** @enum {string} */
+            key: "policy_enabled" | "course_published" | "active_enrollment" | "activities_completed" | "final_grade_released" | "minimum_grade";
+            met: boolean;
+            /** @enum {string|null} */
+            reason: "not_configured" | "disabled" | "not_published" | "not_enrolled" | "inactive" | "no_activities" | "incomplete" | "no_graded_work" | "grades_pending" | "awaiting_final_grade" | "below_minimum" | null;
+        };
+        /** @description Evaluated on the server from stored records; grades are released grades only. */
+        CertificateEligibility: {
+            eligible: boolean;
+            requirements: components["schemas"]["CertificateRequirement"][];
+            progress: {
+                completedCount: number;
+                totalCount: number;
+                percent: number | null;
+            };
+            releasedGrade: {
+                /** @enum {string} */
+                status: "final" | "provisional";
+                percent: number | null;
+                grade20: number | null;
+                pendingItems: number;
+            };
+        };
+        CertificateHistoryEvent: {
+            /** @enum {string} */
+            action: "certificate.issued" | "certificate.revoked";
+            /** Format: date-time */
+            at: string;
+            actor: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            } | null;
+            reason: string | null;
+        };
+        /** @description A certificate exactly as issued (snapshot). `history` is included for staff and administrators only. */
+        Certificate: {
+            /** Format: uuid */
+            id: string;
+            /** @description Random, non-sequential number printed on the certificate (for example AP-7K3M-Q9TX-2HDP). */
+            certificateNumber: string;
+            /** @enum {string} */
+            status: "issued" | "revoked";
+            /** Format: uuid */
+            courseId: string;
+            /** Format: uuid */
+            userId: string;
+            recipientName: string;
+            courseTitle: string;
+            courseCode: string;
+            programName: string | null;
+            termName: string;
+            academicYear: number;
+            issuerName: string;
+            /** Format: date-time */
+            issuedAt: string;
+            policyVersion: number;
+            policy: {
+                requireCompletion: boolean;
+                requireFinalGrade: boolean;
+                minimumGradePercent: number | null;
+            };
+            /** @description Application-relative verification page, `/verify/{token}`. */
+            verificationPath: string;
+            /** Format: date-time */
+            revokedAt: string | null;
+            revocationReason: string | null;
+            history?: components["schemas"]["CertificateHistoryEvent"][];
+        };
+        CertificateList: {
+            items: components["schemas"]["Certificate"][];
+        };
+        CertificatePage: {
+            items: components["schemas"]["Certificate"][];
+            nextCursor: string | null;
+        };
+        CertificateRef: {
+            /** Format: uuid */
+            id: string;
+            certificateNumber: string;
+            /** @enum {string} */
+            status: "issued" | "revoked";
+            /** Format: date-time */
+            issuedAt: string;
+        } | null;
+        CourseCertificateEligibility: {
+            policy: components["schemas"]["CertificatePolicy"];
+            items: {
+                student: components["schemas"]["QuizResultStudent"];
+                eligibility: components["schemas"]["CertificateEligibility"];
+                certificate: components["schemas"]["CertificateRef"];
+            }[];
+        };
+        MyCourseCertificates: {
+            policy: components["schemas"]["CertificatePolicy"];
+            eligibility: components["schemas"]["CertificateEligibility"] | null;
+            certificates: components["schemas"]["Certificate"][];
+        };
+        MyCertificates: {
+            certificates: components["schemas"]["Certificate"][];
+            courses: {
+                /** Format: uuid */
+                courseId: string;
+                title: string;
+                code: string;
+                certificatesEnabled: boolean;
+                eligible: boolean | null;
+                certificate: components["schemas"]["CertificateRef"];
+            }[];
+        };
+        CertificateIssue: {
+            /** Format: uuid */
+            userId: string;
+        };
+        CertificateRevoke: {
+            reason: string;
+        };
+        /** @description The public verification record. Nothing else about the student or the course is revealed. */
+        CertificateVerification: {
+            /** @enum {string} */
+            status: "valid" | "revoked";
+            certificateNumber: string;
+            recipientName: string;
+            courseTitle: string;
+            academicPeriod: string;
+            issuerName: string;
+            /** Format: date-time */
+            issuedAt: string;
+            /** Format: date-time */
+            revokedAt: string | null;
+        };
         /**
          * @description The course grade under the course's grading policy (see "Advanced gradebook" above). `points`: the
          *     unweighted sum; `weighted`: the published categories. Pending work is never counted as zero.
@@ -3829,7 +4214,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
-        /** @description The resource does not exist or the caller cannot access it (`code`: `NOT_FOUND`). */
+        /** @description The resource does not exist or the caller cannot access it (`code`: `NOT_FOUND`, or `CERTIFICATE_NOT_FOUND` for certificates and verification tokens). */
         NotFound: {
             headers: {
                 [name: string]: unknown;
@@ -3859,7 +4244,8 @@ export interface components {
          *     `COURSE_VERSION_CONFLICT`, `INVALID_COURSE_TRANSITION`, `COURSE_CODE_LOCKED`,
          *     `SECTION_ORDER_STALE`; or `PROGRAM_MANAGER_EXISTS` (the user already manages the program); or a
          *     learning-resource rule: `RESOURCE_FOLDER_NOT_EMPTY`, `RESOURCE_ORDER_STALE`; or
-         *     `GRADING_POLICY_CONFLICT` (the grading policy changed since it was loaded).
+         *     `GRADING_POLICY_CONFLICT` (the grading policy changed since it was loaded); or a certificate rule:
+         *     `CERTIFICATE_POLICY_CONFLICT`, `CERTIFICATE_ALREADY_REVOKED`, `CERTIFICATE_REVOKED`.
          */
         Conflict: {
             headers: {
@@ -3895,7 +4281,8 @@ export interface components {
          *     `RESOURCE_FOLDER_NOT_FOUND` or `RESOURCE_NOT_ORGANIZABLE`; or an assessment rule:
          *     `QUIZ_POOL_TOO_SMALL`, `QUIZ_POOL_POINTS_MIXED` or `QUIZ_SOURCE_INVALID`; or a gradebook rule:
          *     `GRADE_CATEGORY_DUPLICATE`, `GRADE_CATEGORY_ACTIVITY_DUPLICATE`, `GRADE_CATEGORY_ACTIVITY_INVALID`,
-         *     `GRADE_WEIGHTS_INVALID` or `GRADE_RELEASE_DUPLICATE`.
+         *     `GRADE_WEIGHTS_INVALID` or `GRADE_RELEASE_DUPLICATE`; or a certificate rule:
+         *     `CERTIFICATE_POLICY_INVALID` or `CERTIFICATE_NOT_ELIGIBLE`.
          */
         UnprocessableContent: {
             headers: {
@@ -3930,6 +4317,7 @@ export interface components {
         TemplateId: string;
         AttemptId: string;
         SubmissionId: string;
+        CertificateId: string;
         UserId: string;
         EnrollmentId: string;
     };
@@ -6491,6 +6879,340 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getCertificatePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The certificate policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificatePolicy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    saveCertificatePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CertificatePolicyInput"];
+            };
+        };
+        responses: {
+            /** @description The saved policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificatePolicy"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    getCertificateEligibility: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Eligibility per student. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseCertificateEligibility"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getMyCourseCertificates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The student's certificate status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyCourseCertificates"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listCourseCertificates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The course's certificates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificateList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    issueCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CertificateIssue"];
+            };
+        };
+        responses: {
+            /** @description The student's existing valid certificate (nothing was created). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Certificate"];
+                };
+            };
+            /** @description The issued certificate. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Certificate"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    revokeCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                certificateId: components["parameters"]["CertificateId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CertificateRevoke"];
+            };
+        };
+        responses: {
+            /** @description The revoked certificate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Certificate"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getMyCertificates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's certificates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyCertificates"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listAllCertificates: {
+        parameters: {
+            query?: {
+                status?: "issued" | "revoked";
+                courseId?: string;
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from the previous page's `nextCursor`. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of certificates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificatePage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                certificateId: components["parameters"]["CertificateId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The certificate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Certificate"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    downloadCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                certificateId: components["parameters"]["CertificateId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The certificate (`Content-Disposition` attachment). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    verifyCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The certificate's public verification record. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificateVerification"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Too many verification requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     getMyCourseProgress: {
