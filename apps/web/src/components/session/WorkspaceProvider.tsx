@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { isApiError } from '@/lib/api/client';
 import { api, loadAll } from '@/lib/api/endpoints';
-import type { Course, CourseRole, CurrentUser } from '@/lib/api/types';
+import type { Course, CourseRole, CurrentUser, ManagedProgram } from '@/lib/api/types';
 import { useSession } from './SessionProvider';
 
 type WorkspaceValue = {
@@ -14,6 +14,8 @@ type WorkspaceValue = {
   roleByCourse: Map<string, CourseRole | null>;
   /** Distinct course roles held across courses; a user can hold different roles in different courses. */
   rolesHeld: Set<CourseRole>;
+  /** Programs the user manages through explicit grants (empty for administrators, who manage everything). */
+  managedPrograms: ManagedProgram[];
   reload: () => Promise<void>;
 };
 
@@ -26,25 +28,33 @@ const WorkspaceContext = createContext<WorkspaceValue | null>(null);
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { session, handleUnauthorized } = useSession();
   const userId = session.status === 'authenticated' ? session.user.id : null;
+  const isAdministrator = session.status === 'authenticated' && session.user.systemRole === 'administrator';
   const [status, setStatus] = useState<WorkspaceValue['status']>('idle');
   const [courses, setCourses] = useState<Course[]>([]);
+  const [managedPrograms, setManagedPrograms] = useState<ManagedProgram[]>([]);
 
   const reload = useCallback(async () => {
     if (!userId) return;
     setStatus('loading');
     try {
-      setCourses(await loadAll((page) => api.listCourses(page)));
+      const [loaded, managed] = await Promise.all([
+        loadAll((page) => api.listCourses(page)),
+        isAdministrator ? Promise.resolve(null) : api.myManagedPrograms(),
+      ]);
+      setCourses(loaded);
+      setManagedPrograms(managed?.items ?? []);
       setStatus('ready');
     } catch (error) {
       if (isApiError(error, 401)) handleUnauthorized();
       setStatus('error');
     }
-  }, [userId, handleUnauthorized]);
+  }, [userId, isAdministrator, handleUnauthorized]);
 
   useEffect(() => {
     if (userId) void reload();
     else {
       setCourses([]);
+      setManagedPrograms([]);
       setStatus('idle');
     }
   }, [userId, reload]);
@@ -52,8 +62,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const value = useMemo(() => {
     const roleByCourse = new Map(courses.map((course) => [course.id, course.viewerRole] as const));
     const rolesHeld = new Set(courses.flatMap((course) => (course.viewerRole ? [course.viewerRole] : [])));
-    return { status, courses, roleByCourse, rolesHeld, reload };
-  }, [status, courses, reload]);
+    return { status, courses, roleByCourse, rolesHeld, managedPrograms, reload };
+  }, [status, courses, managedPrograms, reload]);
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
 

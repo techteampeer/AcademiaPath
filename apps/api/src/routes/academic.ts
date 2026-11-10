@@ -1,6 +1,8 @@
-import { asc, count, desc, eq, inArray, max, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, max, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
+import { assertCanManageProgram, canReadProgram, notProgramManager, readableProgramFilter } from '../academics/program-access.js';
 import { recordAudit } from '../audit.js';
+import { getAuth } from '../auth/hooks.js';
 import { withUniqueConflict } from '../db/errors.js';
 import {
   courseTemplateSections,
@@ -14,6 +16,8 @@ import { decodeCursor, paginationQuerySchema, toPage, type PaginationQuery } fro
 import {
   courseTemplateCreateSchema,
   courseTemplateDetailSchema,
+  courseTemplateListQuerySchema,
+  courseTemplateVersionListSchema,
   courseTemplateSchema,
   courseTemplateVersionSchema,
   pageSchema,
@@ -60,17 +64,35 @@ function termAcademicYear(code: string, startsOn: string, requested?: number): n
   return year;
 }
 
-/** Institutional academic structure. Every route is administrator-only. */
+/**
+ * Institutional academic structure. Programs and terms are administrator-only. Subjects (course
+ * templates) are also open to program managers, for the programs they hold a grant for: the program
+ * is always taken from the stored subject when one exists, and write checks run inside the writing
+ * transaction (see academics/program-access.ts).
+ */
 export const academicRoutes: FastifyPluginAsync = async (app) => {
   const { db } = app;
   // Guards run before body/params validation so unauthorized callers are rejected first.
   const adminRead = { preValidation: [app.requireAuth, app.requireAdministrator] };
   const adminWrite = { preValidation: [app.requireAuth, app.requireCsrf, app.requireAdministrator] };
+  // Subject routes: any signed-in user reaches the handler, which authorizes per program (default deny).
+  const signedIn = { preValidation: [app.requireAuth] };
+  const signedInWrite = { preValidation: [app.requireAuth, app.requireCsrf] };
 
   app.addHook('onSend', async (_request, reply, payload) => {
     reply.header('cache-control', 'no-store');
     return payload;
   });
+
+  /** A subject the caller may read: 403 without any program grant, 404 if missing, 403 for another program. */
+  async function readableTemplate(templateId: string, user: Parameters<typeof canReadProgram>[1]) {
+    const readable = await readableProgramFilter(db, user);
+    if (readable !== null && readable.length === 0) throw notProgramManager();
+    const [template] = await db.select().from(courseTemplates).where(eq(courseTemplates.id, templateId));
+    if (!template) throw notFound('Subject');
+    if (!(await canReadProgram(db, user, template.programId))) throw notProgramManager();
+    return template;
+  }
 
   // ---- Programs ----
 
@@ -217,20 +239,27 @@ export const academicRoutes: FastifyPluginAsync = async (app) => {
 
   // ---- Course templates (versioned) ----
 
-  app.get<{ Querystring: PaginationQuery }>(
+  app.get<{ Querystring: PaginationQuery & { programId?: string } }>(
     '/course-templates',
     {
-      ...adminRead,
-      schema: { querystring: paginationQuerySchema, response: { 200: pageSchema(courseTemplateSchema) } },
+      ...signedIn,
+      schema: { querystring: courseTemplateListQuerySchema, response: { 200: pageSchema(courseTemplateSchema) } },
     },
     async (request) => {
-      const { limit } = request.query;
+      const { limit, programId } = request.query;
       const after = decodeCursor(request.query.cursor, 'string');
+      // Administrators: every subject. Program managers: subjects of their programs only. Others: 403.
+      const readable = await readableProgramFilter(db, getAuth(request).user);
+      if (readable !== null && readable.length === 0) throw notProgramManager();
       const rows = await db
         .select()
         .from(courseTemplates)
         .where(
-          after ? sql`(${courseTemplates.code}, ${courseTemplates.id}) > (${after.key}, ${after.id}::uuid)` : undefined,
+          and(
+            readable !== null ? inArray(courseTemplates.programId, readable) : undefined,
+            programId ? eq(courseTemplates.programId, programId) : undefined,
+            after ? sql`(${courseTemplates.code}, ${courseTemplates.id}) > (${after.key}, ${after.id}::uuid)` : undefined,
+          ),
         )
         .orderBy(asc(courseTemplates.code), asc(courseTemplates.id))
         .limit(limit + 1);
@@ -260,14 +289,18 @@ export const academicRoutes: FastifyPluginAsync = async (app) => {
 
   app.post<{ Body: CourseTemplateCreateBody }>(
     '/course-templates',
-    { ...adminWrite, schema: { body: courseTemplateCreateSchema, response: { 201: courseTemplateVersionSchema } } },
+    { ...signedInWrite, schema: { body: courseTemplateCreateSchema, response: { 201: courseTemplateVersionSchema } } },
     async (request, reply) => {
+      const { user } = getAuth(request);
       const { code, title, description, sections } = request.body;
       const programId = request.body.programId ?? null;
 
       const created = await db.transaction(async (tx) => {
         // Lock an existing template so concurrent requests cannot take the same version number.
         const [existing] = await tx.select().from(courseTemplates).where(eq(courseTemplates.code, code)).for('update');
+        // Authorize first (before any check that could reveal another program's subjects): against the
+        // stored subject's program when it exists, else against the target program of the new subject.
+        await assertCanManageProgram(tx, user, existing ? existing.programId : programId);
 
         let template: typeof courseTemplates.$inferSelect;
         let version: number;
@@ -386,10 +419,9 @@ export const academicRoutes: FastifyPluginAsync = async (app) => {
 
   app.get<{ Params: { templateId: string } }>(
     '/course-templates/:templateId',
-    { ...adminRead, schema: { params: templateParamsSchema, response: { 200: courseTemplateDetailSchema } } },
+    { ...signedIn, schema: { params: templateParamsSchema, response: { 200: courseTemplateDetailSchema } } },
     async (request) => {
-      const [template] = await db.select().from(courseTemplates).where(eq(courseTemplates.id, request.params.templateId));
-      if (!template) throw notFound('Subject');
+      const template = await readableTemplate(request.params.templateId, getAuth(request).user);
       const [{ versionCount } = { versionCount: 0 }] = await db
         .select({ versionCount: count() })
         .from(courseTemplateVersions)
@@ -424,6 +456,28 @@ export const academicRoutes: FastifyPluginAsync = async (app) => {
             }
           : null,
       };
+    },
+  );
+
+  app.get<{ Params: { templateId: string } }>(
+    '/course-templates/:templateId/versions',
+    { ...signedIn, schema: { params: templateParamsSchema, response: { 200: courseTemplateVersionListSchema } } },
+    async (request) => {
+      const template = await readableTemplate(request.params.templateId, getAuth(request).user);
+      const items = await db
+        .select({
+          id: courseTemplateVersions.id,
+          version: courseTemplateVersions.version,
+          title: courseTemplateVersions.title,
+          description: courseTemplateVersions.description,
+          // Correlated subquery: the outer column is written fully qualified (Drizzle renders single-table columns unqualified).
+          sectionCount: sql<number>`(SELECT count(*)::int FROM course_template_sections cts WHERE cts.template_version_id = "course_template_versions"."id")`,
+          createdAt: courseTemplateVersions.createdAt,
+        })
+        .from(courseTemplateVersions)
+        .where(eq(courseTemplateVersions.templateId, template.id))
+        .orderBy(desc(courseTemplateVersions.version));
+      return { items };
     },
   );
 };

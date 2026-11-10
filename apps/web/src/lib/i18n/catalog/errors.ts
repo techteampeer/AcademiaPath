@@ -83,6 +83,7 @@ const en = {
     SECTION_ORDER_STALE: 'The sections changed in the meantime. Reload the course and try again.',
     INVALID_SECTION_ORDER: 'Each section can appear only once.',
     ENROLLMENT_HAS_HISTORY: 'This enrollment has work or grades, so it cannot be removed. Set it inactive instead; its history is kept.',
+    PROGRAM_MANAGER_EXISTS: 'This user already manages the program.',
   } as Record<string, string>,
 };
 
@@ -169,6 +170,7 @@ const es: ErrorMessages = {
     SECTION_ORDER_STALE: 'Las secciones cambiaron mientras tanto. Recarga el curso e inténtalo de nuevo.',
     INVALID_SECTION_ORDER: 'Cada sección puede aparecer solo una vez.',
     ENROLLMENT_HAS_HISTORY: 'Esta matrícula tiene trabajos o calificaciones, así que no se puede quitar. Márcala como inactiva; su historial se conserva.',
+    PROGRAM_MANAGER_EXISTS: 'Este usuario ya gestiona el programa.',
   },
 };
 
