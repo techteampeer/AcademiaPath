@@ -3,7 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { auditIp } from '../audit.js';
 import { clearSessionCookie, setSessionCookie } from '../auth/cookies.js';
 import { getAuth } from '../auth/hooks.js';
-import { getDummyPasswordHash, hashPassword, verifyPassword } from '../auth/password.js';
+import { getDummyPasswordHash, hashPassword, isWeakPassword, verifyPassword } from '../auth/password.js';
 import { createSession, findLoginAccount, revokeSession, revokeSessionByToken } from '../auth/sessions.js';
 import { deriveCsrfToken, isWellFormedSessionToken } from '../auth/tokens.js';
 import type { Database } from '../db/client.js';
@@ -55,13 +55,6 @@ async function findOpenInvitation(db: Database, token: string) {
     )
     .limit(1);
   return row ?? null;
-}
-
-/** Minimal checks beyond the 12-character minimum: not built from the email name, not one repeated character. */
-function isWeakPassword(password: string, email: string): boolean {
-  const lowered = password.toLowerCase();
-  const localPart = email.split('@')[0] ?? '';
-  return (localPart.length >= 3 && lowered.includes(localPart)) || new Set(password).size < 5;
 }
 
 

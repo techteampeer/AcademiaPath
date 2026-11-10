@@ -28,25 +28,41 @@ export const DEV_USERS: ReadonlyArray<SyntheticUser> = [
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 const MIN_PASSWORD_LENGTH = 12;
 
-const isLocalHost = (host: string) => LOCAL_HOSTS.has(host) || host.startsWith('/');
+// A Unix socket directory is local, except Cloud SQL's (/cloudsql/PROJECT:REGION:INSTANCE), which is a cloud database.
+const isLocalHost = (host: string) => LOCAL_HOSTS.has(host) || (host.startsWith('/') && !host.startsWith('/cloudsql'));
 
-/** Throws unless seeding is clearly targeting a local development database. */
-export function assertDevSeedAllowed(env: NodeJS.ProcessEnv): { databaseUrl: string; password: string } {
-  if (env.NODE_ENV === 'production') {
-    throw new Error('Refusing to seed development users: NODE_ENV is production.');
-  }
-  const databaseUrl = env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error('DATABASE_URL is not set.');
-  }
+/** The host a connection URL really targets: `?host=` wins over the hostname; empty means a socket or PGHOST. */
+export function effectiveDatabaseHost(databaseUrl: string, env: NodeJS.ProcessEnv): string {
   let url: URL;
   try {
     url = new URL(databaseUrl);
   } catch {
     throw new Error('DATABASE_URL is not a valid connection URL.');
   }
+  return url.searchParams.get('host') || url.hostname || env.PGHOST || '';
+}
+
+/** True only for a database on this machine (loopback or a local Unix socket). */
+export const isLocalDatabase = (databaseUrl: string, env: NodeJS.ProcessEnv) => {
+  const host = effectiveDatabaseHost(databaseUrl, env);
+  return host === '' || isLocalHost(host);
+};
+
+/** Throws unless seeding is clearly targeting a local development database. */
+export function assertDevSeedAllowed(env: NodeJS.ProcessEnv): { databaseUrl: string; password: string } {
+  if (env.NODE_ENV === 'production') {
+    throw new Error('Refusing to seed development users: NODE_ENV is production.');
+  }
+  // Cloud Run sets K_SERVICE (services) and CLOUD_RUN_JOB (jobs); images such as `migrate` do not set NODE_ENV.
+  if (env.K_SERVICE || env.CLOUD_RUN_JOB) {
+    throw new Error('Refusing to seed development users inside Cloud Run; use the cloud demo seed job instead.');
+  }
+  const databaseUrl = env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error('DATABASE_URL is not set.');
+  }
   // An empty hostname means a Unix socket or PGHOST; a ?host= parameter overrides the hostname.
-  const effectiveHost = url.searchParams.get('host') || url.hostname || env.PGHOST || '';
+  const effectiveHost = effectiveDatabaseHost(databaseUrl, env);
   if (effectiveHost !== '' && !isLocalHost(effectiveHost)) {
     throw new Error(`Refusing to seed development users: database host "${effectiveHost}" is not local.`);
   }

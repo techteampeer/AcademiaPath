@@ -1,0 +1,119 @@
+name: Seed demo data (manual)
+
+# Runs the one-off Cloud Run job `academiapath-seed-demo`, which seeds the synthetic demo accounts and demo
+# courses into the demo database. MANUAL ONLY: it never runs on push and is not part of the deployment
+# (`deploy.yml` is unchanged). Modes:
+#   check              read-only readiness check (default)
+#   create             creates what is missing; re-running creates nothing new
+#   reset-credentials  replaces the passwords of the five demo role accounts only
+#
+# Credentials never pass through GitHub: the job reads the Secret Manager secret
+# `academiapath-demo-credentials` (see infra/demo-credentials.sh) and never prints it. The job uses the
+# `migrate` image of the release that is running and the existing `academiapath-runtime` identity.
+# See infra/README.md, "Demo users and courses (seed job)".
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "check (read-only), create, or reset-credentials"
+        type: choice
+        options: [check, create, reset-credentials]
+        default: check
+      confirm:
+        description: "Type academiapath-demo to run create or reset-credentials"
+        type: string
+        default: ""
+      confirm_reset:
+        description: "Type reset-demo-credentials to replace the five demo passwords"
+        type: string
+        default: ""
+
+# Never at the same time as a deployment.
+concurrency:
+  group: deploy-demo
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: elearning-514315
+  PROJECT_NUMBER: "871079669510"
+  REGION: us-central1
+  REPOSITORY: academiapath
+  API_SERVICE: academiapath-api
+  WEB_SERVICE: academiapath-web
+  SEED_JOB: academiapath-seed-demo
+  SQL_INSTANCE: elearning-514315:us-central1:academiapath-db
+  DOCUMENTS_BUCKET: elearning-514315-academiapath-files
+  RUNTIME_SA: academiapath-runtime@elearning-514315.iam.gserviceaccount.com
+  CREDENTIALS_SECRET: academiapath-demo-credentials
+
+jobs:
+  seed:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check the confirmation
+        env:
+          MODE: ${{ inputs.mode }}
+          CONFIRM: ${{ inputs.confirm }}
+          CONFIRM_RESET: ${{ inputs.confirm_reset }}
+        run: |
+          case "$MODE" in
+            check) ;;
+            create)
+              [ "$CONFIRM" = "academiapath-demo" ] || { echo "To run create, type academiapath-demo in 'confirm'."; exit 1; } ;;
+            reset-credentials)
+              [ "$CONFIRM" = "academiapath-demo" ] && [ "$CONFIRM_RESET" = "reset-demo-credentials" ] \
+                || { echo "To reset credentials, type academiapath-demo in 'confirm' and reset-demo-credentials in 'confirm_reset'."; exit 1; } ;;
+            *) echo "Unknown mode."; exit 1 ;;
+          esac
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Use the image of the release that is running
+        run: |
+          DEPLOYED="$(gcloud run services describe "$API_SERVICE" --region="$REGION" --format='value(spec.template.spec.containers[0].image)')"
+          TAG="${DEPLOYED##*:}"
+          if [ "$TAG" != "${GITHUB_SHA::12}" ]; then
+            echo "The API runs image ${TAG}, but main is ${GITHUB_SHA::12}. Seed only after the deployment of main has succeeded."
+            exit 1
+          fi
+          {
+            echo "SEED_IMAGE=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/migrate:${TAG}"
+            echo "WEB_URL=https://${WEB_SERVICE}-${PROJECT_NUMBER}.${REGION}.run.app"
+          } >> "$GITHUB_ENV"
+
+      - name: Create or update the seed job (does not run it)
+        run: |
+          gcloud run jobs deploy "$SEED_JOB" \
+            --image="$SEED_IMAGE" \
+            --region="$REGION" \
+            --service-account="$RUNTIME_SA" \
+            --set-cloudsql-instances="$SQL_INSTANCE" \
+            --set-secrets="DATABASE_URL=academiapath-db-url:latest,DEMO_ACCOUNT_CREDENTIALS=${CREDENTIALS_SECRET}:latest" \
+            --set-env-vars="NODE_ENV=production,LOG_LEVEL=warn,APP_ORIGINS=${WEB_URL},DOCUMENT_STORAGE_DIR=/mnt/documents,DOCUMENT_MAX_UPLOAD_MB=10,DEMO_SEED_TARGET=cloud-demo,DEMO_SEED_MODE=check" \
+            --command=pnpm \
+            --args=run,db:seed:cloud-demo \
+            --execution-environment=gen2 \
+            --clear-volume-mounts --clear-volumes \
+            --add-volume=name=documents,type=cloud-storage,bucket="$DOCUMENTS_BUCKET" \
+            --add-volume-mount=volume=documents,mount-path=/mnt/documents \
+            --tasks=1 --parallelism=1 --max-retries=0 --task-timeout=15m \
+            --cpu=1 --memory=1Gi \
+            --labels=app=academiapath
+
+      - name: Run the seed job
+        env:
+          MODE: ${{ inputs.mode }}
+          CONFIRM: ${{ inputs.confirm }}
+          CONFIRM_RESET: ${{ inputs.confirm_reset }}
+        run: |
+          gcloud run jobs execute "$SEED_JOB" --region="$REGION" --wait \
+            --update-env-vars="DEMO_SEED_MODE=${MODE},DEMO_SEED_CONFIRM=${CONFIRM},DEMO_SEED_CONFIRM_RESET=${CONFIRM_RESET}"
+          echo "Seed job finished (mode ${MODE}). Its output is in Cloud Logging under the Cloud Run job ${SEED_JOB}; it contains no passwords."
