@@ -179,6 +179,10 @@ describe('quizzes and server-side grading (PostgreSQL)', { skip: testServerUrl ?
       timeLimitMinutes: null,
       shuffleQuestions: true,
       shuffleOptions: true,
+      // AP-022 policies default to the earlier behaviour: no threshold, no feedback, every question.
+      passingScorePercent: null,
+      showFeedback: false,
+      questionsPerAttempt: null,
       questionCount: 0,
       totalPoints: 0,
     });

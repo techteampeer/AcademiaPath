@@ -1195,6 +1195,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{id}/activities/{activityId}/questions/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reuse the approved questions of another quiz (question pool)
+         * @description Requires `content.edit` (instructor, design team) or the administrator role. Copies the approved
+         *     questions of another quiz of the same course into this quiz's question bank as new questions (another
+         *     course's quiz is not found; a quiz without an approved version is `422 QUIZ_SOURCE_INVALID`). Like any
+         *     question change it is blocked while the quiz is in review and turns an approved quiz into a draft
+         *     revision: the copies reach students only after this quiz is approved again. Audited as
+         *     `quiz.questions_imported` (question ids only, never answer keys).
+         */
+        post: operations["importQuizQuestions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{id}/activities/{activityId}/questions/{questionId}": {
         parameters: {
             query?: never;
@@ -1276,6 +1301,30 @@ export interface paths {
          * @description An attempt past its deadline is submitted automatically with the answers saved in time.
          */
         get: operations["getMyQuizAttempt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/attempts/{attemptId}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review the correctness of one's own released attempt
+         * @description Students only, for their own submitted attempt. Available only when the quiz version the attempt was
+         *     started from allows feedback, the student's grade for the quiz has been released, and the attempt was
+         *     submitted before that release; otherwise `403 FEEDBACK_NOT_AVAILABLE`. Shows the student's selections,
+         *     whether each question was correct and the points awarded; the answer key is never included. An
+         *     expired attempt is finalized first.
+         */
+        get: operations["getQuizAttemptFeedback"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1482,8 +1531,9 @@ export interface paths {
          *     design-team roles). In one transaction, copies each graded student's current grade (points,
          *     feedback and rubric scores; for quizzes the best attempt's score) to the released grade the
          *     student can see. Grades given or changed later stay hidden until the next release, and
-         *     releasing again without changes releases nothing. Answer keys are never released. Audited as
-         *     `grades.released`. No request body.
+         *     releasing again without changes releases nothing. Answer keys are never released. For quizzes,
+         *     attempts whose time limit has passed are finalized and graded first, so the release includes them.
+         *     Audited as `grades.released`. No request body.
          */
         post: operations["releaseGrades"];
         delete?: never;
@@ -1828,7 +1878,7 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE" | "QUIZ_POOL_TOO_SMALL" | "QUIZ_POOL_POINTS_MIXED" | "QUIZ_SOURCE_INVALID" | "FEEDBACK_NOT_AVAILABLE";
         };
         /**
          * @description What a link points to. Every kind is only a link opened in a new tab; nothing is embedded, fetched or executed.
@@ -2241,6 +2291,12 @@ export interface components {
             timeLimitMinutes: number | null;
             shuffleQuestions: boolean;
             shuffleOptions: boolean;
+            /** @description Minimum percentage to pass; null when the quiz has no passing threshold. */
+            passingScorePercent: number | null;
+            /** @description Students may review per-question correctness after their grade is released (never the answer key). */
+            showFeedback: boolean;
+            /** @description Questions drawn at random from the approved questions for each attempt; null = all. */
+            questionsPerAttempt: number | null;
             questionCount: number;
             totalPoints: number;
         };
@@ -2301,6 +2357,19 @@ export interface components {
              * @default false
              */
             shuffleOptions: boolean;
+            /** @description Minimum percentage to pass. Omit or null for no threshold. */
+            passingScorePercent?: number | null;
+            /**
+             * @description Lets students review per-question correctness (not the answer key) after their grade is released.
+             * @default false
+             */
+            showFeedback: boolean;
+            /**
+             * @description Draw this many questions at random from the approved questions for each attempt. The quiz must then
+             *     have at least that many questions, all worth the same points (`422 QUIZ_POOL_TOO_SMALL`,
+             *     `422 QUIZ_POOL_POINTS_MIXED` on submission for review and approval). Omit or null to use every question.
+             */
+            questionsPerAttempt?: number | null;
         };
         RubricCriterionInput: {
             title: string;
@@ -2579,6 +2648,11 @@ export interface components {
              * @description Server deadline; the server enforces it regardless of the browser clock.
              */
             deadlineAt: string | null;
+            /**
+             * Format: date-time
+             * @description The server's current time, so clients can show the remaining time without trusting their own clock.
+             */
+            serverTime: string;
             /** Format: date-time */
             submittedAt: string | null;
             closedByTimeLimit: boolean;
@@ -2612,16 +2686,56 @@ export interface components {
             /** Format: date-time */
             submittedAt: string | null;
             closedByTimeLimit: boolean;
+            /** @description True when the student may open this attempt's correctness review (see `getQuizAttemptFeedback`). */
+            feedbackAvailable: boolean;
         };
         StudentQuizAttemptSummary: {
             attemptLimit: number;
             attemptsUsed: number;
+            attemptsRemaining: number;
+            questionsPerAttempt: number | null;
+            passingScorePercent: number | null;
+            /** @description Whether the released grade meets the passing threshold; null until released or without a threshold. */
+            passed: boolean | null;
             /** @description True once staff have released this student's grade for the quiz. */
             gradeReleased: boolean;
             timeLimitMinutes: number | null;
             /** Format: uuid */
             activeAttemptId: string | null;
             items: components["schemas"]["QuizAttemptStatusItem"][];
+        };
+        /** @description A student's correctness review of one released attempt. Never contains the answer key. */
+        QuizFeedback: {
+            /** Format: uuid */
+            attemptId: string;
+            attemptNumber: number;
+            /** Format: date-time */
+            submittedAt: string;
+            score: number;
+            maxScore: number;
+            passed: boolean | null;
+            questions: {
+                /** Format: uuid */
+                questionId: string;
+                position: number;
+                type: components["schemas"]["QuizQuestionType"];
+                prompt: string;
+                points: number;
+                options: {
+                    id: string;
+                    text: string;
+                }[];
+                selectedOptionIds: string[];
+                isCorrect: boolean;
+                awardedPoints: number;
+            }[];
+        };
+        QuestionImport: {
+            /**
+             * Format: uuid
+             * @description An approved quiz of the same course whose approved questions are copied.
+             */
+            sourceActivityId: string;
         };
         QuizResultStudent: {
             /** Format: uuid */
@@ -2645,6 +2759,9 @@ export interface components {
             /** @description Server-computed; null while in progress. */
             score: number | null;
             maxScore: number;
+            /** @description The threshold of the quiz version this attempt was started from. */
+            passingScorePercent: number | null;
+            passed: boolean | null;
             student: components["schemas"]["QuizResultStudent"];
         };
         QuizResultPage: {
@@ -3339,7 +3456,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
-        /** @description `code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks). */
+        /** @description `code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks) or `FEEDBACK_NOT_AVAILABLE` (correctness review not enabled or not yet released). */
         Forbidden: {
             headers: {
                 [name: string]: unknown;
@@ -3479,7 +3596,8 @@ export interface components {
          *     `IMPORT_HAS_ERRORS`, `IMPORT_TOO_LARGE` or `INVALID_SECTION_ORDER`; or a progress rule:
          *     `COMPLETION_AUTOMATIC` (quizzes and assignments complete on submission), `PREREQUISITE_SELF`,
          *     `PREREQUISITE_SECTION_NOT_FOUND` or `PREREQUISITE_CYCLE`; or a learning-resource rule:
-         *     `RESOURCE_FOLDER_NOT_FOUND` or `RESOURCE_NOT_ORGANIZABLE`.
+         *     `RESOURCE_FOLDER_NOT_FOUND` or `RESOURCE_NOT_ORGANIZABLE`; or an assessment rule:
+         *     `QUIZ_POOL_TOO_SMALL`, `QUIZ_POOL_POINTS_MIXED` or `QUIZ_SOURCE_INVALID`.
          */
         UnprocessableContent: {
             headers: {
@@ -5371,6 +5489,39 @@ export interface operations {
             422: components["responses"]["UnprocessableContent"];
         };
     };
+    importQuizQuestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuestionImport"];
+            };
+        };
+        responses: {
+            /** @description The quiz's question bank after the import (staff view). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizQuestionList"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
     updateQuizQuestion: {
         parameters: {
             query?: never;
@@ -5515,6 +5666,33 @@ export interface operations {
                 };
             };
             400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getQuizAttemptFeedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                attemptId: components["parameters"]["AttemptId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The correctness review. */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizFeedback"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

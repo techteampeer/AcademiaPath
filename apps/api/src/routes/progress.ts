@@ -19,6 +19,7 @@ import {
   type LearnerProgress,
   type LearnerSection,
 } from '../progress/model.js';
+import { closeExpiredAttempts } from '../quizzes/attempts.js';
 import { courseActivityParamsSchema, courseSectionParamsSchema } from './activity-schemas.js';
 import { courseIdParamsSchema } from './course-schemas.js';
 import {
@@ -86,6 +87,8 @@ export const progressRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/me/progress', { ...authenticated, schema: { response: { 200: myProgressListSchema } } }, async (request) => {
     const { user } = getAuth(request);
+    // AP-022: an expired quiz attempt counts as completed as soon as anyone looks (request-driven finalization).
+    await db.transaction((tx) => closeExpiredAttempts(tx, request, { userId: user.id }));
     return db.transaction(async (tx) => {
       const rows = await tx
         .select({ courseId: courses.id })
@@ -105,6 +108,7 @@ export const progressRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const access = await courseAccess(request, request.params.id);
       requireStudent(access);
+      await db.transaction((tx) => closeExpiredAttempts(tx, request, { courseId: access.course.id, userId: access.userId }));
       const progress = await db.transaction((tx) => learnerProgress(tx, access.course.id, access.userId), SNAPSHOT);
       return { ...courseSummary(access.course.id, progress), sections: progress.sections.map(sectionSummary) };
     },
@@ -116,6 +120,7 @@ export const progressRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const access = await courseAccess(request, request.params.id);
       requireStudent(access);
+      await db.transaction((tx) => closeExpiredAttempts(tx, request, { courseId: access.course.id, userId: access.userId }));
       const progress = await db.transaction((tx) => learnerProgress(tx, access.course.id, access.userId), SNAPSHOT);
       // Only visible sections of this course are part of a student's progress.
       const section = progress.sections.find((candidate) => candidate.id === request.params.sectionId);
@@ -240,6 +245,7 @@ export const progressRoutes: FastifyPluginAsync = async (app) => {
       const courseId = access.course.id;
       const { limit } = request.query;
       const after = decodeCursor(request.query.cursor, 'string');
+      await db.transaction((tx) => closeExpiredAttempts(tx, request, { courseId }));
       return db.transaction(async (tx) => {
         const [{ total } = { total: 0 }] = await tx
           .select({ total: count() })

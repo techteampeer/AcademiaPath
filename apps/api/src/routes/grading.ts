@@ -20,8 +20,9 @@ import { gradeStatus, releasedGradeColumns, releasedGradeView, staffGradeView, t
 import { courseTotal, GRADE_SCALE_MAX, toScale20 } from '../grading/scale.js';
 import { ApiProblem } from '../http/errors.js';
 import { decodeCursor, paginationQuerySchema, toPage, type PaginationQuery } from '../http/pagination.js';
-import { readSnapshotQuestions } from '../quizzes/model.js';
+import { readSettings, readSnapshotQuestions } from '../quizzes/model.js';
 import { assertSectionOpen, lockedSectionsFor } from '../progress/model.js';
+import { closeExpiredAttempts } from '../quizzes/attempts.js';
 import { courseActivityParamsSchema } from './activity-schemas.js';
 import {
   courseParamsSchema,
@@ -57,7 +58,11 @@ const studentColumns = { id: users.id, email: users.email, givenName: users.give
 /** Points available in the approved version of a quiz or assignment. */
 function approvedMaxPoints(activity: Pick<ActivityRecord, 'type' | 'approvedConfig'>): number {
   if (activity.type === 'assignment') return rubricTotal(readAssignment(activity.approvedConfig).rubric);
-  return readSnapshotQuestions(activity.approvedConfig).reduce((total, question) => total + question.points, 0);
+  const questions = readSnapshotQuestions(activity.approvedConfig);
+  const drawn = readSettings(activity.approvedConfig).questionsPerAttempt;
+  // Pooled quizzes draw N questions of equal points (enforced on approval), so every attempt is worth N × points.
+  if (drawn !== null && drawn < questions.length) return drawn * (questions[0]?.points ?? 0);
+  return questions.reduce((total, question) => total + question.points, 0);
 }
 
 /** A student's own submission: the grade appears only once released (copied at release time). */
@@ -407,6 +412,8 @@ export const gradingRoutes: FastifyPluginAsync = async (app) => {
       const { user } = getAuth(request);
       return db.transaction(async (tx) => {
         const activity = await loadActivity(tx, access, request.params.activityId, GRADABLE, 'Activity');
+        // AP-022: attempts whose time ran out are finalized (and graded) first, so a release includes them.
+        if (activity.type === 'quiz') await closeExpiredAttempts(tx, request, { activityId: activity.id });
         // Locked rows changed by a concurrent release are re-checked, so a grade is released once per revision.
         const pending = await tx
           .select()
@@ -461,6 +468,8 @@ export const gradingRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const access = await courseAccess(request, request.params.id);
       requireView(access);
+      // Expired quiz attempts are finalized (and graded) before the gradebook is read (AP-022).
+      await db.transaction((tx) => closeExpiredAttempts(tx, request, { courseId: access.course.id }));
       const { limit } = request.query;
       const after = decodeCursor(request.query.cursor, 'string');
       const columnRows = await db
@@ -542,6 +551,7 @@ export const gradingRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const access = await courseAccess(request, request.params.id);
       requireRole(access, 'grades.viewOwn', 'Only students have grades in a course.');
+      await db.transaction((tx) => closeExpiredAttempts(tx, request, { courseId: access.course.id, userId: access.userId }));
       const { user } = getAuth(request);
       // Only released columns are read: current (unreleased) grades are never loaded for a student.
       const released = await db

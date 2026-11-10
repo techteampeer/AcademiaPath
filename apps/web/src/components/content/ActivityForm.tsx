@@ -11,7 +11,7 @@ import { safeHttpUrl } from './contentDisplay';
 
 type ActivityType = Activity['type'];
 type Errors = Partial<
-  Record<'title' | 'body' | 'url' | 'description' | 'instructions' | 'attemptLimit' | 'timeLimitMinutes' | 'dueAt' | 'lateUntil' | 'rubric', string>
+  Record<'title' | 'body' | 'url' | 'description' | 'instructions' | 'attemptLimit' | 'timeLimitMinutes' | 'passingScorePercent' | 'questionsPerAttempt' | 'dueAt' | 'lateUntil' | 'rubric', string>
 >;
 
 const LIMITS = {
@@ -81,6 +81,10 @@ export function ActivityForm({
   const [timeLimit, setTimeLimit] = useState(quiz?.timeLimitMinutes ? String(quiz.timeLimitMinutes) : '');
   const [shuffleQuestions, setShuffleQuestions] = useState(quiz?.shuffleQuestions ?? false);
   const [shuffleOptions, setShuffleOptions] = useState(quiz?.shuffleOptions ?? false);
+  // AP-022 assessment policies (empty = the earlier behaviour).
+  const [passingScore, setPassingScore] = useState(quiz?.passingScorePercent ? String(quiz.passingScorePercent) : '');
+  const [showFeedback, setShowFeedback] = useState(quiz?.showFeedback ?? false);
+  const [questionsPerAttempt, setQuestionsPerAttempt] = useState(quiz?.questionsPerAttempt ? String(quiz.questionsPerAttempt) : '');
   const [errors, setErrors] = useState<Errors>({});
 
   const validate = (): Errors => {
@@ -108,6 +112,8 @@ export function ActivityForm({
       if (timeLimit.trim() && wholeNumberIn(timeLimit, 1, LIMITS.timeLimitMinutes) === null) {
         next.timeLimitMinutes = f.timeLimitRange(LIMITS.timeLimitMinutes);
       }
+      if (passingScore.trim() && wholeNumberIn(passingScore, 1, 100) === null) next.passingScorePercent = t.assessment.passingRange;
+      if (questionsPerAttempt.trim() && wholeNumberIn(questionsPerAttempt, 1, 100) === null) next.questionsPerAttempt = t.assessment.poolRange;
     } else {
       if (!url.trim()) next.url = f.enterUrl;
       // Convenience check only: the API enforces https on a domain name for new and edited links.
@@ -147,6 +153,9 @@ export function ActivityForm({
               timeLimitMinutes: timeLimit.trim() ? Number(timeLimit) : null,
               shuffleQuestions,
               shuffleOptions,
+              passingScorePercent: passingScore.trim() ? Number(passingScore) : null,
+              showFeedback,
+              questionsPerAttempt: questionsPerAttempt.trim() ? Number(questionsPerAttempt) : null,
             }
           : { type: 'link', title: title.trim(), url: url.trim(), kind, ...(description.trim() ? { description: description.trim() } : {}) };
     // A folder is chosen only when creating a lesson or link (the update endpoint takes content only).
@@ -166,6 +175,9 @@ export function ActivityForm({
       setTimeLimit('');
       setShuffleQuestions(false);
       setShuffleOptions(false);
+      setPassingScore('');
+      setShowFeedback(false);
+      setQuestionsPerAttempt('');
     }
   };
 
@@ -303,6 +315,30 @@ export function ActivityForm({
               {f.shuffleOptions}
             </label>
           </fieldset>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <TextField
+              id={`${idPrefix}-passing`}
+              label={t.assessment.passingLabel}
+              inputMode="numeric"
+              value={passingScore}
+              onChange={(e) => setPassingScore(e.target.value)}
+              error={errors.passingScorePercent}
+              hint={t.assessment.passingHint}
+            />
+            <TextField
+              id={`${idPrefix}-pool`}
+              label={t.assessment.poolLabel}
+              inputMode="numeric"
+              value={questionsPerAttempt}
+              onChange={(e) => setQuestionsPerAttempt(e.target.value)}
+              error={errors.questionsPerAttempt}
+              hint={t.assessment.poolHint}
+            />
+          </div>
+          <label className="flex items-start gap-2 text-sm text-slate-700">
+            <input type="checkbox" className="mt-0.5" checked={showFeedback} onChange={(e) => setShowFeedback(e.target.checked)} />
+            {t.assessment.feedbackLabel}
+          </label>
           {initial ? null : <p className="text-xs text-slate-500">{f.questionsLater}</p>}
         </>
       ) : (

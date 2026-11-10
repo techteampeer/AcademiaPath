@@ -19,7 +19,7 @@ import {
   type ContentType,
 } from './activity-schemas.js';
 import { pageSchema } from './course-schemas.js';
-import { readSettings, readSnapshotQuestions, settingsFromInput, type QuizSettingsInput, type QuizSnapshot } from '../quizzes/model.js';
+import { readSettings, readSnapshotQuestions, settingsFromInput, validatePool, type QuizSettingsInput, type QuizSnapshot } from '../quizzes/model.js';
 import { assignmentFromInput, readAssignment, rubricTotal, type AssignmentInput } from '../assignments/model.js';
 import { presentDocumentContent } from '../documents/model.js';
 import { assertSectionOpen } from '../progress/model.js';
@@ -356,6 +356,10 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
         if (current.type === 'quiz' && !(await workingQuizStats(tx, [current])).get(current.id)?.questionCount) {
           throw new ApiProblem(422, 'QUIZ_HAS_NO_QUESTIONS', 'Add at least one question before submitting the quiz for review.');
         }
+        if (current.type === 'quiz') {
+          // AP-022: a question pool must hold enough questions, all worth the same points.
+          validatePool(readSettings(current.config), await tx.select({ points: quizQuestions.points }).from(quizQuestions).where(eq(quizQuestions.activityId, current.id)));
+        }
         const [row] = await tx
           .update(activities)
           .set({ reviewStatus: 'submitted', submittedAt: sql`now()`, submittedByUserId: user.id })
@@ -408,6 +412,7 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
           if (!questions.length) {
             throw new ApiProblem(422, 'QUIZ_HAS_NO_QUESTIONS', 'A quiz without questions cannot be approved.');
           }
+          validatePool(readSettings(current.config), questions);
           const snapshot: QuizSnapshot = {
             ...readSettings(current.config),
             questions: questions.map(({ id, type, prompt, options, correctAnswer, points }) => ({ id, type, prompt, options, correctAnswer, points })),

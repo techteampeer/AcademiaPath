@@ -5,13 +5,14 @@ import { canInCourse, getCourseAccess, hasCoursePermission, type CourseAccess, t
 import { getAuth } from '../auth/hooks.js';
 import type { Database } from '../db/client.js';
 import { getPgError } from '../db/errors.js';
-import { activities, enrollments, quizAttemptAnswers, quizAttempts, quizQuestions, sections, users } from '../db/schema/index.js';
+import { activities, enrollments, grades, quizAttemptAnswers, quizAttempts, quizQuestions, sections, users } from '../db/schema/index.js';
 import { ApiProblem } from '../http/errors.js';
 import { decodeCursor, paginationQuerySchema, toPage, type PaginationQuery } from '../http/pagination.js';
-import { isGradeReleased, syncQuizGrade } from '../grading/grades.js';
+import { isGradeReleased, releasedGradeColumns } from '../grading/grades.js';
+import { closeExpiredAttempts, expiredSql, finalizeAttempt, notInProgress } from '../quizzes/attempts.js';
 import { assertSectionOpen } from '../progress/model.js';
-import { gradeResponse, normalizeResponse } from '../quizzes/grading.js';
-import { buildQuestion, DEADLINE_GRACE_SECONDS, QUIZ_LIMITS, readSettings, readSnapshotQuestions, shuffle, type QuestionInput } from '../quizzes/model.js';
+import { normalizeResponse } from '../quizzes/grading.js';
+import { buildQuestion, passed, QUIZ_LIMITS, readSettings, readSnapshotQuestions, selectQuestions, shuffle, type QuestionInput } from '../quizzes/model.js';
 import {
   answersSaveSchema,
   attemptParamsSchema,
@@ -19,6 +20,8 @@ import {
   questionInputSchema,
   questionParamsSchema,
   quizAttemptResultSchema,
+  quizFeedbackSchema,
+  questionImportSchema,
   quizParamsSchema,
   quizQuestionListSchema,
   quizQuestionSchema,
@@ -41,10 +44,7 @@ type AttemptRecord = typeof quizAttempts.$inferSelect;
 
 const notFound = (what: string) => new ApiProblem(404, 'NOT_FOUND', `${what} not found.`);
 const forbidden = (detail = 'You do not have permission to perform this action.') => new ApiProblem(403, 'FORBIDDEN', detail);
-const notInProgress = () => new ApiProblem(409, 'ATTEMPT_NOT_IN_PROGRESS', 'This attempt has already been submitted and can no longer change.');
 
-/** Server-clock deadline check (with a short grace period); browser time is never used. */
-const expiredSql = sql<boolean>`(${quizAttempts.deadlineAt} IS NOT NULL AND now() > ${quizAttempts.deadlineAt} + make_interval(secs => ${DEADLINE_GRACE_SECONDS}))`;
 
 /** Staff view of a question, including its answer key. */
 /**
@@ -237,51 +237,82 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
+  /**
+   * Reusable question pools (AP-022): copies the approved questions of another quiz in the same course into
+   * this quiz's working bank. The copies are new draft questions, so they reach students only after this
+   * quiz is reviewed and approved again; answer keys are copied server-side and never returned to clients
+   * other than course staff.
+   */
+  app.post<{ Params: QuizParams; Body: { sourceActivityId: string } }>(
+    '/courses/:id/activities/:activityId/questions/import',
+    { ...authenticatedWrite, schema: { params: quizParamsSchema, body: questionImportSchema, response: { 200: quizQuestionListSchema } } },
+    async (request) => {
+      const access = await courseAccess(request, request.params.id);
+      requirePermission(access, 'content.edit');
+      if (request.body.sourceActivityId === request.params.activityId) {
+        throw new ApiProblem(422, 'QUIZ_SOURCE_INVALID', 'Choose a different quiz as the source of questions.');
+      }
+      const items = await db.transaction(async (tx) => {
+        const quiz = await beginQuestionChange(tx, access, request.params.activityId);
+        // Same course only (loadQuiz filters by this course: another course's quiz is not found).
+        const source = await loadQuiz(tx, access, request.body.sourceActivityId);
+        const approved = readSnapshotQuestions(source.approvedConfig);
+        if (!source.approvedConfig || !approved.length) {
+          throw new ApiProblem(422, 'QUIZ_SOURCE_INVALID', 'Only approved quizzes with questions can be used as a question pool.');
+        }
+        const [{ total, last } = { total: 0, last: null }] = await tx
+          .select({ total: count(), last: max(quizQuestions.position) })
+          .from(quizQuestions)
+          .where(eq(quizQuestions.activityId, quiz.id));
+        if (total + approved.length > QUIZ_LIMITS.questions) {
+          throw new ApiProblem(409, 'QUIZ_QUESTION_LIMIT', `A quiz can have at most ${QUIZ_LIMITS.questions} questions.`);
+        }
+        const inserted = await tx
+          .insert(quizQuestions)
+          .values(
+            approved.map((question, index) => ({
+              activityId: quiz.id,
+              position: (last ?? -1) + 1 + index,
+              type: question.type,
+              prompt: question.prompt,
+              options: question.options,
+              correctAnswer: question.correctAnswer,
+              points: question.points,
+            })),
+          )
+          .returning();
+        await recordAudit(tx, request, {
+          action: 'quiz.questions_imported',
+          entityType: 'activity',
+          entityId: quiz.id,
+          before: null,
+          after: { sourceActivityId: source.id, sourceQuestionIds: approved.map((question) => question.id), questionIds: inserted.map((row) => row.id) },
+        });
+        return tx.select().from(quizQuestions).where(eq(quizQuestions.activityId, quiz.id)).orderBy(asc(quizQuestions.position), asc(quizQuestions.id));
+      });
+      return { items: items.map(toStaffQuestion) };
+    },
+  );
+
   // ---- Attempts (students) ----
 
-  /** Grades every answer on the server and closes the attempt. Browser-supplied scores never exist. */
-  async function finalizeAttempt(tx: Executor, request: FastifyRequest, attempt: AttemptRecord, closedByTimeLimit: boolean) {
-    const answers = await tx.select().from(quizAttemptAnswers).where(eq(quizAttemptAnswers.attemptId, attempt.id));
-    let score = 0;
-    for (const answer of answers) {
-      const { isCorrect, awardedPoints } = gradeResponse(answer, answer.response);
-      score += awardedPoints;
-      await tx.update(quizAttemptAnswers).set({ isCorrect, awardedPoints }).where(eq(quizAttemptAnswers.id, answer.id));
-    }
-    const [row] = await tx
-      .update(quizAttempts)
-      .set({ status: 'submitted', submittedAt: sql`now()`, gradedAt: sql`now()`, score, closedByTimeLimit })
-      .where(and(eq(quizAttempts.id, attempt.id), eq(quizAttempts.status, 'in_progress')))
-      .returning();
-    if (!row) throw notInProgress();
-    const answered = answers.filter((answer) => (answer.response?.optionIds.length ?? 0) > 0).length;
-    await recordAudit(tx, request, {
-      action: 'quiz.attempt_submitted',
-      entityType: 'quiz_attempt',
-      entityId: row.id,
-      before: { status: 'in_progress' },
-      after: { status: row.status, closedByTimeLimit, answeredQuestions: answered, totalQuestions: answers.length },
-    });
-    await recordAudit(tx, request, {
-      action: 'quiz.attempt_graded',
-      entityType: 'quiz_attempt',
-      entityId: row.id,
-      before: null,
-      after: { activityId: row.activityId, userId: row.userId, score: row.score, maxScore: row.maxScore, gradedBy: 'server' },
-    });
-    // The gradebook keeps one quiz grade per student: the best submitted attempt (never double-counted).
-    await syncQuizGrade(tx, request, row);
-    return row;
+  /** The student's released grade (points as released), or null while nothing is released. */
+  async function releasedGrade(executor: Executor, activityId: string, userId: string) {
+    const [row] = await executor
+      .select(releasedGradeColumns)
+      .from(grades)
+      .where(and(eq(grades.activityId, activityId), eq(grades.userId, userId)));
+    if (!row || row.releasedRevision === null || row.releasedPoints === null || row.releasedMaxPoints === null || !row.releasedAt) return null;
+    return { points: row.releasedPoints, maxPoints: row.releasedMaxPoints, releasedAt: row.releasedAt };
   }
 
-  /** Closes the caller's expired in-progress attempts of a quiz (grading only answers saved in time). */
-  async function closeExpiredAttempts(tx: Executor, request: FastifyRequest, activityId: string, userId?: string) {
-    const expired = await tx
-      .select()
-      .from(quizAttempts)
-      .where(and(eq(quizAttempts.activityId, activityId), eq(quizAttempts.status, 'in_progress'), userId ? eq(quizAttempts.userId, userId) : undefined, expiredSql))
-      .for('update');
-    for (const attempt of expired) await finalizeAttempt(tx, request, attempt, true);
+  /**
+   * Correctness review (AP-022) is available only when the quiz version the attempt used allowed it, the
+   * attempt is submitted, the student's grade has been released, and the attempt was submitted before
+   * that release (an attempt made after a release stays hidden until the next one).
+   */
+  function feedbackAvailable(attempt: AttemptRecord, released: { releasedAt: Date } | null) {
+    return attempt.feedbackEnabled && attempt.status === 'submitted' && released !== null && attempt.submittedAt !== null && attempt.submittedAt <= released.releasedAt;
   }
 
   /** The student's view of an attempt: questions as presented and their own selections; never keys or scores. */
@@ -303,6 +334,8 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
       closedByTimeLimit: attempt.closedByTimeLimit,
       // Release only reveals the released grade (via /grades/mine); per-attempt scores and keys stay hidden.
       resultsReleased: await isGradeReleased(executor, attempt.activityId, attempt.userId),
+      // The server's clock, so the countdown never depends on (or can be extended by) the browser clock.
+      serverTime: new Date(),
       questions: answers.map((answer) => ({
         questionId: answer.questionId,
         position: answer.position,
@@ -356,7 +389,7 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
             .for('update');
           if (!enrollment) throw notFound('Quiz');
 
-          await closeExpiredAttempts(tx, request, quiz.id, user.id);
+          await closeExpiredAttempts(tx, request, { activityId: quiz.id, userId: user.id });
           const [active] = await tx
             .select()
             .from(quizAttempts)
@@ -374,7 +407,9 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
             throw new ApiProblem(409, 'ATTEMPT_LIMIT_REACHED', `You have used all ${settings.attemptLimit} attempt(s) for this quiz.`);
           }
 
-          const ordered = settings.shuffleQuestions ? shuffle(questions) : questions;
+          // The server alone chooses the questions (a random subset when a pool size is set) and their order;
+          // the selection is stored with the attempt and can never change afterwards (migration 0021).
+          const ordered = selectQuestions(settings, questions);
           const [attempt] = await tx
             .insert(quizAttempts)
             .values({
@@ -386,7 +421,9 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
               attemptLimit: settings.attemptLimit,
               quizVersionApprovedAt: quiz.approvedAt,
               deadlineAt: settings.timeLimitMinutes ? sql`now() + make_interval(mins => ${settings.timeLimitMinutes})` : null,
-              maxScore: questions.reduce((total, question) => total + question.points, 0),
+              maxScore: ordered.reduce((total, question) => total + question.points, 0),
+              passingScorePercent: settings.passingScorePercent,
+              feedbackEnabled: settings.showFeedback,
             })
             .returning();
           if (!attempt) throw new Error('Attempt was not created');
@@ -408,7 +445,14 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
             entityType: 'quiz_attempt',
             entityId: attempt.id,
             before: null,
-            after: { activityId: quiz.id, attemptNumber: attempt.attemptNumber, attemptLimit: attempt.attemptLimit, deadlineAt: attempt.deadlineAt },
+            after: {
+              activityId: quiz.id,
+              attemptNumber: attempt.attemptNumber,
+              attemptLimit: attempt.attemptLimit,
+              deadlineAt: attempt.deadlineAt,
+              questionIds: ordered.map((question) => question.id),
+              maxScore: attempt.maxScore,
+            },
           });
           return { attempt, created: true };
         })
@@ -435,19 +479,25 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
       const { user } = getAuth(request);
       return db.transaction(async (tx) => {
         const quiz = await loadQuiz(tx, access, request.params.activityId);
-        await closeExpiredAttempts(tx, request, quiz.id, user.id);
+        await closeExpiredAttempts(tx, request, { activityId: quiz.id, userId: user.id });
         const attempts = await tx
           .select()
           .from(quizAttempts)
           .where(and(eq(quizAttempts.activityId, quiz.id), eq(quizAttempts.userId, user.id)))
           .orderBy(asc(quizAttempts.attemptNumber));
         const settings = readSettings(quiz.approvedConfig);
+        const released = await releasedGrade(tx, quiz.id, user.id);
         return {
           attemptLimit: settings.attemptLimit,
           attemptsUsed: attempts.length,
+          attemptsRemaining: Math.max(0, settings.attemptLimit - attempts.length),
           timeLimitMinutes: settings.timeLimitMinutes,
+          questionsPerAttempt: settings.questionsPerAttempt,
+          passingScorePercent: settings.passingScorePercent,
           activeAttemptId: attempts.find((attempt) => attempt.status === 'in_progress')?.id ?? null,
-          gradeReleased: await isGradeReleased(tx, quiz.id, user.id),
+          gradeReleased: released !== null,
+          // Passing status only from the released grade (never from unreleased scores).
+          passed: released ? passed(released.points, released.maxPoints, settings.passingScorePercent) : null,
           items: attempts.map((attempt) => ({
             id: attempt.id,
             attemptNumber: attempt.attemptNumber,
@@ -456,6 +506,7 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
             deadlineAt: attempt.deadlineAt,
             submittedAt: attempt.submittedAt,
             closedByTimeLimit: attempt.closedByTimeLimit,
+            feedbackAvailable: feedbackAvailable(attempt, released),
           })),
         };
       });
@@ -473,6 +524,47 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
         let { attempt, expired } = await lockOwnAttempt(tx, access, user.id, request.params.attemptId);
         if (attempt.status === 'in_progress' && expired) attempt = await finalizeAttempt(tx, request, attempt, true);
         return studentAttemptView(tx, attempt);
+      });
+    },
+  );
+
+  app.get<{ Params: AttemptParams }>(
+    '/courses/:id/attempts/:attemptId/feedback',
+    { ...authenticated, schema: { params: attemptParamsSchema, response: { 200: quizFeedbackSchema } } },
+    async (request) => {
+      const access = await courseAccess(request, request.params.id);
+      requireStudent(access, 'Only students can review their own attempts.');
+      const { user } = getAuth(request);
+      return db.transaction(async (tx) => {
+        let { attempt, expired } = await lockOwnAttempt(tx, access, user.id, request.params.attemptId);
+        if (attempt.status === 'in_progress' && expired) attempt = await finalizeAttempt(tx, request, attempt, true);
+        // The quiz itself must still be open to the student (visible, approved, not prerequisite-locked).
+        await loadQuiz(tx, access, attempt.activityId);
+        const released = await releasedGrade(tx, attempt.activityId, user.id);
+        if (!feedbackAvailable(attempt, released) || attempt.score === null || !attempt.submittedAt) {
+          throw new ApiProblem(403, 'FEEDBACK_NOT_AVAILABLE', 'Feedback for this attempt is not available (it appears only when enabled and after your grade is released).');
+        }
+        const answers = await tx.select().from(quizAttemptAnswers).where(eq(quizAttemptAnswers.attemptId, attempt.id)).orderBy(asc(quizAttemptAnswers.position));
+        return {
+          attemptId: attempt.id,
+          attemptNumber: attempt.attemptNumber,
+          submittedAt: attempt.submittedAt,
+          score: attempt.score,
+          maxScore: attempt.maxScore,
+          passed: passed(attempt.score, attempt.maxScore, attempt.passingScorePercent),
+          // Correctness and points only: the answer key (correct options) is never part of feedback.
+          questions: answers.map((answer) => ({
+            questionId: answer.questionId,
+            position: answer.position,
+            type: answer.type,
+            prompt: answer.prompt,
+            points: answer.points,
+            options: answer.options.map(({ id, text }) => ({ id, text })),
+            selectedOptionIds: answer.response?.optionIds ?? [],
+            isCorrect: answer.isCorrect === true,
+            awardedPoints: answer.awardedPoints ?? 0,
+          })),
+        };
       });
     },
   );
@@ -532,6 +624,8 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
     closedByTimeLimit: attempt.closedByTimeLimit,
     score: attempt.score,
     maxScore: attempt.maxScore,
+    passingScorePercent: attempt.passingScorePercent,
+    passed: attempt.score === null ? null : passed(attempt.score, attempt.maxScore, attempt.passingScorePercent),
     student,
   });
 
@@ -546,7 +640,7 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
       const sortKey = sql<string>`lower(${users.email}) || '|' || lpad(${quizAttempts.attemptNumber}::text, 4, '0')`;
       return db.transaction(async (tx) => {
         const quiz = await loadQuiz(tx, access, request.params.activityId);
-        await closeExpiredAttempts(tx, request, quiz.id);
+        await closeExpiredAttempts(tx, request, { activityId: quiz.id });
         const rows = await tx
           .select({ attempt: quizAttempts, student: studentColumns, sortKey })
           .from(quizAttempts)
@@ -573,7 +667,7 @@ export const quizRoutes: FastifyPluginAsync = async (app) => {
       requirePermission(access, 'quiz.viewResults', 'You cannot view quiz results in this course.');
       return db.transaction(async (tx) => {
       const quiz = await loadQuiz(tx, access, request.params.activityId);
-      await closeExpiredAttempts(tx, request, quiz.id);
+      await closeExpiredAttempts(tx, request, { activityId: quiz.id });
       const [row] = await tx
         .select({ attempt: quizAttempts, student: studentColumns })
         .from(quizAttempts)
