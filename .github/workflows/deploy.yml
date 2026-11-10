@@ -1,0 +1,118 @@
+name: Deploy to Cloud Run (demo)
+
+# Builds the API, migration and web images, runs the database migrations, then deploys the API and the
+# web app to Cloud Run in project elearning-514315. Everything carries the "academiapath" prefix and the
+# label app=academiapath, so it stays separate from the ITIL resources in the same project.
+#
+# Required GitHub secret: GCP_SA_KEY (JSON key of academiapath-deployer@elearning-514315.iam.gserviceaccount.com).
+# Required in Secret Manager: academiapath-db-url (DATABASE_URL through the Cloud SQL socket).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-demo
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: elearning-514315
+  PROJECT_NUMBER: "871079669510"
+  REGION: us-central1
+  REPOSITORY: academiapath
+  API_SERVICE: academiapath-api
+  WEB_SERVICE: academiapath-web
+  MIGRATE_JOB: academiapath-migrate
+  SQL_INSTANCE: elearning-514315:us-central1:academiapath-db
+  DOCUMENTS_BUCKET: elearning-514315-academiapath-files
+  RUNTIME_SA: academiapath-runtime@elearning-514315.iam.gserviceaccount.com
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Image names and service URLs
+        run: |
+          REGISTRY="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}"
+          TAG="${GITHUB_SHA::12}"
+          {
+            echo "API_IMAGE=${REGISTRY}/api:${TAG}"
+            echo "MIGRATE_IMAGE=${REGISTRY}/migrate:${TAG}"
+            echo "WEB_IMAGE=${REGISTRY}/web:${TAG}"
+            # Cloud Run URLs are deterministic: https://SERVICE-PROJECT_NUMBER.REGION.run.app
+            echo "API_URL=https://${API_SERVICE}-${PROJECT_NUMBER}.${REGION}.run.app"
+            echo "WEB_URL=https://${WEB_SERVICE}-${PROJECT_NUMBER}.${REGION}.run.app"
+          } >> "$GITHUB_ENV"
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: Build and push images
+        run: |
+          docker build --target api -t "$API_IMAGE" .
+          docker build --target migrate -t "$MIGRATE_IMAGE" .
+          docker build --target web --build-arg API_ORIGIN="$API_URL" -t "$WEB_IMAGE" .
+          docker push "$API_IMAGE"
+          docker push "$MIGRATE_IMAGE"
+          docker push "$WEB_IMAGE"
+
+      - name: Run database migrations
+        run: |
+          gcloud run jobs deploy "$MIGRATE_JOB" \
+            --image="$MIGRATE_IMAGE" \
+            --region="$REGION" \
+            --service-account="$RUNTIME_SA" \
+            --set-cloudsql-instances="$SQL_INSTANCE" \
+            --set-secrets=DATABASE_URL=academiapath-db-url:latest \
+            --max-retries=0 \
+            --task-timeout=10m \
+            --labels=app=academiapath \
+            --execute-now --wait
+
+      - name: Deploy API
+        run: |
+          gcloud run deploy "$API_SERVICE" \
+            --image="$API_IMAGE" \
+            --region="$REGION" \
+            --service-account="$RUNTIME_SA" \
+            --execution-environment=gen2 \
+            --add-cloudsql-instances="$SQL_INSTANCE" \
+            --set-secrets=DATABASE_URL=academiapath-db-url:latest \
+            --set-env-vars="NODE_ENV=production,API_HOST=0.0.0.0,LOG_LEVEL=info,APP_ORIGINS=${WEB_URL},SESSION_TTL_HOURS=8,DOCUMENT_STORAGE_DIR=/mnt/documents,DOCUMENT_MAX_UPLOAD_MB=10" \
+            --clear-volume-mounts --clear-volumes \
+            --add-volume=name=documents,type=cloud-storage,bucket="$DOCUMENTS_BUCKET" \
+            --add-volume-mount=volume=documents,mount-path=/mnt/documents \
+            --min-instances=0 --max-instances=3 \
+            --memory=1Gi \
+            --labels=app=academiapath \
+            --allow-unauthenticated
+
+      - name: Deploy web
+        run: |
+          gcloud run deploy "$WEB_SERVICE" \
+            --image="$WEB_IMAGE" \
+            --region="$REGION" \
+            --service-account="$RUNTIME_SA" \
+            --port=3000 \
+            --set-env-vars="NODE_ENV=production,API_ORIGIN=${API_URL},DOCUMENT_MAX_UPLOAD_MB=10" \
+            --min-instances=0 --max-instances=3 \
+            --memory=1Gi \
+            --labels=app=academiapath \
+            --allow-unauthenticated
+
+      - name: Smoke test
+        run: |
+          curl --fail --silent --show-error "${API_URL}/api/v1/health"
+          curl --fail --silent --show-error --output /dev/null "${WEB_URL}/login"
+          echo "Web: ${WEB_URL}"
