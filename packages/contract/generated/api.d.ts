@@ -175,6 +175,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in student's progress in each of their courses
+         * @description One item per published course in which the caller holds an active student enrollment, in
+         *     course-code order. Each item carries the server-calculated counts, percentage and state, and
+         *     `continueAt`: the first incomplete activity in a section that is open to the student. Staff
+         *     enrollments and draft or archived courses are not listed. Scores and grades are never included.
+         */
+        get: operations["getMyProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users": {
         parameters: {
             query?: never;
@@ -828,6 +851,7 @@ export interface paths {
          * @description Course staff and administrators see the working copy and review status of every item.
          *     Students see only approved, visible content in visible sections of published courses
          *     they are enrolled in (the live version), without review metadata.
+         *     Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
          */
         get: operations["listSectionActivities"];
         put?: never;
@@ -856,6 +880,7 @@ export interface paths {
          * Read one activity
          * @description Staff receive the working copy, review status and live version. Students receive only the
          *     approved live version; anything else responds `404`.
+         *     Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
          */
         get: operations["getActivity"];
         /**
@@ -963,6 +988,7 @@ export interface paths {
          *     the approved document and the approved summary revision of approved, visible documents in
          *     visible sections of published courses they are enrolled in (`liveSummary` is null); never
          *     drafts, pending revisions or review comments. Anything else responds `404`.
+         *     Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
          */
         get: operations["getActivityDocument"];
         put?: never;
@@ -1012,6 +1038,7 @@ export interface paths {
          *     type, `X-Content-Type-Options: nosniff` and a sandboxing Content-Security-Policy. The file's
          *     SHA-256 is verified before it is sent. Original files are never reachable through a public
          *     URL.
+         *     Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
          */
         get: operations["downloadActivityDocument"];
         put?: never;
@@ -1088,6 +1115,7 @@ export interface paths {
          *     (`201`) using the approved quiz version, with question and option order fixed for the
          *     attempt. The attempt limit and time limit are enforced by the server and database. No
          *     request body. Audited as `quiz.attempt_started`.
+         *     Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
          */
         post: operations["startQuizAttempt"];
         delete?: never;
@@ -1103,7 +1131,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The signed-in student's attempts at a quiz (no scores) */
+        /**
+         * The signed-in student's attempts at a quiz (no scores)
+         * @description Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
+         */
         get: operations["getMyQuizAttempts"];
         put?: never;
         post?: never;
@@ -1239,6 +1270,7 @@ export interface paths {
          *     with `SUBMISSION_CLOSED`. One final submission per student (`SUBMISSION_EXISTS`). The approved
          *     rubric is copied into the submission, so later revisions never change how it is graded.
          *     Audited as `assignment.submitted`.
+         *     Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
          */
         post: operations["submitAssignment"];
         delete?: never;
@@ -1258,6 +1290,7 @@ export interface paths {
          * The signed-in student's submission status for an assignment
          * @description Students only. `submission` is null until the student submits. The grade appears only after
          *     release; until then `gradeStatus` is `pending` and no numbers are returned.
+         *     Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
          */
         get: operations["getMyAssignmentSubmission"];
         put?: never;
@@ -1375,10 +1408,159 @@ export interface paths {
          * @description Students only (`grades.viewOwn`). Lists the course's quizzes and assignments. Released items
          *     include points, the 0–20 grade and, for assignments, feedback and rubric scores; everything
          *     else is `pending` without numbers. Answer keys are never included. The total uses released
-         *     grades only.
+         *     grades only. Activities in sections that a prerequisite still locks are omitted unless their
+         *     grade was released.
          */
         get: operations["getMyGrades"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in student's progress in one course
+         * @description Students only (`progress.own`, a role-only check: administrators and staff have no progress of
+         *     their own). Returns the course figures and every visible section with its figures, whether it is
+         *     locked by a prerequisite and which visible sections it requires. Draft courses respond `404` to
+         *     students.
+         */
+        get: operations["getMyCourseProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/sections/{sectionId}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in student's progress in one section
+         * @description Students only (`progress.own`). Lists the section's eligible activities with their completion
+         *     state. `completion` is `manual` for lessons, links and documents (the student marks them) and
+         *     `automatic` for quizzes and assignments (completed by a submitted attempt or a submission). A
+         *     section that is locked by a prerequisite reports its counts only and an empty `activities`
+         *     list. Hidden sections respond `404`.
+         */
+        get: operations["getMySectionProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/activities/{activityId}/completion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Mark a lesson, link or document complete
+         * @description Students only (`progress.own`), for their own progress. Send no request body. The activity must
+         *     be an approved, visible reading activity (`page`, `link` or `file`) in a visible section of this
+         *     course; otherwise `404`. Quizzes and assignments respond `422 COMPLETION_AUTOMATIC`: they are
+         *     completed by submitting them. A section locked by a prerequisite responds `403 SECTION_LOCKED`.
+         *     Idempotent: repeated or concurrent calls keep one record with the first completion time.
+         *     Audited as `activity.completion_marked` (first mark only).
+         */
+        put: operations["markActivityComplete"];
+        post?: never;
+        /**
+         * Mark a lesson, link or document incomplete again
+         * @description Students only (`progress.own`). Same checks as marking. Idempotent. Audited as
+         *     `activity.completion_unmarked` when a mark was removed. Quiz and assignment completion cannot be
+         *     removed (`422 COMPLETION_AUTOMATIC`).
+         */
+        delete: operations["unmarkActivityComplete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/progress/students": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Progress of the course's students (staff, read-only)
+         * @description Requires `progress.viewAll` (instructor, non-editing instructor) or the administrator role.
+         *     The design team, students and program-level roles cannot read it. Rows are active students
+         *     ordered by email and paginated, with completed and total eligible activities. No scores,
+         *     grades, time-spent or engagement figures are included. Nobody can change a student's progress
+         *     through this endpoint.
+         */
+        get: operations["listStudentProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/section-prerequisites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Section prerequisites of a course (staff)
+         * @description Requires `sections.viewHidden` (course staff) or the administrator role. One item per section
+         *     that has requirements, with the required sections in course order. Students see their own
+         *     requirements in `GET /api/v1/courses/{id}/progress`.
+         */
+        get: operations["listSectionPrerequisites"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/sections/{sectionId}/prerequisites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the sections a section requires (administrators)
+         * @description Administrators only. Replaces the section's requirements; an empty list removes them. Every
+         *     required section must belong to the same course (`422 PREREQUISITE_SECTION_NOT_FOUND`), a
+         *     section cannot require itself (`422 PREREQUISITE_SELF`), and requirements that would form a
+         *     cycle are refused (`422 PREREQUISITE_CYCLE`). Changes are serialized per course. Audited as
+         *     `section.prerequisites_updated`.
+         */
+        put: operations["setSectionPrerequisites"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1526,7 +1708,132 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE";
+        };
+        /**
+         * @description `no_activities` when the course or section has no eligible activities (no percentage is shown).
+         * @enum {string}
+         */
+        ProgressState: "no_activities" | "not_started" | "in_progress" | "completed";
+        /** @enum {string} */
+        TrackedActivityType: "page" | "link" | "file" | "quiz" | "assignment";
+        /** @description The first incomplete eligible activity in an open section, in course order; `null` when there is none. */
+        ContinueAt: {
+            /** Format: uuid */
+            sectionId: string;
+            /** Format: uuid */
+            activityId: string;
+            type: components["schemas"]["TrackedActivityType"];
+            title: string;
+        } | null;
+        RequiredSection: {
+            /** Format: uuid */
+            sectionId: string;
+            title: string;
+            completed: boolean;
+        };
+        SectionProgressSummary: {
+            /** Format: uuid */
+            sectionId: string;
+            title: string;
+            position: number;
+            /** @description True while a visible section it requires is incomplete. Locked activities still count in `totalCount`. */
+            locked: boolean;
+            /** @description Visible sections this one requires. Requirements on hidden sections are ignored and never named. */
+            requiredSections: components["schemas"]["RequiredSection"][];
+            completedCount: number;
+            totalCount: number;
+            /** @description floor(completedCount × 100 / totalCount); `null` when `totalCount` is 0. */
+            percent: number | null;
+            state: components["schemas"]["ProgressState"];
+        };
+        CourseProgress: {
+            /** Format: uuid */
+            courseId: string;
+            continueAt: components["schemas"]["ContinueAt"];
+            sections: components["schemas"]["SectionProgressSummary"][];
+            completedCount: number;
+            /** @description Eligible activities (see the API description), including those in locked sections. */
+            totalCount: number;
+            percent: number | null;
+            state: components["schemas"]["ProgressState"];
+        };
+        MyProgressList: {
+            items: {
+                /** Format: uuid */
+                courseId: string;
+                continueAt: components["schemas"]["ContinueAt"];
+                completedCount: number;
+                totalCount: number;
+                percent: number | null;
+                state: components["schemas"]["ProgressState"];
+            }[];
+        };
+        ActivityProgress: {
+            /** Format: uuid */
+            activityId: string;
+            type: components["schemas"]["TrackedActivityType"];
+            title: string;
+            /**
+             * @description `manual`: the student marks it complete. `automatic`: a submitted quiz attempt or assignment submission completes it (passing is not required).
+             * @enum {string}
+             */
+            completion: "manual" | "automatic";
+            completed: boolean;
+            /** Format: date-time */
+            completedAt: string | null;
+        };
+        SectionProgress: {
+            /** Format: uuid */
+            sectionId: string;
+            title: string;
+            position: number;
+            locked: boolean;
+            requiredSections: components["schemas"]["RequiredSection"][];
+            completedCount: number;
+            totalCount: number;
+            percent: number | null;
+            state: components["schemas"]["ProgressState"];
+            /** @description Empty while the section is locked. */
+            activities: components["schemas"]["ActivityProgress"][];
+        };
+        ActivityCompletion: {
+            /** Format: uuid */
+            activityId: string;
+            /** Format: uuid */
+            sectionId: string;
+            completed: boolean;
+            /** Format: date-time */
+            completedAt: string | null;
+        };
+        StudentProgressPage: {
+            /** @description Eligible activities in the course (the same for every student). */
+            totalCount: number;
+            items: {
+                student: {
+                    /** Format: uuid */
+                    id: string;
+                    email: string;
+                    givenName: string;
+                    familyName: string;
+                };
+                completedCount: number;
+                totalCount: number;
+                percent: number | null;
+                state: components["schemas"]["ProgressState"];
+            }[];
+            nextCursor: string | null;
+        };
+        SectionPrerequisites: {
+            /** Format: uuid */
+            sectionId: string;
+            requiredSectionIds: string[];
+        };
+        SectionPrerequisiteList: {
+            items: components["schemas"]["SectionPrerequisites"][];
+        };
+        SectionPrerequisitesUpdate: {
+            requiredSectionIds: string[];
         };
         Code: string;
         /**
@@ -2858,7 +3165,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
-        /** @description `code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint) or `SELF_REVIEW_NOT_ALLOWED`. */
+        /** @description `code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks). */
         Forbidden: {
             headers: {
                 [name: string]: unknown;
@@ -2994,7 +3301,9 @@ export interface components {
          *     `DOCUMENT_ENCRYPTED`, `DOCUMENT_MALFORMED`, `DOCUMENT_LIMITS_EXCEEDED` (decompressed size,
          *     processing time or memory) or `MALWARE_DETECTED`; or an account or enrollment rule:
          *     `COURSE_NOT_FOUND`, `DUPLICATE_COURSE`, `INVITATION_SYNTHETIC_ONLY`, `PASSWORD_TOO_WEAK`,
-         *     `IMPORT_HAS_ERRORS`, `IMPORT_TOO_LARGE` or `INVALID_SECTION_ORDER`.
+         *     `IMPORT_HAS_ERRORS`, `IMPORT_TOO_LARGE` or `INVALID_SECTION_ORDER`; or a progress rule:
+         *     `COMPLETION_AUTOMATIC` (quizzes and assignments complete on submission), `PREREQUISITE_SELF`,
+         *     `PREREQUISITE_SECTION_NOT_FOUND` or `PREREQUISITE_CYCLE`.
          */
         UnprocessableContent: {
             headers: {
@@ -3228,6 +3537,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ManagedProgramList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getMyProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Progress per course. */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyProgressList"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -4314,6 +4645,7 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -4372,6 +4704,7 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -4527,6 +4860,7 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -4586,6 +4920,7 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -5154,6 +5489,202 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getMyCourseProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Course progress. */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseProgress"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getMySectionProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                sectionId: components["parameters"]["SectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Section progress. */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SectionProgress"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    markActivityComplete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The activity is complete. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityCompletion"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    unmarkActivityComplete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                activityId: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The activity is not complete. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityCompletion"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    listStudentProgress: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from the previous page's `nextCursor`. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of student progress rows. */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentProgressPage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listSectionPrerequisites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The course's prerequisites. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SectionPrerequisiteList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setSectionPrerequisites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+                sectionId: components["parameters"]["SectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SectionPrerequisitesUpdate"];
+            };
+        };
+        responses: {
+            /** @description The section's requirements after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SectionPrerequisites"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableContent"];
         };
     };
     askTutor: {

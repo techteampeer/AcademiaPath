@@ -8,7 +8,8 @@ import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { api } from '@/lib/api/endpoints';
-import type { Activity, ActivityCreate } from '@/lib/api/types';
+import type { Activity, ActivityCreate, ActivityProgress } from '@/lib/api/types';
+import { CompletionControl } from '@/components/progress/ProgressDisplay';
 import { ActivityForm } from './ActivityForm';
 import { ReviewStatusBadge, type ContentAbilities } from './contentDisplay';
 
@@ -21,6 +22,7 @@ export function SectionActivities({
   sectionTitle,
   items,
   abilities,
+  completion,
   onChanged,
 }: {
   courseId: string;
@@ -28,6 +30,8 @@ export function SectionActivities({
   sectionTitle: string;
   items: Activity[];
   abilities: ContentAbilities;
+  /** The student's completion state per activity (students only; calculated by the API). */
+  completion?: Record<string, ActivityProgress>;
   onChanged: () => Promise<void>;
 }) {
   const { t } = useLocale();
@@ -50,8 +54,10 @@ export function SectionActivities({
     <div className="mt-3 space-y-3">
       {items.length ? (
         <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200" aria-label={t.content.section.contentIn(sectionTitle)}>
-          {items.map((activity) => (
-            <li key={activity.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+          {items.map((activity) => {
+            const state = completion?.[activity.id];
+            return (
+            <li key={activity.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3" data-completed={state ? String(state.completed) : undefined}>
               <div className="min-w-0">
                 <Link href={lessonHref(courseId, activity.id)} className="font-medium text-brand-700 hover:underline">
                   {activity.title}
@@ -64,8 +70,19 @@ export function SectionActivities({
                   <ReviewStatusBadge status={activity.review.status} />
                 </div>
               ) : null}
+              {state ? (
+                <CompletionControl
+                  courseId={courseId}
+                  activityId={activity.id}
+                  title={activity.title}
+                  completion={state.completion}
+                  completed={state.completed}
+                  onChanged={onChanged}
+                />
+              ) : null}
             </li>
-          ))}
+            );
+          })}
         </ul>
       ) : (
         <p className="text-sm text-slate-500">{t.content.section.empty}</p>

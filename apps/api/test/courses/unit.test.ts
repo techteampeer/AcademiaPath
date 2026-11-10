@@ -15,6 +15,7 @@ import { assignmentFromInput, validateScores } from '../../src/assignments/model
 import { courseTotal, toScale20 } from '../../src/grading/scale.js';
 import { buildQuestion, shuffle } from '../../src/quizzes/model.js';
 import { decodeCursor, encodeCursor, toPage } from '../../src/http/pagination.js';
+import { hasCycle, isReadingType, summarize } from '../../src/progress/model.js';
 
 describe('course role permissions', () => {
   it('grants exactly the documented permissions per role (default deny)', () => {
@@ -27,11 +28,12 @@ describe('course role permissions', () => {
       'content.viewUnapproved',
     ];
     const grader = ['grades.grade', 'grades.release', 'grades.view'];
-    assert.deepEqual(granted('student'), ['assignment.submit', 'course.view', 'grades.viewOwn', 'quiz.attempt', 'tutor.use']);
-    assert.deepEqual(granted('non_editing_instructor'), [...staff, 'quiz.viewResults', ...grader, 'tutor.use'].sort());
-    assert.deepEqual(granted('instructor'), [...staff, 'content.edit', 'content.submit', 'quiz.viewResults', ...grader, 'tutor.use'].sort());
+    assert.deepEqual(granted('student'), ['assignment.submit', 'course.view', 'grades.viewOwn', 'progress.own', 'quiz.attempt', 'tutor.use']);
+    assert.deepEqual(granted('non_editing_instructor'), [...staff, 'quiz.viewResults', ...grader, 'tutor.use', 'progress.viewAll'].sort());
+    assert.deepEqual(granted('instructor'), [...staff, 'content.edit', 'content.submit', 'quiz.viewResults', ...grader, 'tutor.use', 'progress.viewAll'].sort());
     assert.deepEqual(granted('design_team'), [...staff, 'content.edit', 'content.submit', 'content.review'].sort());
     assert.equal(hasCoursePermission('design_team', 'quiz.attempt'), false, 'staff never take quizzes');
+    assert.equal(hasCoursePermission('design_team', 'progress.viewAll'), false, 'the design team never reads student progress');
     assert.equal(hasCoursePermission('instructor', 'content.review'), false, 'instructors never approve');
     for (const permission of ['content.edit', 'content.submit', 'content.review'] as const) {
       assert.equal(hasCoursePermission('non_editing_instructor', permission), false);
@@ -210,5 +212,29 @@ describe('assignment rules (server-side)', () => {
     invalid([{ criterionId: content.id, points: 1 }]);
     invalid([{ criterionId: content.id, points: 1 }, { criterionId: content.id, points: 1 }]);
     invalid([{ criterionId: content.id, points: 1 }, { criterionId: '00000000-0000-4000-8000-000000000000', points: 1 }]);
+  });
+});
+
+describe('learning progress rules', () => {
+  it('rounds percentages down and reports no percentage without eligible activities', () => {
+    assert.deepEqual(summarize(0, 0), { completedCount: 0, totalCount: 0, percent: null, state: 'no_activities' });
+    assert.deepEqual(summarize(0, 8), { completedCount: 0, totalCount: 8, percent: 0, state: 'not_started' });
+    assert.deepEqual(summarize(7, 8), { completedCount: 7, totalCount: 8, percent: 87, state: 'in_progress' });
+    assert.deepEqual(summarize(2, 3), { completedCount: 2, totalCount: 3, percent: 66, state: 'in_progress' });
+    assert.deepEqual(summarize(3, 3), { completedCount: 3, totalCount: 3, percent: 100, state: 'completed' });
+  });
+
+  it('only reading activities can be marked by hand', () => {
+    assert.deepEqual(['page', 'link', 'file', 'quiz', 'assignment', 'scorm', 'lti'].filter(isReadingType), ['page', 'link', 'file']);
+  });
+
+  it('detects prerequisite cycles of any length, and accepts chains and diamonds', () => {
+    const edge = (sectionId: string, requiredSectionId: string) => ({ sectionId, requiredSectionId });
+    assert.equal(hasCycle([]), false);
+    assert.equal(hasCycle([edge('b', 'a'), edge('c', 'b')]), false);
+    assert.equal(hasCycle([edge('b', 'a'), edge('c', 'a'), edge('d', 'b'), edge('d', 'c')]), false);
+    assert.equal(hasCycle([edge('a', 'a')]), true);
+    assert.equal(hasCycle([edge('a', 'b'), edge('b', 'a')]), true);
+    assert.equal(hasCycle([edge('b', 'a'), edge('c', 'b'), edge('a', 'c')]), true);
   });
 });

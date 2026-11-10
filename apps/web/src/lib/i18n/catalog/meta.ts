@@ -21,6 +21,7 @@ const en = {
   activate: 'Activate account',
   manageCourse: 'Manage course',
   academicManagement: 'Academic management',
+  studentProgress: 'Student progress',
   description: 'AcademiaPath — institutional learning platform for universities.',
 };
 
@@ -48,6 +49,7 @@ const es: MetaMessages = {
   activate: 'Activar cuenta',
   manageCourse: 'Gestionar curso',
   academicManagement: 'Gestión académica',
+  studentProgress: 'Avance de los estudiantes',
   description: 'AcademiaPath — plataforma institucional de aprendizaje para universidades.',
 };
 

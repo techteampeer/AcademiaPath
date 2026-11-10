@@ -10,9 +10,11 @@ import type {
   ActivityPage,
   ActivityReviewDecision,
   ActivityUpdate,
+  ActivityCompletion,
   Course,
   CourseCreate,
   CourseLifecycle,
+  CourseProgress,
   CourseUpdate,
   CoursePage,
   CourseTemplateCreate,
@@ -33,6 +35,7 @@ import type {
   LoginResponse,
   ManagedProgramList,
   MeResponse,
+  MyProgressList,
   Program,
   ProgramCreate,
   ProgramManager,
@@ -50,10 +53,14 @@ import type {
   SectionCreate,
   SectionList,
   SectionPage,
+  SectionPrerequisiteList,
+  SectionPrerequisites,
+  SectionProgress,
   SectionUpdate,
   StudentAssignmentStatus,
   StudentAssignmentSubmission,
   StudentGrades,
+  StudentProgressPage,
   StudentQuizAttempt,
   StudentQuizAttemptSummary,
   TutorLanguage,
@@ -258,4 +265,22 @@ export const api = {
   tutorPractice: (courseId: string, language: TutorLanguage, topic: string | null, csrfToken: string) =>
     apiRequest<TutorPracticeResponse>('POST', `${course(courseId)}/tutor/practice`, { body: { language, ...(topic ? { topic } : {}) }, csrfToken }),
   tutorUsage: (courseId: string) => apiRequest<TutorUsage>('GET', `${course(courseId)}/tutor/usage`),
+
+  // Learning progress: every figure is calculated by the API from stored records (never in the browser).
+  myProgress: () => apiRequest<MyProgressList>('GET', '/me/progress'),
+  courseProgress: (courseId: string) => apiRequest<CourseProgress>('GET', `${course(courseId)}/progress`),
+  sectionProgress: (courseId: string, sectionId: string) =>
+    apiRequest<SectionProgress>('GET', `${course(courseId)}/sections/${encodeURIComponent(sectionId)}/progress`),
+  markComplete: (courseId: string, activityId: string, csrfToken: string) =>
+    apiRequest<ActivityCompletion>('PUT', `${activity(courseId, activityId)}/completion`, { csrfToken }),
+  markIncomplete: (courseId: string, activityId: string, csrfToken: string) =>
+    apiRequest<ActivityCompletion>('DELETE', `${activity(courseId, activityId)}/completion`, { csrfToken }),
+  studentProgress: (courseId: string, page?: PageRequest) =>
+    apiRequest<StudentProgressPage>('GET', withPage(`${course(courseId)}/progress/students`, page)),
+  sectionPrerequisites: (courseId: string) => apiRequest<SectionPrerequisiteList>('GET', `${course(courseId)}/section-prerequisites`),
+  setSectionPrerequisites: (courseId: string, sectionId: string, requiredSectionIds: string[], csrfToken: string) =>
+    apiRequest<SectionPrerequisites>('PUT', `${course(courseId)}/sections/${encodeURIComponent(sectionId)}/prerequisites`, {
+      body: { requiredSectionIds },
+      csrfToken,
+    }),
 };

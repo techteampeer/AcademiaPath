@@ -22,6 +22,7 @@ import { courseLifecycleRoutes } from './routes/course-lifecycle.js';
 import { programManagerRoutes } from './routes/program-managers.js';
 import { enrollmentRoutes } from './routes/enrollments.js';
 import { userRoutes } from './routes/users.js';
+import { progressRoutes } from './routes/progress.js';
 
 export const API_PREFIX = '/api/v1';
 
@@ -84,6 +85,7 @@ export function buildApp({ config, database, logger = false, documents = {} }: B
   app.register(quizRoutes, { prefix: API_PREFIX });
   app.register(gradingRoutes, { prefix: API_PREFIX });
   app.register(tutorRoutes, { prefix: API_PREFIX });
+  app.register(progressRoutes, { prefix: API_PREFIX });
   app.register(documentRoutes, {
     prefix: API_PREFIX,
     storage: documents.storage ?? new LocalDocumentStorage(config.documents.storageDir),

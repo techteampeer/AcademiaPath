@@ -99,6 +99,7 @@ describe('database schema (static checks)', () => {
       'enrollments_course_id_user_id_unique(course_id,user_id)',
       'enrollments_id_course_id_user_id_unique(id,course_id,user_id)',
       'programs_code_unique(code)',
+      'sections_id_course_id_unique(id,course_id)',
       'terms_code_unique(code)',
       'users_email_lower_unique(expression)',
       'users_institutional_id_unique(institutional_id)',

@@ -90,6 +90,7 @@ describe('database migrations (PostgreSQL)', { skip: testServerUrl ? false : 'TE
       [
         'account_invitations',
         'activities',
+        'activity_completions',
         'assignment_criterion_scores',
         'assignment_submissions',
         'audit_log',
@@ -106,6 +107,7 @@ describe('database migrations (PostgreSQL)', { skip: testServerUrl ? false : 'TE
         'quiz_attempt_answers',
         'quiz_attempts',
         'quiz_questions',
+        'section_prerequisites',
         'sections',
         'sessions',
         'terms',

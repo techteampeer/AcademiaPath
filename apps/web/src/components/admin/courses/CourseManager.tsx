@@ -20,6 +20,7 @@ import { isApiError } from '@/lib/api/client';
 import { api, loadAll } from '@/lib/api/endpoints';
 import type { CourseLifecycle, CourseRole, CourseUpdate, Enrollment } from '@/lib/api/types';
 import { formatDate } from '@/lib/i18n/messages';
+import { PrerequisitesCard } from '@/components/progress/PrerequisitesCard';
 
 const ROLES: CourseRole[] = ['student', 'instructor', 'non_editing_instructor', 'design_team'];
 const CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
@@ -86,6 +87,9 @@ function ManagerContent({ courseId }: { courseId: string }) {
             <Link href={`/courses/${data.course.id}`} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
               {t.common.open}
             </Link>
+            <Link href={`/courses/${data.course.id}/progress`} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
+              {t.progress.studentProgress}
+            </Link>
           </div>
         }
       />
@@ -94,6 +98,7 @@ function ManagerContent({ courseId }: { courseId: string }) {
         <DetailsForm data={data} onSaved={reload} />
       </div>
       <SectionsCard courseId={data.course.id} sections={data.sections} onChanged={reload} />
+      <PrerequisitesCard key={data.sections.map((section) => section.id).join()} courseId={data.course.id} sections={data.sections} />
       <RosterCard courseId={data.course.id} counts={data.enrollmentCounts} onChanged={reload} />
     </div>
   );

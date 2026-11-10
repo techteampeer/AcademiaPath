@@ -13,6 +13,7 @@ import { programs } from './catalog/programs';
 import { quiz } from './catalog/quiz';
 import { setup } from './catalog/setup';
 import { tutor } from './catalog/tutor';
+import { progress } from './catalog/progress';
 
 export type Locale = 'en' | 'es';
 export const LOCALES: Locale[] = ['en', 'es'];
@@ -157,7 +158,6 @@ const en = {
     noReleasedGrades: 'No grades released yet',
     courseTotal: 'Course total',
     gradedItems: (n: number) => (n === 1 ? '1 released item' : `${n} released items`),
-    progressNotTracked: 'Progress tracking is not available yet.',
   },
   admin: {
     title: 'Administration',
@@ -252,6 +252,7 @@ const en = {
   meta: meta.en,
   courseAdmin: courseAdmin.en,
   programs: programs.en,
+  progress: progress.en,
   academics: {
     hierarchy: 'Hierarchy',
     treeLabel: 'Academic hierarchy',
@@ -589,7 +590,6 @@ const es: Messages = {
     noReleasedGrades: 'Aún no hay calificaciones publicadas',
     courseTotal: 'Total del curso',
     gradedItems: (n: number) => (n === 1 ? '1 elemento publicado' : `${n} elementos publicados`),
-    progressNotTracked: 'El seguimiento del avance aún no está disponible.',
   },
   admin: {
     title: 'Administración',
@@ -684,6 +684,7 @@ const es: Messages = {
   meta: meta.es,
   courseAdmin: courseAdmin.es,
   programs: programs.es,
+  progress: progress.es,
   academics: {
     hierarchy: 'Jerarquía',
     treeLabel: 'Jerarquía académica',

@@ -120,6 +120,20 @@
       "when": 1793996217381,
       "tag": "0016_program_managers",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794317600494,
+      "tag": "0017_student_progress",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794317612698,
+      "tag": "0018_student_progress_integrity",
+      "breakpoints": true
     }
   ]
 }

@@ -14,7 +14,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Breadcrumbs } from '@/components/ui/PageHeader';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
-import type { Activity, ActivityCreate, Course, CurrentUser } from '@/lib/api/types';
+import type { Activity, ActivityCreate, ActivityProgress, Course, CurrentUser } from '@/lib/api/types';
 import { AssignmentGradingPanel } from '@/components/assignments/AssignmentGradingPanel';
 import { AssignmentStudentPanel } from '@/components/assignments/AssignmentStudentPanel';
 import { AssignmentSummary } from '@/components/assignments/assignmentDisplay';
@@ -22,12 +22,14 @@ import { QuizSummary } from '@/components/quizzes/quizDisplay';
 import { QuizQuestionsPanel, QuizResultsPanel } from '@/components/quizzes/QuizStaffPanels';
 import { QuizStudentPanel } from '@/components/quizzes/QuizStudentPanel';
 import { DocumentPanel } from '@/components/documents/DocumentPanel';
+import { CompletionControl } from '@/components/progress/ProgressDisplay';
 import { ActivityForm } from './ActivityForm';
 import { contentAbilities, ReviewStatusBadge, safeHttpUrl, type ContentAbilities } from './contentDisplay';
 
 type ViewState =
   | { status: 'loading' }
   | { status: 'not-found' }
+  | { status: 'locked' }
   | { status: 'error' }
   | { status: 'ready'; course: Course; activity: Activity };
 
@@ -75,6 +77,8 @@ function LessonContent({ courseId, activityId, user }: { courseId: string; activ
       if (isApiError(error, 401)) handleUnauthorized();
       // 404 covers missing content and content this user may not see (unapproved, hidden, other courses).
       else if (isApiError(error, 404) || isApiError(error, 400)) setState({ status: 'not-found' });
+      // A section prerequisite still locks this content (enforced by the API; no content is returned).
+      else if (isApiError(error, 403) && error.code === 'SECTION_LOCKED') setState({ status: 'locked' });
       else setState({ status: 'error' });
     }
   }, [courseId, activityId, handleUnauthorized]);
@@ -98,6 +102,9 @@ function LessonContent({ courseId, activityId, user }: { courseId: string; activ
   }
   if (state.status === 'not-found') {
     return <EmptyState titleAs="h1" title={v.notAvailableTitle} description={v.notAvailableDescription} action={backLink} />;
+  }
+  if (state.status === 'locked') {
+    return <EmptyState titleAs="h1" title={t.progress.lockedTitle} description={t.progress.lockedDescription} action={backLink} />;
   }
   if (state.status === 'error') {
     return (
@@ -167,7 +174,45 @@ function LessonContent({ courseId, activityId, user }: { courseId: string; activ
         <AssignmentGradingPanel courseId={courseId} assignmentId={activity.id} canGrade={abilities.grade} />
       ) : null}
       {activity.type === 'assignment' && abilities.attempt ? <AssignmentStudentPanel courseId={courseId} assignmentId={activity.id} /> : null}
+      {abilities.trackProgress ? <LessonCompletion courseId={courseId} activity={activity} /> : null}
     </div>
+  );
+}
+
+/** The student's completion state for this activity, from the API's section progress. */
+function LessonCompletion({ courseId, activity }: { courseId: string; activity: Activity }) {
+  const { t } = useLocale();
+  const [state, setState] = useState<ActivityProgress | null | 'error'>(null);
+  const load = useCallback(async () => {
+    try {
+      const section = await api.sectionProgress(courseId, activity.sectionId);
+      setState(section.activities.find((item) => item.activityId === activity.id) ?? 'error');
+    } catch {
+      setState('error');
+    }
+  }, [courseId, activity.id, activity.sectionId]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  if (state === null) return null;
+  if (state === 'error') return <p className="text-sm text-slate-500">{t.progress.loadError}</p>;
+  return (
+    <Card as="section" aria-labelledby="completion-heading" className="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h2 id="completion-heading" className="font-semibold text-slate-900">
+          {t.progress.yourProgress}
+        </h2>
+        <p className="text-xs text-slate-500">{t.progress.separateFromGrades}</p>
+      </div>
+      <CompletionControl
+        courseId={courseId}
+        activityId={activity.id}
+        title={activity.title}
+        completion={state.completion}
+        completed={state.completed}
+        onChanged={load}
+      />
+    </Card>
   );
 }
 

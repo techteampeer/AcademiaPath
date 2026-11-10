@@ -1,12 +1,15 @@
-import { and, asc, desc, eq, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import { activities, sections } from '../db/schema/index.js';
 import { detectLanguage, excerpt, keyTerms, matchedTerms, splitPassages, TUTOR_LIMITS, type SourceLanguage } from './text.js';
 
 type Executor = Pick<Database, 'select'>;
 
-/** Which approved lessons the caller may read: always one course; students only visible ones. */
-export type TutorScope = { courseId: string; includeHidden: boolean };
+/**
+ * Which approved lessons the caller may read: always one course; students only visible ones, outside
+ * sections that are still locked by a prerequisite.
+ */
+export type TutorScope = { courseId: string; includeHidden: boolean; excludedSectionIds: string[] };
 
 export type TutorSource = {
   activityId: string;
@@ -41,6 +44,7 @@ function approvedLessons(scope: TutorScope) {
     isNotNull(activities.approvedTitle),
     isNotNull(activities.approvedAt),
     scope.includeHidden ? undefined : and(eq(sections.isVisible, true), eq(activities.isVisible, true)),
+    scope.excludedSectionIds.length ? notInArray(sections.id, scope.excludedSectionIds) : undefined,
   );
 }
 
