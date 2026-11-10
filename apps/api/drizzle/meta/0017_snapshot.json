@@ -1,6 +1,6 @@
 {
-  "id": "79167eb8-7cb7-485b-9630-82afff67f011",
-  "prevId": "d07fd9a3-acc3-4f03-a5cc-2ba45572ff01",
+  "id": "ef3318d8-877f-4f69-9746-6c98818c508d",
+  "prevId": "6319447b-dc79-488f-8c10-8f53570f9d2c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -83,15 +83,15 @@
           "columns": [
             {
               "expression": "lower(\"email\")",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -99,10 +99,127 @@
       "uniqueConstraints": {
         "users_institutional_id_unique": {
           "name": "users_institutional_id_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "institutional_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.program_managers": {
+      "name": "program_managers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "program_id": {
+          "name": "program_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "granted_by_user_id": {
+          "name": "granted_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "program_managers_user_id_idx": {
+          "name": "program_managers_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
-          "nullsNotDistinct": false
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "program_managers_program_id_programs_id_fk": {
+          "name": "program_managers_program_id_programs_id_fk",
+          "tableFrom": "program_managers",
+          "tableTo": "programs",
+          "columnsFrom": [
+            "program_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "program_managers_user_id_users_id_fk": {
+          "name": "program_managers_user_id_users_id_fk",
+          "tableFrom": "program_managers",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "program_managers_granted_by_user_id_users_id_fk": {
+          "name": "program_managers_granted_by_user_id_users_id_fk",
+          "tableFrom": "program_managers",
+          "tableTo": "users",
+          "columnsFrom": [
+            "granted_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "program_managers_program_id_user_id_unique": {
+          "name": "program_managers_program_id_user_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "program_id",
+            "user_id"
+          ]
         }
       },
       "policies": {},
@@ -166,10 +283,10 @@
       "uniqueConstraints": {
         "programs_code_unique": {
           "name": "programs_code_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "code"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -244,9 +361,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -254,10 +371,10 @@
       "uniqueConstraints": {
         "terms_code_unique": {
           "name": "terms_code_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "code"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -335,26 +452,26 @@
         "course_template_sections_template_version_id_course_template_versions_id_fk": {
           "name": "course_template_sections_template_version_id_course_template_versions_id_fk",
           "tableFrom": "course_template_sections",
+          "tableTo": "course_template_versions",
           "columnsFrom": [
             "template_version_id"
           ],
-          "tableTo": "course_template_versions",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "course_template_sections_version_position_unique": {
           "name": "course_template_sections_version_position_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "template_version_id",
             "position"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -421,34 +538,34 @@
         "course_template_versions_template_id_course_templates_id_fk": {
           "name": "course_template_versions_template_id_course_templates_id_fk",
           "tableFrom": "course_template_versions",
+          "tableTo": "course_templates",
           "columnsFrom": [
             "template_id"
           ],
-          "tableTo": "course_templates",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "course_template_versions_template_id_version_unique": {
           "name": "course_template_versions_template_id_version_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "template_id",
             "version"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "course_template_versions_id_template_id_unique": {
           "name": "course_template_versions_id_template_id_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "id",
             "template_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -522,34 +639,34 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "course_templates_program_id_programs_id_fk": {
           "name": "course_templates_program_id_programs_id_fk",
           "tableFrom": "course_templates",
+          "tableTo": "programs",
           "columnsFrom": [
             "program_id"
           ],
-          "tableTo": "programs",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "course_templates_code_unique": {
           "name": "course_templates_code_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "code"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -651,9 +768,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "courses_status_idx": {
           "name": "courses_status_idx",
@@ -666,9 +783,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "courses_program_id_idx": {
           "name": "courses_program_id_idx",
@@ -681,9 +798,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "courses_template_version_id_idx": {
           "name": "courses_template_version_id_idx",
@@ -696,76 +813,76 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "courses_term_id_terms_id_fk": {
           "name": "courses_term_id_terms_id_fk",
           "tableFrom": "courses",
+          "tableTo": "terms",
           "columnsFrom": [
             "term_id"
           ],
-          "tableTo": "terms",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "courses_program_id_programs_id_fk": {
           "name": "courses_program_id_programs_id_fk",
           "tableFrom": "courses",
+          "tableTo": "programs",
           "columnsFrom": [
             "program_id"
           ],
-          "tableTo": "programs",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "courses_template_id_course_templates_id_fk": {
           "name": "courses_template_id_course_templates_id_fk",
           "tableFrom": "courses",
+          "tableTo": "course_templates",
           "columnsFrom": [
             "template_id"
           ],
-          "tableTo": "course_templates",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "courses_template_version_fk": {
           "name": "courses_template_version_fk",
           "tableFrom": "courses",
+          "tableTo": "course_template_versions",
           "columnsFrom": [
             "template_version_id",
             "template_id"
           ],
-          "tableTo": "course_template_versions",
           "columnsTo": [
             "id",
             "template_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "courses_term_id_code_unique": {
           "name": "courses_term_id_code_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "term_id",
             "code"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -842,9 +959,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "enrollments_course_id_role_idx": {
           "name": "enrollments_course_id_role_idx",
@@ -863,57 +980,57 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "enrollments_course_id_courses_id_fk": {
           "name": "enrollments_course_id_courses_id_fk",
           "tableFrom": "enrollments",
+          "tableTo": "courses",
           "columnsFrom": [
             "course_id"
           ],
-          "tableTo": "courses",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "enrollments_user_id_users_id_fk": {
           "name": "enrollments_user_id_users_id_fk",
           "tableFrom": "enrollments",
+          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "enrollments_course_id_user_id_unique": {
           "name": "enrollments_course_id_user_id_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "course_id",
             "user_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "enrollments_id_course_id_user_id_unique": {
           "name": "enrollments_id_course_id_user_id_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "id",
             "course_id",
             "user_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -1065,63 +1182,63 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "activities_section_id_sections_id_fk": {
           "name": "activities_section_id_sections_id_fk",
           "tableFrom": "activities",
+          "tableTo": "sections",
           "columnsFrom": [
             "section_id"
           ],
-          "tableTo": "sections",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "activities_submitted_by_user_id_users_id_fk": {
           "name": "activities_submitted_by_user_id_users_id_fk",
           "tableFrom": "activities",
+          "tableTo": "users",
           "columnsFrom": [
             "submitted_by_user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "activities_reviewed_by_user_id_users_id_fk": {
           "name": "activities_reviewed_by_user_id_users_id_fk",
           "tableFrom": "activities",
+          "tableTo": "users",
           "columnsFrom": [
             "reviewed_by_user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "activities_approved_by_user_id_users_id_fk": {
           "name": "activities_approved_by_user_id_users_id_fk",
           "tableFrom": "activities",
+          "tableTo": "users",
           "columnsFrom": [
             "approved_by_user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1230,35 +1347,35 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "sections_course_id_courses_id_fk": {
           "name": "sections_course_id_courses_id_fk",
           "tableFrom": "sections",
+          "tableTo": "courses",
           "columnsFrom": [
             "course_id"
           ],
-          "tableTo": "courses",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "sections_id_course_id_unique": {
           "name": "sections_id_course_id_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "id",
             "course_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -1344,9 +1461,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "audit_log_actor_user_id_idx": {
           "name": "audit_log_actor_user_id_idx",
@@ -1359,9 +1476,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "audit_log_created_at_idx": {
           "name": "audit_log_created_at_idx",
@@ -1374,24 +1491,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "audit_log_actor_user_id_users_id_fk": {
           "name": "audit_log_actor_user_id_users_id_fk",
           "tableFrom": "audit_log",
+          "tableTo": "users",
           "columnsFrom": [
             "actor_user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1474,9 +1591,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "account_invitations_one_open_per_user": {
           "name": "account_invitations_one_open_per_user",
@@ -1489,48 +1606,48 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"account_invitations\".\"used_at\" IS NULL AND \"account_invitations\".\"revoked_at\" IS NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "account_invitations_user_id_users_id_fk": {
           "name": "account_invitations_user_id_users_id_fk",
           "tableFrom": "account_invitations",
+          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "account_invitations_created_by_user_id_users_id_fk": {
           "name": "account_invitations_created_by_user_id_users_id_fk",
           "tableFrom": "account_invitations",
+          "tableTo": "users",
           "columnsFrom": [
             "created_by_user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "account_invitations_token_hash_unique": {
           "name": "account_invitations_token_hash_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "token_hash"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -1612,9 +1729,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "sessions_expires_at_idx": {
           "name": "sessions_expires_at_idx",
@@ -1627,34 +1744,34 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "sessions_user_id_users_id_fk": {
           "name": "sessions_user_id_users_id_fk",
           "tableFrom": "sessions",
+          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "sessions_token_hash_unique": {
           "name": "sessions_token_hash_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "token_hash"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -1706,15 +1823,15 @@
         "user_credentials_user_id_users_id_fk": {
           "name": "user_credentials_user_id_users_id_fk",
           "tableFrom": "user_credentials",
+          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1832,34 +1949,34 @@
         "quiz_attempt_answers_attempt_id_quiz_attempts_id_fk": {
           "name": "quiz_attempt_answers_attempt_id_quiz_attempts_id_fk",
           "tableFrom": "quiz_attempt_answers",
+          "tableTo": "quiz_attempts",
           "columnsFrom": [
             "attempt_id"
           ],
-          "tableTo": "quiz_attempts",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "quiz_attempt_answers_attempt_question_unique": {
           "name": "quiz_attempt_answers_attempt_question_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "attempt_id",
             "question_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "quiz_attempt_answers_attempt_position_unique": {
           "name": "quiz_attempt_answers_attempt_position_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "attempt_id",
             "position"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -2009,10 +2126,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"quiz_attempts\".\"status\" = 'in_progress'",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "quiz_attempts_user_id_idx": {
           "name": "quiz_attempts_user_id_idx",
@@ -2025,9 +2142,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "quiz_attempts_course_id_idx": {
           "name": "quiz_attempts_course_id_idx",
@@ -2040,88 +2157,88 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "quiz_attempts_activity_id_activities_id_fk": {
           "name": "quiz_attempts_activity_id_activities_id_fk",
           "tableFrom": "quiz_attempts",
+          "tableTo": "activities",
           "columnsFrom": [
             "activity_id"
           ],
-          "tableTo": "activities",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "quiz_attempts_course_id_courses_id_fk": {
           "name": "quiz_attempts_course_id_courses_id_fk",
           "tableFrom": "quiz_attempts",
+          "tableTo": "courses",
           "columnsFrom": [
             "course_id"
           ],
-          "tableTo": "courses",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "quiz_attempts_user_id_users_id_fk": {
           "name": "quiz_attempts_user_id_users_id_fk",
           "tableFrom": "quiz_attempts",
+          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "quiz_attempts_enrollment_fk": {
           "name": "quiz_attempts_enrollment_fk",
           "tableFrom": "quiz_attempts",
+          "tableTo": "enrollments",
           "columnsFrom": [
             "enrollment_id",
             "course_id",
             "user_id"
           ],
-          "tableTo": "enrollments",
           "columnsTo": [
             "id",
             "course_id",
             "user_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "quiz_attempts_activity_user_number_unique": {
           "name": "quiz_attempts_activity_user_number_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "activity_id",
             "user_id",
             "attempt_number"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "quiz_attempts_id_activity_user_unique": {
           "name": "quiz_attempts_id_activity_user_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "id",
             "activity_id",
             "user_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -2232,24 +2349,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "quiz_questions_activity_id_activities_id_fk": {
           "name": "quiz_questions_activity_id_activities_id_fk",
           "tableFrom": "quiz_questions",
+          "tableTo": "activities",
           "columnsFrom": [
             "activity_id"
           ],
-          "tableTo": "activities",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2330,26 +2447,26 @@
         "assignment_criterion_scores_submission_id_assignment_submissions_id_fk": {
           "name": "assignment_criterion_scores_submission_id_assignment_submissions_id_fk",
           "tableFrom": "assignment_criterion_scores",
+          "tableTo": "assignment_submissions",
           "columnsFrom": [
             "submission_id"
           ],
-          "tableTo": "assignment_submissions",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "assignment_criterion_scores_submission_criterion_unique": {
           "name": "assignment_criterion_scores_submission_criterion_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "submission_id",
             "criterion_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -2476,9 +2593,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "assignment_submissions_user_id_idx": {
           "name": "assignment_submissions_user_id_idx",
@@ -2491,87 +2608,87 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "assignment_submissions_activity_id_activities_id_fk": {
           "name": "assignment_submissions_activity_id_activities_id_fk",
           "tableFrom": "assignment_submissions",
+          "tableTo": "activities",
           "columnsFrom": [
             "activity_id"
           ],
-          "tableTo": "activities",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "assignment_submissions_course_id_courses_id_fk": {
           "name": "assignment_submissions_course_id_courses_id_fk",
           "tableFrom": "assignment_submissions",
+          "tableTo": "courses",
           "columnsFrom": [
             "course_id"
           ],
-          "tableTo": "courses",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "assignment_submissions_user_id_users_id_fk": {
           "name": "assignment_submissions_user_id_users_id_fk",
           "tableFrom": "assignment_submissions",
+          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "assignment_submissions_enrollment_fk": {
           "name": "assignment_submissions_enrollment_fk",
           "tableFrom": "assignment_submissions",
+          "tableTo": "enrollments",
           "columnsFrom": [
             "enrollment_id",
             "course_id",
             "user_id"
           ],
-          "tableTo": "enrollments",
           "columnsTo": [
             "id",
             "course_id",
             "user_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "assignment_submissions_activity_user_unique": {
           "name": "assignment_submissions_activity_user_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "activity_id",
             "user_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "assignment_submissions_id_activity_user_unique": {
           "name": "assignment_submissions_id_activity_user_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "id",
             "activity_id",
             "user_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -2763,138 +2880,138 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "grades_course_id_courses_id_fk": {
           "name": "grades_course_id_courses_id_fk",
           "tableFrom": "grades",
+          "tableTo": "courses",
           "columnsFrom": [
             "course_id"
           ],
-          "tableTo": "courses",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "grades_activity_id_activities_id_fk": {
           "name": "grades_activity_id_activities_id_fk",
           "tableFrom": "grades",
+          "tableTo": "activities",
           "columnsFrom": [
             "activity_id"
           ],
-          "tableTo": "activities",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "grades_user_id_users_id_fk": {
           "name": "grades_user_id_users_id_fk",
           "tableFrom": "grades",
+          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "grades_graded_by_user_id_users_id_fk": {
           "name": "grades_graded_by_user_id_users_id_fk",
           "tableFrom": "grades",
+          "tableTo": "users",
           "columnsFrom": [
             "graded_by_user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "grades_released_by_user_id_users_id_fk": {
           "name": "grades_released_by_user_id_users_id_fk",
           "tableFrom": "grades",
+          "tableTo": "users",
           "columnsFrom": [
             "released_by_user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "grades_enrollment_fk": {
           "name": "grades_enrollment_fk",
           "tableFrom": "grades",
+          "tableTo": "enrollments",
           "columnsFrom": [
             "enrollment_id",
             "course_id",
             "user_id"
           ],
-          "tableTo": "enrollments",
           "columnsTo": [
             "id",
             "course_id",
             "user_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "grades_quiz_attempt_fk": {
           "name": "grades_quiz_attempt_fk",
           "tableFrom": "grades",
+          "tableTo": "quiz_attempts",
           "columnsFrom": [
             "quiz_attempt_id",
             "activity_id",
             "user_id"
           ],
-          "tableTo": "quiz_attempts",
           "columnsTo": [
             "id",
             "activity_id",
             "user_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "grades_submission_fk": {
           "name": "grades_submission_fk",
           "tableFrom": "grades",
+          "tableTo": "assignment_submissions",
           "columnsFrom": [
             "submission_id",
             "activity_id",
             "user_id"
           ],
-          "tableTo": "assignment_submissions",
           "columnsTo": [
             "id",
             "activity_id",
             "user_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "grades_activity_user_unique": {
           "name": "grades_activity_user_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "activity_id",
             "user_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -3013,54 +3130,54 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "tutor_usage_course_id_courses_id_fk": {
           "name": "tutor_usage_course_id_courses_id_fk",
           "tableFrom": "tutor_usage",
+          "tableTo": "courses",
           "columnsFrom": [
             "course_id"
           ],
-          "tableTo": "courses",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "tutor_usage_user_id_users_id_fk": {
           "name": "tutor_usage_user_id_users_id_fk",
           "tableFrom": "tutor_usage",
+          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "tutor_usage_enrollment_fk": {
           "name": "tutor_usage_enrollment_fk",
           "tableFrom": "tutor_usage",
+          "tableTo": "enrollments",
           "columnsFrom": [
             "enrollment_id",
             "course_id",
             "user_id"
           ],
-          "tableTo": "enrollments",
           "columnsTo": [
             "id",
             "course_id",
             "user_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3197,47 +3314,47 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "course_documents_activity_id_activities_id_fk": {
           "name": "course_documents_activity_id_activities_id_fk",
           "tableFrom": "course_documents",
+          "tableTo": "activities",
           "columnsFrom": [
             "activity_id"
           ],
-          "tableTo": "activities",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "course_documents_uploaded_by_user_id_users_id_fk": {
           "name": "course_documents_uploaded_by_user_id_users_id_fk",
           "tableFrom": "course_documents",
+          "tableTo": "users",
           "columnsFrom": [
             "uploaded_by_user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "course_documents_storage_key_unique": {
           "name": "course_documents_storage_key_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "storage_key"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -3340,39 +3457,39 @@
         "document_summaries_document_id_course_documents_id_fk": {
           "name": "document_summaries_document_id_course_documents_id_fk",
           "tableFrom": "document_summaries",
+          "tableTo": "course_documents",
           "columnsFrom": [
             "document_id"
           ],
-          "tableTo": "course_documents",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "document_summaries_created_by_user_id_users_id_fk": {
           "name": "document_summaries_created_by_user_id_users_id_fk",
           "tableFrom": "document_summaries",
+          "tableTo": "users",
           "columnsFrom": [
             "created_by_user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "document_summaries_document_revision_unique": {
           "name": "document_summaries_document_revision_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "document_id",
             "revision"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -3453,78 +3570,78 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "activity_completions_activity_id_activities_id_fk": {
           "name": "activity_completions_activity_id_activities_id_fk",
           "tableFrom": "activity_completions",
+          "tableTo": "activities",
           "columnsFrom": [
             "activity_id"
           ],
-          "tableTo": "activities",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "activity_completions_course_id_courses_id_fk": {
           "name": "activity_completions_course_id_courses_id_fk",
           "tableFrom": "activity_completions",
+          "tableTo": "courses",
           "columnsFrom": [
             "course_id"
           ],
-          "tableTo": "courses",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "activity_completions_user_id_users_id_fk": {
           "name": "activity_completions_user_id_users_id_fk",
           "tableFrom": "activity_completions",
+          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "activity_completions_enrollment_fk": {
           "name": "activity_completions_enrollment_fk",
           "tableFrom": "activity_completions",
+          "tableTo": "enrollments",
           "columnsFrom": [
             "enrollment_id",
             "course_id",
             "user_id"
           ],
-          "tableTo": "enrollments",
           "columnsTo": [
             "id",
             "course_id",
             "user_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "activity_completions_activity_user_unique": {
           "name": "activity_completions_activity_user_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "activity_id",
             "user_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -3593,78 +3710,78 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "section_prerequisites_course_id_courses_id_fk": {
           "name": "section_prerequisites_course_id_courses_id_fk",
           "tableFrom": "section_prerequisites",
+          "tableTo": "courses",
           "columnsFrom": [
             "course_id"
           ],
-          "tableTo": "courses",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "section_prerequisites_created_by_user_id_users_id_fk": {
           "name": "section_prerequisites_created_by_user_id_users_id_fk",
           "tableFrom": "section_prerequisites",
+          "tableTo": "users",
           "columnsFrom": [
             "created_by_user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "section_prerequisites_section_fk": {
           "name": "section_prerequisites_section_fk",
           "tableFrom": "section_prerequisites",
+          "tableTo": "sections",
           "columnsFrom": [
             "section_id",
             "course_id"
           ],
-          "tableTo": "sections",
           "columnsTo": [
             "id",
             "course_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "section_prerequisites_required_section_fk": {
           "name": "section_prerequisites_required_section_fk",
           "tableFrom": "section_prerequisites",
+          "tableTo": "sections",
           "columnsFrom": [
             "required_section_id",
             "course_id"
           ],
-          "tableTo": "sections",
           "columnsTo": [
             "id",
             "course_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "section_prerequisites_section_required_unique": {
           "name": "section_prerequisites_section_required_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "section_id",
             "required_section_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -3820,10 +3937,10 @@
     }
   },
   "schemas": {},
-  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
+  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

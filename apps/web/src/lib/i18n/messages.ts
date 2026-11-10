@@ -9,6 +9,7 @@ import { courseAdmin } from './catalog/courseAdmin';
 import { documents } from './catalog/documents';
 import { errors } from './catalog/errors';
 import { meta } from './catalog/meta';
+import { programs } from './catalog/programs';
 import { quiz } from './catalog/quiz';
 import { setup } from './catalog/setup';
 import { tutor } from './catalog/tutor';
@@ -73,6 +74,7 @@ const en = {
     administration: 'Administration',
     adminOverview: 'Admin overview',
     users: 'Users',
+    academicManagement: 'Academic management',
     academicStructure: 'Academic structure',
     programsSubjects: 'Programs & subjects',
     coursesEnrollments: 'Courses & enrollments',
@@ -249,6 +251,7 @@ const en = {
   errors: errors.en,
   meta: meta.en,
   courseAdmin: courseAdmin.en,
+  programs: programs.en,
   progress: progress.en,
   academics: {
     hierarchy: 'Hierarchy',
@@ -503,6 +506,7 @@ const es: Messages = {
     administration: 'Administración',
     adminOverview: 'Resumen administrativo',
     users: 'Usuarios',
+    academicManagement: 'Gestión académica',
     academicStructure: 'Estructura académica',
     programsSubjects: 'Programas y asignaturas',
     coursesEnrollments: 'Cursos y matrículas',
@@ -679,6 +683,7 @@ const es: Messages = {
   errors: errors.es,
   meta: meta.es,
   courseAdmin: courseAdmin.es,
+  programs: programs.es,
   progress: progress.es,
   academics: {
     hierarchy: 'Jerarquía',

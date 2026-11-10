@@ -27,6 +27,8 @@ export function buildNavigation(
   user: Pick<CurrentUser, 'systemRole'> | null,
   pathname: string,
   roleByCourse: Map<string, CourseRole | null>,
+  /** Whether the user holds program-management grants (shows the Academic management workspace). */
+  managesPrograms = false,
 ): NavSection[] {
   if (!user) {
     return [{ id: 'public', title: t.nav.main, items: [{ href: '/', label: t.nav.home }, { href: '/login', label: t.common.signIn }] }];
@@ -39,6 +41,7 @@ export function buildNavigation(
       items: [
         { href: '/dashboard', label: t.nav.dashboard },
         { href: '/courses', label: t.nav.myCourses, exact: true },
+        ...(managesPrograms && !isAdmin ? [{ href: '/academic', label: t.nav.academicManagement }] : []),
       ],
     },
   ];

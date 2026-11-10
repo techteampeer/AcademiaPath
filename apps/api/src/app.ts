@@ -19,6 +19,7 @@ import { gradingRoutes } from './routes/grading.js';
 import { quizRoutes } from './routes/quizzes.js';
 import { tutorRoutes } from './routes/tutor.js';
 import { courseLifecycleRoutes } from './routes/course-lifecycle.js';
+import { programManagerRoutes } from './routes/program-managers.js';
 import { enrollmentRoutes } from './routes/enrollments.js';
 import { userRoutes } from './routes/users.js';
 import { progressRoutes } from './routes/progress.js';
@@ -78,6 +79,7 @@ export function buildApp({ config, database, logger = false, documents = {} }: B
   app.register(courseRoutes, { prefix: API_PREFIX });
   app.register(enrollmentRoutes, { prefix: API_PREFIX });
   app.register(courseLifecycleRoutes, { prefix: API_PREFIX });
+  app.register(programManagerRoutes, { prefix: API_PREFIX });
   app.register(userRoutes, { prefix: API_PREFIX });
   app.register(activityRoutes, { prefix: API_PREFIX });
   app.register(quizRoutes, { prefix: API_PREFIX });

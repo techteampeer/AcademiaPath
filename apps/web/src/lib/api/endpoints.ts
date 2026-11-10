@@ -20,6 +20,7 @@ import type {
   CourseTemplateCreate,
   CourseTemplateDetail,
   CourseTemplatePage,
+  CourseTemplateVersionList,
   CourseTemplateVersion,
   CsrfTokenResponse,
   DocumentDetail,
@@ -32,10 +33,13 @@ import type {
   GradeReleaseResult,
   LoginRequest,
   LoginResponse,
+  ManagedProgramList,
   MeResponse,
   MyProgressList,
   Program,
   ProgramCreate,
+  ProgramManager,
+  ProgramManagerList,
   ProgramPage,
   ProgramUpdate,
   QuizAnswersSave,
@@ -136,7 +140,19 @@ export const api = {
   createTerm: (body: TermCreate, csrfToken: string) => apiRequest<Term>('POST', '/terms', { body, csrfToken }),
   updateTerm: (id: string, body: TermUpdate, csrfToken: string) => apiRequest<Term>('PUT', `/terms/${encodeURIComponent(id)}`, { body, csrfToken }),
   getCourseTemplate: (id: string) => apiRequest<CourseTemplateDetail>('GET', `/course-templates/${encodeURIComponent(id)}`),
-  listCourseTemplates: (page?: PageRequest) => apiRequest<CourseTemplatePage>('GET', withPage('/course-templates', page)),
+  listCourseTemplates: (page?: PageRequest, programId?: string) => {
+    const path = withPage('/course-templates', page);
+    return apiRequest<CourseTemplatePage>('GET', programId ? `${path}${path.includes('?') ? '&' : '?'}programId=${encodeURIComponent(programId)}` : path);
+  },
+  listCourseTemplateVersions: (id: string) => apiRequest<CourseTemplateVersionList>('GET', `/course-templates/${encodeURIComponent(id)}/versions`),
+
+  // Program-scoped academic management (grants are administrator-only; the API authorizes every subject change).
+  myManagedPrograms: () => apiRequest<ManagedProgramList>('GET', '/me/managed-programs'),
+  listProgramManagers: (programId: string) => apiRequest<ProgramManagerList>('GET', `/programs/${encodeURIComponent(programId)}/managers`),
+  grantProgramManager: (programId: string, email: string, csrfToken: string) =>
+    apiRequest<ProgramManager>('POST', `/programs/${encodeURIComponent(programId)}/managers`, { body: { email }, csrfToken }),
+  revokeProgramManager: (programId: string, userId: string, csrfToken: string) =>
+    apiRequest<void>('DELETE', `/programs/${encodeURIComponent(programId)}/managers/${encodeURIComponent(userId)}`, { csrfToken }),
   createCourseTemplate: (body: CourseTemplateCreate, csrfToken: string) =>
     apiRequest<CourseTemplateVersion>('POST', '/course-templates', { body, csrfToken }),
   createCourse: (body: CourseCreate, csrfToken: string) => apiRequest<Course>('POST', '/courses', { body, csrfToken }),

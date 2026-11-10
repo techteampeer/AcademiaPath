@@ -152,6 +152,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/managed-programs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Programs whose subjects the signed-in user may manage
+         * @description Administrators manage every program (`scope: all`). Other users see only the programs they
+         *     hold an explicit program-management grant for (`scope: granted`; empty without grants).
+         *     Grants confer subject (course template) management only: no course, grading, user
+         *     management or system permission.
+         */
+        get: operations["listMyManagedPrograms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/progress": {
         parameters: {
             query?: never;
@@ -370,16 +393,19 @@ export interface paths {
         };
         /**
          * List course templates with their latest version
-         * @description Administrators only. Ordered by `code`.
+         * @description Administrators see every subject; program managers see only the subjects of programs they hold
+         *     a grant for (others get `403`). Ordered by `code`. `programId` narrows the list further.
          */
         get: operations["listCourseTemplates"];
         put?: never;
         /**
          * Create a course template or a new version of one
-         * @description Administrators only. If no template has this `code`, the template is created at version 1.
-         *     Otherwise a new version is added (latest + 1) and earlier versions are kept unchanged.
-         *     `programId` must match the existing template's program. Audited as `course_template.created`
-         *     or `course_template.version_created`.
+         * @description Administrators, and program managers of the subject's program. If no template has this `code`,
+         *     the template is created at version 1 (a program manager must name one of their programs as
+         *     `programId`). Otherwise a new version is added (latest + 1) and earlier versions are kept
+         *     unchanged; a program manager must manage the program stored on the existing subject (`403`
+         *     otherwise), and `programId` must match it. Course offerings keep the version they were created
+         *     from. Audited as `course_template.created` or `course_template.version_created`.
          */
         post: operations["createCourseTemplateVersion"];
         delete?: never;
@@ -405,6 +431,57 @@ export interface paths {
         put: operations["updateProgram"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/programs/{programId}/managers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a program's authorized academic managers
+         * @description Administrators only. Ordered by email.
+         */
+        get: operations["listProgramManagers"];
+        put?: never;
+        /**
+         * Grant a user program-scoped academic management
+         * @description Administrators only. Identify an existing, active account by `userId` or `email` (exactly one).
+         *     The user may then create and version subjects (course templates) of this program only, while
+         *     their account is active. The grant does not make them an administrator and gives no access to
+         *     courses, grades, submissions, quiz answers, enrollments, terms or user management. A second
+         *     grant for the same user and program is refused (`PROGRAM_MANAGER_EXISTS`). Audited as
+         *     `program_manager.granted`.
+         */
+        post: operations["grantProgramManager"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/programs/{programId}/managers/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a user's program-scoped academic management
+         * @description Administrators only. Takes effect immediately: a subject change still in progress finishes
+         *     first (it holds the grant), and every later one is refused. Subjects and versions the user
+         *     created are kept. Audited as `program_manager.revoked`.
+         */
+        delete: operations["revokeProgramManager"];
         options?: never;
         head?: never;
         patch?: never;
@@ -439,8 +516,33 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** A subject (course template) with its latest version and sections (administrators only) */
+        /**
+         * A subject (course template) with its latest version and sections
+         * @description Administrators, and program managers of the subject's stored program (`403` otherwise).
+         */
         get: operations["getCourseTemplate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/course-templates/{templateId}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Version history of a subject (course template)
+         * @description Administrators, and program managers of the subject's program (taken from the stored subject,
+         *     never from the request). Newest first. Versions are immutable; course offerings keep the
+         *     version they were created from.
+         */
+        get: operations["listCourseTemplateVersions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1606,7 +1708,7 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE";
         };
         /**
          * @description `no_activities` when the course or section has no eligible activities (no percentage is shown).
@@ -2944,6 +3046,62 @@ export interface components {
             awaitingReviewCount: number;
             allowedTransitions: ("publish" | "unpublish")[];
         };
+        ManagedProgramList: {
+            /**
+             * @description `all`: administrator. `granted`: explicit program-management grants only.
+             * @enum {string}
+             */
+            scope: "all" | "granted";
+            items: {
+                /** Format: uuid */
+                id: string;
+                code: string;
+                name: string;
+                description: string | null;
+                isActive: boolean;
+                subjectCount: number;
+            }[];
+        };
+        ProgramManagerGrant: {
+            /** Format: uuid */
+            userId?: string;
+            email?: string;
+        } & (unknown | unknown);
+        ProgramManager: {
+            /** Format: uuid */
+            programId: string;
+            user: {
+                /** Format: uuid */
+                id: string;
+                email: string;
+                givenName: string;
+                familyName: string;
+                /** @description Grants of deactivated accounts cannot be exercised. */
+                isActive: boolean;
+            };
+            /** Format: date-time */
+            grantedAt: string;
+            grantedBy: {
+                /** Format: uuid */
+                id: string;
+                email: string;
+            } | null;
+        };
+        ProgramManagerList: {
+            items: components["schemas"]["ProgramManager"][];
+        };
+        CourseTemplateVersionList: {
+            items: {
+                /** Format: uuid */
+                id: string;
+                version: number;
+                title: string;
+                description: string | null;
+                sectionCount: number;
+                /** Format: date-time */
+                createdAt: string;
+            }[];
+        };
     };
     responses: {
         /**
@@ -3113,7 +3271,7 @@ export interface components {
          *     `ACCOUNT_ALREADY_ACTIVATED`; or an enrollment rule: `ENROLLMENT_HAS_STUDENT_WORK`,
          *     `IMPORT_CONFLICT`, `ENROLLMENT_HAS_HISTORY`; or a course lifecycle rule:
          *     `COURSE_VERSION_CONFLICT`, `INVALID_COURSE_TRANSITION`, `COURSE_CODE_LOCKED`,
-         *     `SECTION_ORDER_STALE`.
+         *     `SECTION_ORDER_STALE`; or `PROGRAM_MANAGER_EXISTS` (the user already manages the program).
          */
         Conflict: {
             headers: {
@@ -3357,6 +3515,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listMyManagedPrograms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The manageable programs. */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagedProgramList"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -3707,6 +3887,8 @@ export interface operations {
                 limit?: components["parameters"]["Limit"];
                 /** @description Opaque cursor from the previous page's `nextCursor`. */
                 cursor?: components["parameters"]["Cursor"];
+                /** @description Only subjects of this program. */
+                programId?: string;
             };
             header?: never;
             path?: never;
@@ -3787,6 +3969,89 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    listProgramManagers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                programId: components["parameters"]["ProgramId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The program's managers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramManagerList"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    grantProgramManager: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                programId: components["parameters"]["ProgramId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgramManagerGrant"];
+            };
+        };
+        responses: {
+            /** @description Grant created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramManager"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    revokeProgramManager: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                programId: components["parameters"]["ProgramId"];
+                userId: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Grant revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     updateTerm: {
         parameters: {
             query?: never;
@@ -3838,6 +4103,32 @@ export interface operations {
                     "application/json": components["schemas"]["CourseTemplateDetail"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listCourseTemplateVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                templateId: components["parameters"]["TemplateId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every version of the subject. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseTemplateVersionList"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

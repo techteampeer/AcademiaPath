@@ -170,7 +170,7 @@ function HierarchyContent() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
         <Card as="section" aria-labelledby="hierarchy-heading" className="space-y-4 lg:self-start">
           <h2 id="hierarchy-heading" className="text-sm font-semibold tracking-wide text-slate-500 uppercase">
             {t.academics.hierarchy}

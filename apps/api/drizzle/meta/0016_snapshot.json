@@ -1,5 +1,5 @@
 {
-  "id": "d07fd9a3-acc3-4f03-a5cc-2ba45572ff01",
+  "id": "6319447b-dc79-488f-8c10-8f53570f9d2c",
   "prevId": "e07607c3-84ca-4048-aa7d-596f3d1603ec",
   "version": "7",
   "dialect": "postgresql",
@@ -102,6 +102,123 @@
           "nullsNotDistinct": false,
           "columns": [
             "institutional_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.program_managers": {
+      "name": "program_managers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "program_id": {
+          "name": "program_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "granted_by_user_id": {
+          "name": "granted_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "program_managers_user_id_idx": {
+          "name": "program_managers_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "program_managers_program_id_programs_id_fk": {
+          "name": "program_managers_program_id_programs_id_fk",
+          "tableFrom": "program_managers",
+          "tableTo": "programs",
+          "columnsFrom": [
+            "program_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "program_managers_user_id_users_id_fk": {
+          "name": "program_managers_user_id_users_id_fk",
+          "tableFrom": "program_managers",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "program_managers_granted_by_user_id_users_id_fk": {
+          "name": "program_managers_granted_by_user_id_users_id_fk",
+          "tableFrom": "program_managers",
+          "tableTo": "users",
+          "columnsFrom": [
+            "granted_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "program_managers_program_id_user_id_unique": {
+          "name": "program_managers_program_id_user_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "program_id",
+            "user_id"
           ]
         }
       },
@@ -1251,16 +1368,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "sections_id_course_id_unique": {
-          "name": "sections_id_course_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "id",
-            "course_id"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
         "sections_position_check": {
@@ -3388,290 +3496,6 @@
         "document_summaries_status_points_check": {
           "name": "document_summaries_status_points_check",
           "value": "\"document_summaries\".\"status\" = 'ready' OR jsonb_array_length(\"document_summaries\".\"points\") = 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.activity_completions": {
-      "name": "activity_completions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "activity_id": {
-          "name": "activity_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "course_id": {
-          "name": "course_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "enrollment_id": {
-          "name": "enrollment_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "activity_completions_course_user_idx": {
-          "name": "activity_completions_course_user_idx",
-          "columns": [
-            {
-              "expression": "course_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "activity_completions_activity_id_activities_id_fk": {
-          "name": "activity_completions_activity_id_activities_id_fk",
-          "tableFrom": "activity_completions",
-          "tableTo": "activities",
-          "columnsFrom": [
-            "activity_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "activity_completions_course_id_courses_id_fk": {
-          "name": "activity_completions_course_id_courses_id_fk",
-          "tableFrom": "activity_completions",
-          "tableTo": "courses",
-          "columnsFrom": [
-            "course_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "activity_completions_user_id_users_id_fk": {
-          "name": "activity_completions_user_id_users_id_fk",
-          "tableFrom": "activity_completions",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "activity_completions_enrollment_fk": {
-          "name": "activity_completions_enrollment_fk",
-          "tableFrom": "activity_completions",
-          "tableTo": "enrollments",
-          "columnsFrom": [
-            "enrollment_id",
-            "course_id",
-            "user_id"
-          ],
-          "columnsTo": [
-            "id",
-            "course_id",
-            "user_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "activity_completions_activity_user_unique": {
-          "name": "activity_completions_activity_user_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "activity_id",
-            "user_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.section_prerequisites": {
-      "name": "section_prerequisites",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "course_id": {
-          "name": "course_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "section_id": {
-          "name": "section_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "required_section_id": {
-          "name": "required_section_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_by_user_id": {
-          "name": "created_by_user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "section_prerequisites_course_id_idx": {
-          "name": "section_prerequisites_course_id_idx",
-          "columns": [
-            {
-              "expression": "course_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "section_prerequisites_course_id_courses_id_fk": {
-          "name": "section_prerequisites_course_id_courses_id_fk",
-          "tableFrom": "section_prerequisites",
-          "tableTo": "courses",
-          "columnsFrom": [
-            "course_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "section_prerequisites_created_by_user_id_users_id_fk": {
-          "name": "section_prerequisites_created_by_user_id_users_id_fk",
-          "tableFrom": "section_prerequisites",
-          "tableTo": "users",
-          "columnsFrom": [
-            "created_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "section_prerequisites_section_fk": {
-          "name": "section_prerequisites_section_fk",
-          "tableFrom": "section_prerequisites",
-          "tableTo": "sections",
-          "columnsFrom": [
-            "section_id",
-            "course_id"
-          ],
-          "columnsTo": [
-            "id",
-            "course_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "section_prerequisites_required_section_fk": {
-          "name": "section_prerequisites_required_section_fk",
-          "tableFrom": "section_prerequisites",
-          "tableTo": "sections",
-          "columnsFrom": [
-            "required_section_id",
-            "course_id"
-          ],
-          "columnsTo": [
-            "id",
-            "course_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "section_prerequisites_section_required_unique": {
-          "name": "section_prerequisites_section_required_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "section_id",
-            "required_section_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "section_prerequisites_not_self_check": {
-          "name": "section_prerequisites_not_self_check",
-          "value": "\"section_prerequisites\".\"section_id\" <> \"section_prerequisites\".\"required_section_id\""
         }
       },
       "isRLSEnabled": false

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.12.0
+  version: 0.13.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -83,6 +83,15 @@ info:
     status: students still see only approved, visible content in visible sections and released
     grades. Unpublishing and deactivating enrollments never delete content, attempts, submissions,
     grades or audit records, and offering changes never modify the subject template.
+
+    Program-scoped academic management: administrators may grant a user management of one program's
+    subjects (`/programs/{programId}/managers`). A grant lets that user, while active, list, create and
+    version the subjects (course templates) of that program only, through the normal course-template
+    endpoints. Authorization uses the program stored on the subject, never one taken from the request,
+    and is checked inside the writing transaction, so a revocation or deactivation is honored at once.
+    Grants never confer administration, course lifecycle, enrollment, grading, submission, quiz-answer,
+    student-progress, term or user-management permissions, and course-level design-team roles never
+    imply them.
 
     Learning progress: calculated by the server from stored records on every request; there is no
     browser-side progress. Eligible activities (the denominator) are approved, visible lessons
@@ -313,6 +322,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/me/managed-programs:
+    get:
+      operationId: listMyManagedPrograms
+      summary: Programs whose subjects the signed-in user may manage
+      description: |
+        Administrators manage every program (`scope: all`). Other users see only the programs they
+        hold an explicit program-management grant for (`scope: granted`; empty without grants).
+        Grants confer subject (course template) management only: no course, grading, user
+        management or system permission.
+      tags:
+        - Account
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The manageable programs.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagedProgramList"
         "401":
           $ref: "#/components/responses/Unauthorized"
   /api/v1/me/progress:
@@ -719,7 +753,9 @@ paths:
     get:
       operationId: listCourseTemplates
       summary: List course templates with their latest version
-      description: Administrators only. Ordered by `code`.
+      description: |
+        Administrators see every subject; program managers see only the subjects of programs they hold
+        a grant for (others get `403`). Ordered by `code`. `programId` narrows the list further.
       tags:
         - Academic structure
       security:
@@ -727,6 +763,12 @@ paths:
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Cursor"
+        - name: programId
+          in: query
+          description: Only subjects of this program.
+          schema:
+            type: string
+            format: uuid
       responses:
         "200":
           description: A page of course templates.
@@ -744,10 +786,12 @@ paths:
       operationId: createCourseTemplateVersion
       summary: Create a course template or a new version of one
       description: |
-        Administrators only. If no template has this `code`, the template is created at version 1.
-        Otherwise a new version is added (latest + 1) and earlier versions are kept unchanged.
-        `programId` must match the existing template's program. Audited as `course_template.created`
-        or `course_template.version_created`.
+        Administrators, and program managers of the subject's program. If no template has this `code`,
+        the template is created at version 1 (a program manager must name one of their programs as
+        `programId`). Otherwise a new version is added (latest + 1) and earlier versions are kept
+        unchanged; a program manager must manage the program stored on the existing subject (`403`
+        otherwise), and `programId` must match it. Course offerings keep the version they were created
+        from. Audited as `course_template.created` or `course_template.version_created`.
       tags:
         - Academic structure
       security:
@@ -811,6 +855,101 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/v1/programs/{programId}/managers:
+    get:
+      operationId: listProgramManagers
+      summary: List a program's authorized academic managers
+      description: Administrators only. Ordered by email.
+      tags:
+        - Academic structure
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/ProgramId"
+      responses:
+        "200":
+          description: The program's managers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgramManagerList"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: grantProgramManager
+      summary: Grant a user program-scoped academic management
+      description: |
+        Administrators only. Identify an existing, active account by `userId` or `email` (exactly one).
+        The user may then create and version subjects (course templates) of this program only, while
+        their account is active. The grant does not make them an administrator and gives no access to
+        courses, grades, submissions, quiz answers, enrollments, terms or user management. A second
+        grant for the same user and program is refused (`PROGRAM_MANAGER_EXISTS`). Audited as
+        `program_manager.granted`.
+      tags:
+        - Academic structure
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/ProgramId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProgramManagerGrant"
+      responses:
+        "201":
+          description: Grant created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgramManager"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/programs/{programId}/managers/{userId}:
+    delete:
+      operationId: revokeProgramManager
+      summary: Revoke a user's program-scoped academic management
+      description: |
+        Administrators only. Takes effect immediately: a subject change still in progress finishes
+        first (it holds the grant), and every later one is refused. Subjects and versions the user
+        created are kept. Audited as `program_manager.revoked`.
+      tags:
+        - Academic structure
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/ProgramId"
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "204":
+          description: Grant revoked.
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/terms/{termId}:
     put:
       operationId: updateTerm
@@ -851,7 +990,8 @@ paths:
   /api/v1/course-templates/{templateId}:
     get:
       operationId: getCourseTemplate
-      summary: A subject (course template) with its latest version and sections (administrators only)
+      summary: A subject (course template) with its latest version and sections
+      description: Administrators, and program managers of the subject's stored program (`403` otherwise).
       tags: [Academic structure]
       security:
         - sessionCookie: []
@@ -864,6 +1004,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CourseTemplateDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/course-templates/{templateId}/versions:
+    get:
+      operationId: listCourseTemplateVersions
+      summary: Version history of a subject (course template)
+      description: |
+        Administrators, and program managers of the subject's program (taken from the stored subject,
+        never from the request). Newest first. Versions are immutable; course offerings keep the
+        version they were created from.
+      tags:
+        - Academic structure
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/TemplateId"
+      responses:
+        "200":
+          description: Every version of the subject.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseTemplateVersionList"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -3030,7 +3199,7 @@ components:
         `ACCOUNT_ALREADY_ACTIVATED`; or an enrollment rule: `ENROLLMENT_HAS_STUDENT_WORK`,
         `IMPORT_CONFLICT`, `ENROLLMENT_HAS_HISTORY`; or a course lifecycle rule:
         `COURSE_VERSION_CONFLICT`, `INVALID_COURSE_TRANSITION`, `COURSE_CODE_LOCKED`,
-        `SECTION_ORDER_STALE`.
+        `SECTION_ORDER_STALE`; or `PROGRAM_MANAGER_EXISTS` (the user already manages the program).
       content:
         application/problem+json:
           schema:
@@ -3274,6 +3443,7 @@ components:
             - SECTION_ORDER_STALE
             - INVALID_SECTION_ORDER
             - ENROLLMENT_HAS_HISTORY
+            - PROGRAM_MANAGER_EXISTS
             - SECTION_LOCKED
             - COMPLETION_AUTOMATIC
             - PREREQUISITE_SELF
@@ -6040,3 +6210,122 @@ components:
           items:
             type: string
             enum: [publish, unpublish]
+    ManagedProgramList:
+      type: object
+      required: [scope, items]
+      additionalProperties: false
+      properties:
+        scope:
+          type: string
+          description: "`all`: administrator. `granted`: explicit program-management grants only."
+          enum: [all, granted]
+        items:
+          type: array
+          items:
+            type: object
+            required: [id, code, name, description, isActive, subjectCount]
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+                format: uuid
+              code:
+                type: string
+              name:
+                type: string
+              description:
+                type: [string, "null"]
+              isActive:
+                type: boolean
+              subjectCount:
+                type: integer
+                minimum: 0
+    ProgramManagerGrant:
+      type: object
+      additionalProperties: false
+      oneOf:
+        - required: [userId]
+        - required: [email]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          minLength: 1
+          maxLength: 254
+    ProgramManager:
+      type: object
+      required: [programId, user, grantedAt, grantedBy]
+      additionalProperties: false
+      properties:
+        programId:
+          type: string
+          format: uuid
+        user:
+          type: object
+          required: [id, email, givenName, familyName, isActive]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+            givenName:
+              type: string
+            familyName:
+              type: string
+            isActive:
+              type: boolean
+              description: Grants of deactivated accounts cannot be exercised.
+        grantedAt:
+          type: string
+          format: date-time
+        grantedBy:
+          oneOf:
+            - type: object
+              required: [id, email]
+              additionalProperties: false
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                email:
+                  type: string
+            - type: "null"
+    ProgramManagerList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProgramManager"
+    CourseTemplateVersionList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [id, version, title, description, sectionCount, createdAt]
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+                format: uuid
+              version:
+                type: integer
+              title:
+                type: string
+              description:
+                type: [string, "null"]
+              sectionCount:
+                type: integer
+              createdAt:
+                type: string
+                format: date-time

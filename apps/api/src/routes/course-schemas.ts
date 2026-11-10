@@ -280,3 +280,34 @@ export const courseListQuerySchema = {
   additionalProperties: false,
   properties: { ...paginationQuerySchema.properties, termId: uuid, programId: uuid, templateId: uuid },
 } as const;
+
+/** GET /course-templates: pagination plus an optional program filter. */
+export const courseTemplateListQuerySchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: { ...paginationQuerySchema.properties, programId: uuid },
+} as const;
+
+export const courseTemplateVersionListSchema = {
+  type: 'object',
+  required: ['items'],
+  additionalProperties: false,
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['id', 'version', 'title', 'description', 'sectionCount', 'createdAt'],
+        additionalProperties: false,
+        properties: {
+          id: uuid,
+          version: { type: 'integer' },
+          title: { type: 'string' },
+          description: nullableString,
+          sectionCount: { type: 'integer' },
+          createdAt: dateTime,
+        },
+      },
+    },
+  },
+} as const;
