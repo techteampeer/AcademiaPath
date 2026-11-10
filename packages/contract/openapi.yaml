@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.16.0
+  version: 0.17.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -36,7 +36,8 @@ info:
     Assignments are activities of type `assignment` (text submissions) with a due date, an optional
     late-submission window and a points-based rubric, using the same review workflow. Each student
     submits once; the server records the time. Instructors and non-editing instructors grade against
-    the rubric and release grades; the administrator role never submits work, grades or releases.
+    the rubric; only instructors release grades (since 0.16.0); the administrator role never submits work,
+    grades or releases.
 
     Grades: every grade is calculated by the server and stored once per student and activity (a
     quiz counts its best submitted attempt by score / maxScore, earliest first on ties). Students see
@@ -157,6 +158,29 @@ info:
     released per activity or selectively (individual or bulk, each item naming the reviewed revision), and
     only instructors release (non-editing instructors have read-only gradebook access). Staff may export the
     gradebook as CSV. Program-management grants give no gradebook access.
+
+    Course roles (0.17.0, unchanged behaviour stated explicitly): editing course content and assessing
+    student work are separate permissions. Instructors author content, grade, release grades, configure
+    the grading and certificate policies, and issue or revoke certificates. Non-editing instructors never
+    change content, policies or what students see: they grade submissions against the rubric (score and
+    feedback, which stay hidden until an instructor releases them), read the gradebook, progress and
+    certificates, and export the gradebook. The design team authors and reviews content only. Students take
+    and submit work and see only their own released results. Administrators read everything and configure
+    policies, issue and revoke certificates, but never take, grade or release work.
+
+    Course completion certificates (0.17.0): a course issues certificates only under an enabled certificate
+    policy configured by an instructor or administrator (no policy, no certificate). The policy requires
+    course completion (every progress-tracked activity complete, as on the progress page), a final course
+    grade (every counted activity graded and released, unchanged since release, on the course's grading
+    policy, from released grades only), or both, and optionally a minimum course grade, compared exactly
+    before rounding and only against a final grade. The course must be published and the student's
+    enrollment active. Eligibility is evaluated on the server; staff issue each certificate, and the server
+    re-evaluates eligibility in the issuing transaction. One valid certificate exists per student and course
+    (repeated or concurrent requests return it). A certificate stores a snapshot of the recipient name,
+    course, program, term, issuer and policy, so later changes never alter it; it is never deleted and can
+    only be revoked, with a reason. The PDF is generated locally from that snapshot. Anyone can verify a
+    certificate with its opaque 43-character token at `/verify/{token}` (application-relative); verification
+    shows only the status, recipient name, course, period, issuer, issue date and certificate number.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -181,6 +205,8 @@ tags:
     description: Text submissions and rubric grading
   - name: Grades
     description: Gradebook, grade release and students' released grades
+  - name: Certificates
+    description: Course completion certificates, eligibility, issuance, revocation and public verification
   - name: Tutor
     description: Course-grounded tutor (local mock provider) and usage
   - name: Documents
@@ -3175,6 +3201,364 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/certificate-policy:
+    get:
+      operationId: getCertificatePolicy
+      summary: The course's certificate policy
+      description: |
+        Requires `certificates.view` (instructor, non-editing instructor) or the administrator role. Without a
+        saved policy, `configured` is false and no certificate can be issued.
+      tags: [Certificates]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: The certificate policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertificatePolicy"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: saveCertificatePolicy
+      summary: Configure the course's certificate policy
+      description: |
+        Requires `certificates.manage` (instructor) or the administrator role; never non-editing instructors,
+        the design team or program managers. The policy must require completion, a final grade, or both; a
+        minimum grade needs a final grade (`422 CERTIFICATE_POLICY_INVALID`). `expectedVersion` is the version
+        the edit was based on (0 when none exists; otherwise `409 CERTIFICATE_POLICY_CONFLICT`). Certificates
+        already issued keep the policy version they were issued under. Audited as `certificate_policy.updated`.
+      tags: [Certificates]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CertificatePolicyInput"
+      responses:
+        "200":
+          description: The saved policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertificatePolicy"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/certificates/eligibility:
+    get:
+      operationId: getCertificateEligibility
+      summary: Certificate eligibility of every active student (staff)
+      description: |
+        Requires `certificates.view` (instructor, non-editing instructor) or the administrator role. Each active
+        student with their evaluated requirements, progress, released course grade and valid certificate.
+      tags: [Certificates]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: Eligibility per student.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseCertificateEligibility"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/certificates/mine:
+    get:
+      operationId: getMyCourseCertificates
+      summary: The signed-in student's certificate status in a course
+      description: |
+        Students of the course only (`certificates.own`, a role-only check). The policy, the student's own
+        eligibility (null without a policy) and their certificates. Eligibility uses released grades only, so
+        it never reveals unreleased results.
+      tags: [Certificates]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: The student's certificate status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyCourseCertificates"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/certificates:
+    get:
+      operationId: listCourseCertificates
+      summary: Certificates issued in a course (staff)
+      description: Requires `certificates.view` (instructor, non-editing instructor) or the administrator role. Newest first, valid and revoked.
+      tags: [Certificates]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: The course's certificates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertificateList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: issueCertificate
+      summary: Issue a certificate to an eligible student
+      description: |
+        Requires `certificates.manage` (instructor) or the administrator role. In one transaction, with the
+        course, policy and the student's enrollment locked, the server re-evaluates eligibility; an ineligible
+        student gets `422 CERTIFICATE_NOT_ELIGIBLE`. If the student already has a valid certificate for the
+        course, it is returned with `200` and nothing is created (repeated and concurrent requests are safe);
+        otherwise `201`. The certificate stores a snapshot of the recipient name, course, program, term,
+        issuer and policy. Students of other courses are `404`. Audited as `certificate.issued`.
+      tags: [Certificates]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CertificateIssue"
+      responses:
+        "200":
+          description: The student's existing valid certificate (nothing was created).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Certificate"
+        "201":
+          description: The issued certificate.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Certificate"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/certificates/{certificateId}/revoke:
+    post:
+      operationId: revokeCertificate
+      summary: Revoke a certificate
+      description: |
+        Requires `certificates.manage` (instructor) or the administrator role. Records the reason, time and
+        staff member; the certificate is kept and verifies as revoked from then on. A revoked certificate
+        cannot change again (`409 CERTIFICATE_ALREADY_REVOKED`). Audited as `certificate.revoked`.
+      tags: [Certificates]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/CertificateId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CertificateRevoke"
+      responses:
+        "200":
+          description: The revoked certificate.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Certificate"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/me/certificates:
+    get:
+      operationId: getMyCertificates
+      summary: The signed-in user's certificates and certificate status per course
+      description: |
+        The caller's own certificates (valid and revoked), and for each published course they study (active
+        student enrollment) whether certificates are enabled, whether they are eligible (released grades only)
+        and their valid certificate.
+      tags: [Certificates]
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The caller's certificates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyCertificates"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/certificates:
+    get:
+      operationId: listAllCertificates
+      summary: Every certificate (administrators)
+      description: Administrators only. Newest first, optionally filtered by status or course. Paginated.
+      tags: [Certificates]
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [issued, revoked]
+        - name: courseId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of certificates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertificatePage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/certificates/{certificateId}:
+    get:
+      operationId: getCertificate
+      summary: One certificate's details
+      description: |
+        The recipient, the course's staff with `certificates.view`, or an administrator. Staff and administrators
+        also get the issue and revocation history (from the audit log). Anyone else gets
+        `404 CERTIFICATE_NOT_FOUND`.
+      tags: [Certificates]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CertificateId"
+      responses:
+        "200":
+          description: The certificate.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Certificate"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/certificates/{certificateId}/pdf:
+    get:
+      operationId: downloadCertificate
+      summary: Download a certificate as PDF
+      description: |
+        Same access as the details. The PDF is generated locally from the stored certificate snapshot (name,
+        course, period, issue date, certificate number and verification reference); it never contains e-mail
+        addresses or grades. A revoked certificate cannot be downloaded (`409 CERTIFICATE_REVOKED`).
+      tags: [Certificates]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CertificateId"
+      responses:
+        "200":
+          description: The certificate (`Content-Disposition` attachment).
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/certificates/verify/{token}:
+    get:
+      operationId: verifyCertificate
+      summary: Verify a certificate (public)
+      description: |
+        No authentication. `token` is the certificate's opaque verification token (43 base64url characters);
+        malformed and unknown tokens get the same `404 CERTIFICATE_NOT_FOUND`, revealing nothing. Returns only
+        the status (`valid` or `revoked`), recipient name, course title, academic period, issuer, issue date
+        and certificate number. Rate limited per client.
+      tags: [Certificates]
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 200
+      responses:
+        "200":
+          description: The certificate's public verification record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertificateVerification"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          description: Too many verification requests.
   /api/v1/courses/{id}/progress:
     get:
       operationId: getMyCourseProgress
@@ -3598,6 +3982,13 @@ components:
       schema:
         type: string
         format: uuid
+    CertificateId:
+      name: certificateId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     UserId:
       name: userId
       in: path
@@ -3728,7 +4119,7 @@ components:
             detail: Too many attempts. Try again later.
             code: RATE_LIMITED
     NotFound:
-      description: "The resource does not exist or the caller cannot access it (`code`: `NOT_FOUND`)."
+      description: "The resource does not exist or the caller cannot access it (`code`: `NOT_FOUND`, or `CERTIFICATE_NOT_FOUND` for certificates and verification tokens)."
       content:
         application/problem+json:
           schema:
@@ -3752,7 +4143,8 @@ components:
         `COURSE_VERSION_CONFLICT`, `INVALID_COURSE_TRANSITION`, `COURSE_CODE_LOCKED`,
         `SECTION_ORDER_STALE`; or `PROGRAM_MANAGER_EXISTS` (the user already manages the program); or a
         learning-resource rule: `RESOURCE_FOLDER_NOT_EMPTY`, `RESOURCE_ORDER_STALE`; or
-        `GRADING_POLICY_CONFLICT` (the grading policy changed since it was loaded).
+        `GRADING_POLICY_CONFLICT` (the grading policy changed since it was loaded); or a certificate rule:
+        `CERTIFICATE_POLICY_CONFLICT`, `CERTIFICATE_ALREADY_REVOKED`, `CERTIFICATE_REVOKED`.
       content:
         application/problem+json:
           schema:
@@ -3781,7 +4173,8 @@ components:
         `RESOURCE_FOLDER_NOT_FOUND` or `RESOURCE_NOT_ORGANIZABLE`; or an assessment rule:
         `QUIZ_POOL_TOO_SMALL`, `QUIZ_POOL_POINTS_MIXED` or `QUIZ_SOURCE_INVALID`; or a gradebook rule:
         `GRADE_CATEGORY_DUPLICATE`, `GRADE_CATEGORY_ACTIVITY_DUPLICATE`, `GRADE_CATEGORY_ACTIVITY_INVALID`,
-        `GRADE_WEIGHTS_INVALID` or `GRADE_RELEASE_DUPLICATE`.
+        `GRADE_WEIGHTS_INVALID` or `GRADE_RELEASE_DUPLICATE`; or a certificate rule:
+        `CERTIFICATE_POLICY_INVALID` or `CERTIFICATE_NOT_ELIGIBLE`.
       content:
         application/problem+json:
           schema:
@@ -4020,6 +4413,12 @@ components:
             - GRADE_WEIGHTS_INVALID
             - GRADE_RELEASE_DUPLICATE
             - GRADING_POLICY_CONFLICT
+            - CERTIFICATE_POLICY_INVALID
+            - CERTIFICATE_POLICY_CONFLICT
+            - CERTIFICATE_NOT_ELIGIBLE
+            - CERTIFICATE_ALREADY_REVOKED
+            - CERTIFICATE_REVOKED
+            - CERTIFICATE_NOT_FOUND
     ResourceKind:
       type: string
       description: What a link points to. Every kind is only a link opened in a new tab; nothing is embedded, fetched or executed.
@@ -6252,6 +6651,332 @@ components:
           oneOf:
             - $ref: "#/components/schemas/Grade20"
             - type: "null"
+    CertificatePolicyRules:
+      type: object
+      required: [enabled, requireCompletion, requireFinalGrade, minimumGradePercent, issuerName]
+      properties:
+        enabled:
+          type: boolean
+          description: Certificates can be issued only while the policy is enabled.
+        requireCompletion:
+          type: boolean
+          description: Every progress-tracked activity must be complete (a course without such activities never qualifies).
+        requireFinalGrade:
+          type: boolean
+          description: The course grade must be final (every counted activity graded, released and unchanged since release).
+        minimumGradePercent:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 100
+          description: Optional minimum final course grade (percent), compared exactly before rounding. Needs requireFinalGrade.
+        issuerName:
+          type: string
+          minLength: 1
+          maxLength: 120
+          pattern: "\\S"
+          description: The issuing institution printed on certificates (for example "AcademiaPath").
+    CertificatePolicy:
+      allOf:
+        - $ref: "#/components/schemas/CertificatePolicyRules"
+        - type: object
+          required: [configured, version, updatedAt]
+          properties:
+            configured:
+              type: boolean
+            version:
+              type: integer
+              minimum: 0
+            updatedAt:
+              type: [string, "null"]
+              format: date-time
+    CertificatePolicyInput:
+      allOf:
+        - $ref: "#/components/schemas/CertificatePolicyRules"
+        - type: object
+          required: [expectedVersion]
+          properties:
+            expectedVersion:
+              type: integer
+              minimum: 0
+    CertificateRequirement:
+      type: object
+      required: [key, met, reason]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          enum: [policy_enabled, course_published, active_enrollment, activities_completed, final_grade_released, minimum_grade]
+        met:
+          type: boolean
+        reason:
+          type: [string, "null"]
+          enum: [not_configured, disabled, not_published, not_enrolled, inactive, no_activities, incomplete, no_graded_work, grades_pending, awaiting_final_grade, below_minimum, null]
+    CertificateEligibility:
+      type: object
+      description: Evaluated on the server from stored records; grades are released grades only.
+      required: [eligible, requirements, progress, releasedGrade]
+      additionalProperties: false
+      properties:
+        eligible:
+          type: boolean
+        requirements:
+          type: array
+          items:
+            $ref: "#/components/schemas/CertificateRequirement"
+        progress:
+          type: object
+          required: [completedCount, totalCount, percent]
+          additionalProperties: false
+          properties:
+            completedCount:
+              type: integer
+            totalCount:
+              type: integer
+            percent:
+              type: [integer, "null"]
+        releasedGrade:
+          type: object
+          required: [status, percent, grade20, pendingItems]
+          additionalProperties: false
+          properties:
+            status:
+              type: string
+              enum: [final, provisional]
+            percent:
+              type: [number, "null"]
+            grade20:
+              type: [number, "null"]
+            pendingItems:
+              type: integer
+    CertificateHistoryEvent:
+      type: object
+      required: [action, at, actor, reason]
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+          enum: [certificate.issued, certificate.revoked]
+        at:
+          type: string
+          format: date-time
+        actor:
+          type: [object, "null"]
+          required: [id, name]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+        reason:
+          type: [string, "null"]
+    Certificate:
+      type: object
+      description: A certificate exactly as issued (snapshot). `history` is included for staff and administrators only.
+      required: [id, certificateNumber, status, courseId, userId, recipientName, courseTitle, courseCode, programName, termName, academicYear, issuerName, issuedAt, policyVersion, policy, verificationPath, revokedAt, revocationReason]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        certificateNumber:
+          type: string
+          description: Random, non-sequential number printed on the certificate (for example AP-7K3M-Q9TX-2HDP).
+        status:
+          type: string
+          enum: [issued, revoked]
+        courseId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        recipientName:
+          type: string
+        courseTitle:
+          type: string
+        courseCode:
+          type: string
+        programName:
+          type: [string, "null"]
+        termName:
+          type: string
+        academicYear:
+          type: integer
+        issuerName:
+          type: string
+        issuedAt:
+          type: string
+          format: date-time
+        policyVersion:
+          type: integer
+        policy:
+          type: object
+          required: [requireCompletion, requireFinalGrade, minimumGradePercent]
+          additionalProperties: false
+          properties:
+            requireCompletion:
+              type: boolean
+            requireFinalGrade:
+              type: boolean
+            minimumGradePercent:
+              type: [integer, "null"]
+        verificationPath:
+          type: string
+          description: Application-relative verification page, `/verify/{token}`.
+        revokedAt:
+          type: [string, "null"]
+          format: date-time
+        revocationReason:
+          type: [string, "null"]
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/CertificateHistoryEvent"
+    CertificateList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Certificate"
+    CertificatePage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Certificate"
+        nextCursor:
+          type: [string, "null"]
+    CertificateRef:
+      type: [object, "null"]
+      required: [id, certificateNumber, status, issuedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        certificateNumber:
+          type: string
+        status:
+          type: string
+          enum: [issued, revoked]
+        issuedAt:
+          type: string
+          format: date-time
+    CourseCertificateEligibility:
+      type: object
+      required: [policy, items]
+      additionalProperties: false
+      properties:
+        policy:
+          $ref: "#/components/schemas/CertificatePolicy"
+        items:
+          type: array
+          items:
+            type: object
+            required: [student, eligibility, certificate]
+            additionalProperties: false
+            properties:
+              student:
+                $ref: "#/components/schemas/QuizResultStudent"
+              eligibility:
+                $ref: "#/components/schemas/CertificateEligibility"
+              certificate:
+                $ref: "#/components/schemas/CertificateRef"
+    MyCourseCertificates:
+      type: object
+      required: [policy, eligibility, certificates]
+      additionalProperties: false
+      properties:
+        policy:
+          $ref: "#/components/schemas/CertificatePolicy"
+        eligibility:
+          oneOf:
+            - $ref: "#/components/schemas/CertificateEligibility"
+            - type: "null"
+        certificates:
+          type: array
+          items:
+            $ref: "#/components/schemas/Certificate"
+    MyCertificates:
+      type: object
+      required: [certificates, courses]
+      additionalProperties: false
+      properties:
+        certificates:
+          type: array
+          items:
+            $ref: "#/components/schemas/Certificate"
+        courses:
+          type: array
+          items:
+            type: object
+            required: [courseId, title, code, certificatesEnabled, eligible, certificate]
+            additionalProperties: false
+            properties:
+              courseId:
+                type: string
+                format: uuid
+              title:
+                type: string
+              code:
+                type: string
+              certificatesEnabled:
+                type: boolean
+              eligible:
+                type: [boolean, "null"]
+              certificate:
+                $ref: "#/components/schemas/CertificateRef"
+    CertificateIssue:
+      type: object
+      required: [userId]
+      additionalProperties: false
+      properties:
+        userId:
+          type: string
+          format: uuid
+    CertificateRevoke:
+      type: object
+      required: [reason]
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          pattern: "\\S"
+    CertificateVerification:
+      type: object
+      description: The public verification record. Nothing else about the student or the course is revealed.
+      required: [status, certificateNumber, recipientName, courseTitle, academicPeriod, issuerName, issuedAt, revokedAt]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [valid, revoked]
+        certificateNumber:
+          type: string
+        recipientName:
+          type: string
+        courseTitle:
+          type: string
+        academicPeriod:
+          type: string
+        issuerName:
+          type: string
+        issuedAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: [string, "null"]
+          format: date-time
     CourseGrade:
       type: object
       description: |

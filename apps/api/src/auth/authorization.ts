@@ -36,6 +36,12 @@ export type CoursePermission =
   | 'grades.configure'
   /** Export the course gradebook as CSV (read-only; administrators via the override). */
   | 'grades.export'
+  /** See the certificate policy, students' eligibility and issued certificates (read-only; administrators via the override). */
+  | 'certificates.view'
+  /** Configure the certificate policy, issue and revoke certificates (instructors; administrators via the override). */
+  | 'certificates.manage'
+  /** See one's own certificate eligibility and certificates (students only; role-only check). */
+  | 'certificates.own'
   /** Use the course tutor (role-only check: students, instructors, non-editing instructors). */
   | 'tutor.use'
   /** Read and update one's own learning progress (students only; role-only check). */
@@ -70,13 +76,16 @@ export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermi
     ...GRADER,
     'grades.release',
     'grades.configure',
+    'certificates.view',
+    'certificates.manage',
     'tutor.use',
     'progress.viewAll',
   ]),
-  // Non-editing instructors grade submissions and read the gradebook, but never change content, the grading
-  // policy, or what students see: since AP-023 they cannot release grades.
-  non_editing_instructor: new Set([...STAFF_READ, 'quiz.viewResults', ...GRADER, 'tutor.use', 'progress.viewAll']),
-  student: new Set(['course.view', 'quiz.attempt', 'assignment.submit', 'grades.viewOwn', 'tutor.use', 'progress.own']),
+  // Non-editing instructors grade submissions (rubric scores and feedback; AP-009, documented in the API
+  // contract) and read the gradebook and certificates, but never change content, release grades, change the
+  // grading or certificate policy, or issue or revoke certificates (AP-023, AP-024).
+  non_editing_instructor: new Set([...STAFF_READ, 'quiz.viewResults', ...GRADER, 'certificates.view', 'tutor.use', 'progress.viewAll']),
+  student: new Set(['course.view', 'quiz.attempt', 'assignment.submit', 'grades.viewOwn', 'tutor.use', 'progress.own', 'certificates.own']),
 };
 
 export function hasCoursePermission(role: CourseRole | null, permission: CoursePermission): boolean {

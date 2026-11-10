@@ -41,6 +41,7 @@ export function buildNavigation(
       items: [
         { href: '/dashboard', label: t.nav.dashboard },
         { href: '/courses', label: t.nav.myCourses, exact: true },
+        { href: '/certificates', label: t.nav.myCertificates },
         ...(managesPrograms && !isAdmin ? [{ href: '/academic', label: t.nav.academicManagement }] : []),
       ],
     },
@@ -56,6 +57,7 @@ export function buildNavigation(
         { href: '/admin/programs', label: t.nav.programsSubjects },
         { href: '/admin/courses', label: t.nav.coursesEnrollments },
         { href: '/admin/setup', label: t.nav.courseSetup },
+        { href: '/admin/certificates', label: t.nav.certificates },
       ],
     });
   }
@@ -67,6 +69,10 @@ export function buildNavigation(
     if (role === 'instructor' || role === 'non_editing_instructor' || (isAdmin && role === null)) items.push({ href: `${base}/grades`, label: t.nav.gradebook });
     if (role === 'student') items.push({ href: `${base}/grades`, label: t.nav.myGrades });
     if (role === 'student' || role === 'instructor' || role === 'non_editing_instructor') items.push({ href: `${base}/tutor`, label: t.nav.tutor });
+    // Certificates: students (their own), instructors and non-editing instructors (read-only), administrators.
+    if (role === 'student' || role === 'instructor' || role === 'non_editing_instructor' || (isAdmin && role === null)) {
+      items.push({ href: `${base}/certificates`, label: t.nav.certificates });
+    }
     sections.push({ id: 'course', title: t.nav.currentCourse, items });
   }
   return sections;

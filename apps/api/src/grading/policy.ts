@@ -124,6 +124,23 @@ export function computeCourseGrade(
   categories: PolicyCategory[] | null,
   gradeFor: (activityId: string) => { counted: CountedGrade | null; exists: boolean },
 ): CourseGrade {
+  return computeCourseGradeExact(columns, categories, gradeFor).grade;
+}
+
+/** The course percentage as an exact fraction (0–1) before any rounding, or null without graded work. */
+export type ExactFraction = { numerator: bigint; denominator: bigint };
+
+/** Whether an exact course fraction reaches a whole-number percentage (no rounding: 59.96 % does not reach 60 %). */
+export function meetsPercent(fraction: ExactFraction, percent: number): boolean {
+  return fraction.numerator * 100n >= BigInt(percent) * fraction.denominator;
+}
+
+/** The same calculation as `computeCourseGrade`, also returning the exact fraction it rounds. */
+export function computeCourseGradeExact(
+  columns: CountedColumn[],
+  categories: PolicyCategory[] | null,
+  gradeFor: (activityId: string) => { counted: CountedGrade | null; exists: boolean },
+): { grade: CourseGrade; exact: ExactFraction | null } {
   const inCategory = new Map<string, string>();
   for (const category of categories ?? []) for (const activityId of category.activityIds) inCategory.set(activityId, category.id);
   const counted = categories ? columns.filter((column) => inCategory.has(column.activityId)) : columns;
@@ -164,12 +181,14 @@ export function computeCourseGrade(
 
   let grade20: number | null = null;
   let percent: number | null = null;
+  let exact: ExactFraction | null = null;
   if (!categories) {
     const points = [...graded.values()].reduce((total, item) => total + item.points, 0);
     const maxPoints = [...graded.values()].reduce((total, item) => total + item.maxPoints, 0);
     if (maxPoints > 0) {
       grade20 = toScale20(points, maxPoints);
       percent = percentOf(points, maxPoints);
+      exact = { numerator: BigInt(points), denominator: BigInt(maxPoints) };
     }
   } else {
     // F = Σ w·P/M / Σ w over categories with graded work, as one exact fraction N / (W·D).
@@ -183,10 +202,11 @@ export function computeCourseGrade(
       const weights = BigInt(included.reduce((total, summary) => total + summary.weightPercent, 0));
       grade20 = roundedTenths(numerator, weights * denominator, 20);
       percent = roundedTenths(numerator, weights * denominator, 100);
+      exact = { numerator, denominator: weights * denominator };
     }
   }
 
-  return {
+  const grade: CourseGrade = {
     method: categories ? 'weighted' : 'points',
     status: grade20 !== null && pendingItems === 0 ? 'final' : 'provisional',
     grade20,
@@ -196,4 +216,5 @@ export function computeCourseGrade(
     pendingItems,
     categories: summaries,
   };
+  return { grade, exact };
 }

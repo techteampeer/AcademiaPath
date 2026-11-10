@@ -94,6 +94,8 @@ describe('database migrations (PostgreSQL)', { skip: testServerUrl ? false : 'TE
         'assignment_criterion_scores',
         'assignment_submissions',
         'audit_log',
+        'course_certificate_policies',
+        'course_certificates',
         'course_documents',
         'course_grading_policies',
         'course_template_sections',

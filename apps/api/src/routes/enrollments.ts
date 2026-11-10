@@ -9,6 +9,7 @@ import {
   grades,
   quizAttempts,
   tutorUsage,
+  courseCertificates,
   users,
   type CourseRole,
   type EnrollmentStatus,
@@ -149,13 +150,13 @@ export const enrollmentRoutes: FastifyPluginAsync = async (app) => {
           .for('update');
         if (!enrollment) throw enrollmentNotFound();
         // Only a mistaken enrollment without any history can be removed; history is never deleted.
-        for (const table of [quizAttempts, assignmentSubmissions, grades, tutorUsage]) {
+        for (const table of [quizAttempts, assignmentSubmissions, grades, tutorUsage, courseCertificates]) {
           const [found] = await tx.select({ one: sql`1` }).from(table).where(eq(table.enrollmentId, enrollment.id)).limit(1);
           if (found) {
             throw new ApiProblem(
               409,
               'ENROLLMENT_HAS_HISTORY',
-              'This enrollment has quiz attempts, submissions, grades or tutor activity. Set it inactive instead; its history is kept.',
+              'This enrollment has quiz attempts, submissions, grades, tutor activity or certificates. Set it inactive instead; its history is kept.',
             );
           }
         }

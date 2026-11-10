@@ -74,6 +74,17 @@ export type GradingPolicyInput = Schemas['GradingPolicyInput'];
 export type StudentGradebook = Schemas['StudentGradebook'];
 export type GradeSelectionRelease = Schemas['GradeSelectionRelease'];
 export type GradeSelectionReleaseResult = Schemas['GradeSelectionReleaseResult'];
+export type CertificatePolicy = Schemas['CertificatePolicy'];
+export type CertificatePolicyInput = Schemas['CertificatePolicyInput'];
+export type CertificateEligibility = Schemas['CertificateEligibility'];
+export type CertificateRequirement = Schemas['CertificateRequirement'];
+export type Certificate = Schemas['Certificate'];
+export type CertificateList = Schemas['CertificateList'];
+export type CertificatePage = Schemas['CertificatePage'];
+export type CourseCertificateEligibility = Schemas['CourseCertificateEligibility'];
+export type MyCourseCertificates = Schemas['MyCourseCertificates'];
+export type MyCertificates = Schemas['MyCertificates'];
+export type CertificateVerification = Schemas['CertificateVerification'];
 
 export type TutorLanguage = Schemas['TutorLanguage'];
 export type TutorCitation = Schemas['TutorCitation'];

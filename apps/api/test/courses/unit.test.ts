@@ -28,15 +28,18 @@ describe('course role permissions', () => {
       'content.viewUnapproved',
     ];
     const grader = ['grades.export', 'grades.grade', 'grades.view'];
-    assert.deepEqual(granted('student'), ['assignment.submit', 'course.view', 'grades.viewOwn', 'progress.own', 'quiz.attempt', 'tutor.use']);
+    assert.deepEqual(granted('student'), ['assignment.submit', 'certificates.own', 'course.view', 'grades.viewOwn', 'progress.own', 'quiz.attempt', 'tutor.use']);
     // AP-023: non-editing instructors read and export the gradebook but neither release grades nor configure weights.
-    assert.deepEqual(granted('non_editing_instructor'), [...staff, 'quiz.viewResults', ...grader, 'tutor.use', 'progress.viewAll'].sort());
+    // AP-024: non-editing instructors keep grading (documented) and only read certificates.
+    assert.deepEqual(granted('non_editing_instructor'), [...staff, 'quiz.viewResults', ...grader, 'certificates.view', 'tutor.use', 'progress.viewAll'].sort());
     assert.deepEqual(
       granted('instructor'),
-      [...staff, 'content.edit', 'content.submit', 'quiz.viewResults', ...grader, 'grades.release', 'grades.configure', 'tutor.use', 'progress.viewAll'].sort(),
+      [...staff, 'content.edit', 'content.submit', 'quiz.viewResults', ...grader, 'grades.release', 'grades.configure', 'certificates.view', 'certificates.manage', 'tutor.use', 'progress.viewAll'].sort(),
     );
     assert.equal(hasCoursePermission('non_editing_instructor', 'grades.release'), false);
     assert.equal(hasCoursePermission('non_editing_instructor', 'grades.configure'), false);
+    assert.equal(hasCoursePermission('non_editing_instructor', 'certificates.manage'), false);
+    assert.equal(hasCoursePermission('design_team', 'certificates.view'), false, 'the design team never sees student certificates');
     assert.deepEqual(granted('design_team'), [...staff, 'content.edit', 'content.submit', 'content.review'].sort());
     assert.equal(hasCoursePermission('design_team', 'quiz.attempt'), false, 'staff never take quizzes');
     assert.equal(hasCoursePermission('design_team', 'progress.viewAll'), false, 'the design team never reads student progress');

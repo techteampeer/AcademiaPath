@@ -70,6 +70,15 @@ import type {
   StudentGradebook,
   GradeSelectionRelease,
   GradeSelectionReleaseResult,
+  CertificatePolicy,
+  CertificatePolicyInput,
+  CourseCertificateEligibility,
+  Certificate,
+  CertificateList,
+  CertificatePage,
+  MyCourseCertificates,
+  MyCertificates,
+  CertificateVerification,
   StudentProgressPage,
   StudentQuizAttempt,
   StudentQuizAttemptSummary,
@@ -254,6 +263,35 @@ export const api = {
     apiRequest<GradeReleaseResult>('POST', `${activity(courseId, activityId)}/grades/release`, { csrfToken }),
   getGradebook: (courseId: string, page?: PageRequest) => apiRequest<Gradebook>('GET', withPage(`${course(courseId)}/gradebook`, page)),
   myGrades: (courseId: string) => apiRequest<StudentGrades>('GET', `${course(courseId)}/grades/mine`),
+  // Certificates (AP-024): eligibility, issuance and verification are decided by the API.
+  getCertificatePolicy: (courseId: string) => apiRequest<CertificatePolicy>('GET', `${course(courseId)}/certificate-policy`),
+  saveCertificatePolicy: (courseId: string, body: CertificatePolicyInput, csrfToken: string) =>
+    apiRequest<CertificatePolicy>('PUT', `${course(courseId)}/certificate-policy`, { body, csrfToken }),
+  getCertificateEligibility: (courseId: string) => apiRequest<CourseCertificateEligibility>('GET', `${course(courseId)}/certificates/eligibility`),
+  listCourseCertificates: (courseId: string) => apiRequest<CertificateList>('GET', `${course(courseId)}/certificates`),
+  issueCertificate: (courseId: string, userId: string, csrfToken: string) =>
+    apiRequest<Certificate>('POST', `${course(courseId)}/certificates`, { body: { userId }, csrfToken }),
+  revokeCertificate: (courseId: string, certificateId: string, reason: string, csrfToken: string) =>
+    apiRequest<Certificate>('POST', `${course(courseId)}/certificates/${certificateId}/revoke`, { body: { reason }, csrfToken }),
+  myCourseCertificates: (courseId: string) => apiRequest<MyCourseCertificates>('GET', `${course(courseId)}/certificates/mine`),
+  myCertificates: () => apiRequest<MyCertificates>('GET', '/me/certificates'),
+  getCertificate: (certificateId: string) => apiRequest<Certificate>('GET', `/certificates/${certificateId}`),
+  listAllCertificates: (filter: { status?: 'issued' | 'revoked'; cursor?: string } = {}) => {
+    const params = new URLSearchParams({ limit: '100', ...(filter.status ? { status: filter.status } : {}), ...(filter.cursor ? { cursor: filter.cursor } : {}) });
+    return apiRequest<CertificatePage>('GET', `/certificates?${params.toString()}`);
+  },
+  verifyCertificate: (token: string) => apiRequest<CertificateVerification>('GET', `/certificates/verify/${encodeURIComponent(token)}`),
+  /** The certificate PDF as a Blob (same-origin, with the session cookie); the browser saves it. */
+  downloadCertificatePdf: async (certificateId: string) => {
+    const response = await fetch(`${API_BASE}/certificates/${certificateId}/pdf`, { credentials: 'same-origin', headers: { accept: 'application/pdf' } });
+    if (!response.ok) {
+      const problem = await response.json().catch(() => null);
+      throw new ApiError(response.status, problem && typeof problem === 'object' && 'status' in problem ? problem : null);
+    }
+    const disposition = response.headers.get('content-disposition') ?? '';
+    return { blob: await response.blob(), fileName: /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'certificate.pdf' };
+  },
+
   // Advanced gradebook (AP-023): every calculation and permission check happens in the API.
   getGradingPolicy: (courseId: string) => apiRequest<GradingPolicy>('GET', `${course(courseId)}/grading-policy`),
   saveGradingPolicy: (courseId: string, body: GradingPolicyInput, csrfToken: string) =>

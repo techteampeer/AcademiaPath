@@ -14,7 +14,7 @@ import {
 } from '../db/schema/index.js';
 import { readSettings, readSnapshotQuestions } from '../quizzes/model.js';
 import type { GradeRecord } from './grades.js';
-import { computeCourseGrade, type CountedColumn, type CourseGrade, type PolicyCategory } from './policy.js';
+import { computeCourseGrade, computeCourseGradeExact, type CountedColumn, type CourseGrade, type PolicyCategory } from './policy.js';
 
 type Executor = Pick<Database, 'select' | 'insert' | 'update'>;
 type Reader = Pick<Database, 'select'>;
@@ -147,7 +147,12 @@ export type ReleasedState = { revision: number; releasedRevision: number | null;
 
 /** Student calculation: released grades only (unreleased points never enter it). */
 export function releasedCourseGrade(columns: GradebookColumn[], categories: PolicyCategory[] | null, stateFor: (activityId: string) => ReleasedState | undefined): CourseGrade {
-  return computeCourseGrade(columns, categories, (activityId) => {
+  return releasedCourseGradeExact(columns, categories, stateFor).grade;
+}
+
+/** The released calculation with its exact (unrounded) fraction, for threshold checks such as certificates. */
+export function releasedCourseGradeExact(columns: GradebookColumn[], categories: PolicyCategory[] | null, stateFor: (activityId: string) => ReleasedState | undefined) {
+  return computeCourseGradeExact(columns, categories, (activityId) => {
     const state = stateFor(activityId);
     if (!state) return { counted: null, exists: false };
     if (state.releasedRevision === null || state.releasedPoints === null || state.releasedMaxPoints === null) return { counted: null, exists: true };

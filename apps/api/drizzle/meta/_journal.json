@@ -169,6 +169,20 @@
       "when": 1794323558520,
       "tag": "0023_gradebook_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794330101167,
+      "tag": "0024_certificates",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794330114994,
+      "tag": "0025_certificate_integrity",
+      "breakpoints": true
     }
   ]
 }
