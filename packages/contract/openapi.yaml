@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.14.0
+  version: 0.15.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -119,6 +119,20 @@ info:
     folders inside a section, reorder folders and activities, and show or hide reading activities.
     Folders only organize content: students see a folder only when it holds an approved, visible activity
     in a visible, open section, and content is never deleted with a folder.
+
+    Assessment controls: quizzes additionally define a passing threshold (`passingScorePercent`), whether
+    students may review correctness after release (`showFeedback`) and a question-pool size
+    (`questionsPerAttempt`); quizzes saved earlier keep their behaviour (no threshold, no feedback, every
+    question). All settings are part of the reviewed quiz version. Each attempt stores the questions the
+    server selected (a random subset of the approved questions when a pool size is set), their order, the
+    option order, and its policy (attempt limit, time limit deadline, passing threshold, feedback); none of
+    it can change afterwards. Questions are reusable: staff import the approved questions of another quiz of
+    the same course, and the copies reach students only after this quiz is approved again. Deadlines are
+    computed and enforced by the server clock; answers sent after the deadline are refused and the attempt
+    is finalized with the answers saved in time. Expired attempts are finalized on request (no background
+    job) whenever attempts, results, grades or progress are read, exactly once even under concurrent
+    requests. Passing status and correctness feedback are shown to students only after their grade is
+    released; answer keys are never shown to students.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -2332,6 +2346,49 @@ paths:
           $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/activities/{activityId}/questions/import:
+    post:
+      operationId: importQuizQuestions
+      summary: Reuse the approved questions of another quiz (question pool)
+      description: |
+        Requires `content.edit` (instructor, design team) or the administrator role. Copies the approved
+        questions of another quiz of the same course into this quiz's question bank as new questions (another
+        course's quiz is not found; a quiz without an approved version is `422 QUIZ_SOURCE_INVALID`). Like any
+        question change it is blocked while the quiz is in review and turns an approved quiz into a draft
+        revision: the copies reach students only after this quiz is approved again. Audited as
+        `quiz.questions_imported` (question ids only, never answer keys).
+      tags: [Quizzes]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuestionImport"
+      responses:
+        "200":
+          description: The quiz's question bank after the import (staff view).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizQuestionList"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
   /api/v1/courses/{id}/activities/{activityId}/questions/{questionId}:
     put:
       operationId: updateQuizQuestion
@@ -2476,6 +2533,38 @@ paths:
                 $ref: "#/components/schemas/StudentQuizAttempt"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/attempts/{attemptId}/feedback:
+    get:
+      operationId: getQuizAttemptFeedback
+      summary: Review the correctness of one's own released attempt
+      description: |
+        Students only, for their own submitted attempt. Available only when the quiz version the attempt was
+        started from allows feedback, the student's grade for the quiz has been released, and the attempt was
+        submitted before that release; otherwise `403 FEEDBACK_NOT_AVAILABLE`. Shows the student's selections,
+        whether each question was correct and the points awarded; the answer key is never included. An
+        expired attempt is finalized first.
+      tags: [Quizzes]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/AttemptId"
+      responses:
+        "200":
+          description: The correctness review.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizFeedback"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2794,8 +2883,9 @@ paths:
         design-team roles). In one transaction, copies each graded student's current grade (points,
         feedback and rubric scores; for quizzes the best attempt's score) to the released grade the
         student can see. Grades given or changed later stay hidden until the next release, and
-        releasing again without changes releases nothing. Answer keys are never released. Audited as
-        `grades.released`. No request body.
+        releasing again without changes releases nothing. Answer keys are never released. For quizzes,
+        attempts whose time limit has passed are finalized and graded first, so the release includes them.
+        Audited as `grades.released`. No request body.
       tags: [Grades]
       security:
         - sessionCookie: []
@@ -3373,7 +3463,7 @@ components:
             detail: Invalid email or password.
             code: INVALID_CREDENTIALS
     Forbidden:
-      description: "`code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks)."
+      description: "`code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks) or `FEEDBACK_NOT_AVAILABLE` (correctness review not enabled or not yet released)."
       content:
         application/problem+json:
           schema:
@@ -3478,7 +3568,8 @@ components:
         `IMPORT_HAS_ERRORS`, `IMPORT_TOO_LARGE` or `INVALID_SECTION_ORDER`; or a progress rule:
         `COMPLETION_AUTOMATIC` (quizzes and assignments complete on submission), `PREREQUISITE_SELF`,
         `PREREQUISITE_SECTION_NOT_FOUND` or `PREREQUISITE_CYCLE`; or a learning-resource rule:
-        `RESOURCE_FOLDER_NOT_FOUND` or `RESOURCE_NOT_ORGANIZABLE`.
+        `RESOURCE_FOLDER_NOT_FOUND` or `RESOURCE_NOT_ORGANIZABLE`; or an assessment rule:
+        `QUIZ_POOL_TOO_SMALL`, `QUIZ_POOL_POINTS_MIXED` or `QUIZ_SOURCE_INVALID`.
       content:
         application/problem+json:
           schema:
@@ -3707,6 +3798,10 @@ components:
             - RESOURCE_FOLDER_NOT_EMPTY
             - RESOURCE_ORDER_STALE
             - RESOURCE_NOT_ORGANIZABLE
+            - QUIZ_POOL_TOO_SMALL
+            - QUIZ_POOL_POINTS_MIXED
+            - QUIZ_SOURCE_INVALID
+            - FEEDBACK_NOT_AVAILABLE
     ResourceKind:
       type: string
       description: What a link points to. Every kind is only a link opened in a new tab; nothing is embedded, fetched or executed.
@@ -4559,7 +4654,7 @@ components:
     QuizContent:
       type: object
       description: Quiz settings and totals. Questions and answer keys are never part of an activity.
-      required: [instructions, attemptLimit, timeLimitMinutes, shuffleQuestions, shuffleOptions, questionCount, totalPoints]
+      required: [instructions, attemptLimit, timeLimitMinutes, shuffleQuestions, shuffleOptions, passingScorePercent, showFeedback, questionsPerAttempt, questionCount, totalPoints]
       additionalProperties: false
       properties:
         instructions:
@@ -4573,6 +4668,15 @@ components:
           type: boolean
         shuffleOptions:
           type: boolean
+        passingScorePercent:
+          type: [integer, "null"]
+          description: Minimum percentage to pass; null when the quiz has no passing threshold.
+        showFeedback:
+          type: boolean
+          description: Students may review per-question correctness after their grade is released (never the answer key).
+        questionsPerAttempt:
+          type: [integer, "null"]
+          description: Questions drawn at random from the approved questions for each attempt; null = all.
         questionCount:
           type: integer
         totalPoints:
@@ -4704,6 +4808,23 @@ components:
           type: boolean
           default: false
           description: Shuffles options of choice questions (not true/false).
+        passingScorePercent:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 100
+          description: Minimum percentage to pass. Omit or null for no threshold.
+        showFeedback:
+          type: boolean
+          default: false
+          description: Lets students review per-question correctness (not the answer key) after their grade is released.
+        questionsPerAttempt:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 100
+          description: |
+            Draw this many questions at random from the approved questions for each attempt. The quiz must then
+            have at least that many questions, all worth the same points (`422 QUIZ_POOL_TOO_SMALL`,
+            `422 QUIZ_POOL_POINTS_MIXED` on submission for review and approval). Omit or null to use every question.
     RubricCriterionInput:
       type: object
       required: [title, maxPoints]
@@ -5238,7 +5359,7 @@ components:
     StudentQuizAttempt:
       type: object
       description: A student's own attempt. Never contains answer keys, correctness or scores.
-      required: [id, activityId, attemptNumber, attemptLimit, status, startedAt, deadlineAt, submittedAt, closedByTimeLimit, resultsReleased, questions]
+      required: [id, activityId, attemptNumber, attemptLimit, status, startedAt, deadlineAt, submittedAt, closedByTimeLimit, resultsReleased, serverTime, questions]
       additionalProperties: false
       properties:
         id:
@@ -5260,6 +5381,10 @@ components:
           type: [string, "null"]
           format: date-time
           description: Server deadline; the server enforces it regardless of the browser clock.
+        serverTime:
+          type: string
+          format: date-time
+          description: The server's current time, so clients can show the remaining time without trusting their own clock.
         submittedAt:
           type: [string, "null"]
           format: date-time
@@ -5300,7 +5425,7 @@ components:
                   type: string
     QuizAttemptStatusItem:
       type: object
-      required: [id, attemptNumber, status, startedAt, deadlineAt, submittedAt, closedByTimeLimit]
+      required: [id, attemptNumber, status, startedAt, deadlineAt, submittedAt, closedByTimeLimit, feedbackAvailable]
       additionalProperties: false
       properties:
         id:
@@ -5321,15 +5446,28 @@ components:
           format: date-time
         closedByTimeLimit:
           type: boolean
+        feedbackAvailable:
+          type: boolean
+          description: True when the student may open this attempt's correctness review (see `getQuizAttemptFeedback`).
     StudentQuizAttemptSummary:
       type: object
-      required: [attemptLimit, attemptsUsed, timeLimitMinutes, activeAttemptId, gradeReleased, items]
+      required: [attemptLimit, attemptsUsed, attemptsRemaining, timeLimitMinutes, questionsPerAttempt, passingScorePercent, activeAttemptId, gradeReleased, passed, items]
       additionalProperties: false
       properties:
         attemptLimit:
           type: integer
         attemptsUsed:
           type: integer
+        attemptsRemaining:
+          type: integer
+          minimum: 0
+        questionsPerAttempt:
+          type: [integer, "null"]
+        passingScorePercent:
+          type: [integer, "null"]
+        passed:
+          type: [boolean, "null"]
+          description: Whether the released grade meets the passing threshold; null until released or without a threshold.
         gradeReleased:
           type: boolean
           description: True once staff have released this student's grade for the quiz.
@@ -5342,6 +5480,72 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/QuizAttemptStatusItem"
+    QuizFeedback:
+      type: object
+      description: A student's correctness review of one released attempt. Never contains the answer key.
+      required: [attemptId, attemptNumber, submittedAt, score, maxScore, passed, questions]
+      additionalProperties: false
+      properties:
+        attemptId:
+          type: string
+          format: uuid
+        attemptNumber:
+          type: integer
+        submittedAt:
+          type: string
+          format: date-time
+        score:
+          type: integer
+        maxScore:
+          type: integer
+        passed:
+          type: [boolean, "null"]
+        questions:
+          type: array
+          items:
+            type: object
+            required: [questionId, position, type, prompt, points, options, selectedOptionIds, isCorrect, awardedPoints]
+            additionalProperties: false
+            properties:
+              questionId:
+                type: string
+                format: uuid
+              position:
+                type: integer
+              type:
+                $ref: "#/components/schemas/QuizQuestionType"
+              prompt:
+                type: string
+              points:
+                type: integer
+              options:
+                type: array
+                items:
+                  type: object
+                  required: [id, text]
+                  additionalProperties: false
+                  properties:
+                    id:
+                      type: string
+                    text:
+                      type: string
+              selectedOptionIds:
+                type: array
+                items:
+                  type: string
+              isCorrect:
+                type: boolean
+              awardedPoints:
+                type: integer
+    QuestionImport:
+      type: object
+      required: [sourceActivityId]
+      additionalProperties: false
+      properties:
+        sourceActivityId:
+          type: string
+          format: uuid
+          description: An approved quiz of the same course whose approved questions are copied.
     QuizResultStudent:
       type: object
       required: [id, email, givenName, familyName]
@@ -5358,7 +5562,7 @@ components:
           type: string
     QuizResult:
       type: object
-      required: [attemptId, attemptNumber, status, startedAt, deadlineAt, submittedAt, closedByTimeLimit, score, maxScore, student]
+      required: [attemptId, attemptNumber, status, startedAt, deadlineAt, submittedAt, closedByTimeLimit, score, maxScore, passingScorePercent, passed, student]
       additionalProperties: false
       properties:
         attemptId:
@@ -5384,6 +5588,11 @@ components:
           description: Server-computed; null while in progress.
         maxScore:
           type: integer
+        passingScorePercent:
+          type: [integer, "null"]
+          description: The threshold of the quiz version this attempt was started from.
+        passed:
+          type: [boolean, "null"]
         student:
           $ref: "#/components/schemas/QuizResultStudent"
     QuizResultPage:

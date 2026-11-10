@@ -10,7 +10,7 @@ import { Card } from '@/components/ui/Card';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { ReleaseGradesButton } from '@/components/grades/ReleaseGradesButton';
 import { isApiError } from '@/lib/api/client';
-import { api } from '@/lib/api/endpoints';
+import { api, loadAll } from '@/lib/api/endpoints';
 import type { QuizAttemptResult, QuizQuestion, QuizQuestionInput, QuizQuestionType, QuizResult } from '@/lib/api/types';
 import { formatDateTimeOrDash, type Messages } from '@/lib/i18n/messages';
 
@@ -127,7 +127,79 @@ export function QuizQuestionsPanel({
         </ol>
       )}
       {canEdit ? <QuestionForm pending={pending} onSubmit={add} /> : null}
+      {canEdit ? (
+        <ImportQuestions
+          courseId={courseId}
+          quizId={quizId}
+          onImported={async () => {
+            await load();
+            onChanged();
+          }}
+        />
+      ) : null}
     </Card>
+  );
+}
+
+/**
+ * Question reuse (AP-022): copies the approved questions of another approved quiz in this course. The API
+ * checks the course, the source's approval and the editor role; the copies go through review again.
+ */
+function ImportQuestions({ courseId, quizId, onImported }: { courseId: string; quizId: string; onImported: () => Promise<void> }) {
+  const { t } = useLocale();
+  const a = t.assessment;
+  const { run, pending, result } = useCsrfAction();
+  const [sources, setSources] = useState<Array<{ id: string; title: string }> | null>(null);
+  const [source, setSource] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const sections = await loadAll((page) => api.listSections(courseId, page), 5);
+      const lists = await Promise.all(sections.map((section) => loadAll((page) => api.listActivities(courseId, section.id, page), 5)));
+      // Staff see live versions: only quizzes with an approved version can be a source.
+      const quizzes = lists.flat().filter((activity) => activity.type === 'quiz' && activity.id !== quizId && activity.liveVersion);
+      if (!cancelled) {
+        setSources(quizzes.map((quiz) => ({ id: quiz.id, title: quiz.liveVersion?.title ?? quiz.title })));
+        setSource(quizzes[0]?.id ?? '');
+      }
+    })().catch(() => !cancelled && setSources([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [courseId, quizId]);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!source) return;
+    const list = await run((csrf) => api.importQuizQuestions(courseId, quizId, source, csrf), (value) => a.imported(value.items.length));
+    if (list) await onImported();
+  };
+
+  return (
+    <form noValidate onSubmit={submit} aria-labelledby="import-questions-heading" className="space-y-3 border-t border-slate-200 pt-4">
+      <h3 id="import-questions-heading" className="font-semibold text-slate-900">
+        {a.importHeading}
+      </h3>
+      <p className="text-sm text-slate-600">{a.importHint}</p>
+      {result ? <Alert tone={result.tone}>{result.message}</Alert> : null}
+      {sources === null ? null : sources.length === 0 ? (
+        <p className="text-sm text-slate-500">{a.noSources}</p>
+      ) : (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <SelectField
+            id="import-source"
+            className="min-w-0 flex-1"
+            label={a.importSource}
+            value={source}
+            onChange={(event) => setSource(event.target.value)}
+            options={sources.map((quiz) => ({ value: quiz.id, label: quiz.title }))}
+          />
+          <Button type="submit" variant="secondary" disabled={pending || !source}>
+            {a.importButton}
+          </Button>
+        </div>
+      )}
+    </form>
   );
 }
 
@@ -398,6 +470,9 @@ export function QuizResultsPanel({ courseId, quizId, canRelease = false }: { cou
                 <th scope="col" className="py-2 pr-4 font-medium">
                   {r.score}
                 </th>
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  {t.assessment.passedColumn}
+                </th>
                 <th scope="col" className="py-2 font-medium">
                   <span className="sr-only">{r.details}</span>
                 </th>
@@ -416,6 +491,7 @@ export function QuizResultsPanel({ courseId, quizId, canRelease = false }: { cou
                   <td className="py-2 pr-4">{attemptStatusLabel(row, r)}</td>
                   <td className="py-2 pr-4">{formatDateTimeOrDash(row.submittedAt, locale)}</td>
                   <td className="py-2 pr-4 font-medium">{row.score === null ? '—' : `${row.score} / ${row.maxScore}`}</td>
+                  <td className="py-2 pr-4">{row.passed === null ? '—' : row.passed ? t.assessment.yes : t.assessment.no}</td>
                   <td className="py-2">
                     <Button variant="ghost" size="sm" onClick={() => void openDetail(row.attemptId)}>
                       {r.view}

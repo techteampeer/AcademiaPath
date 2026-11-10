@@ -1,0 +1,3 @@
+ALTER TABLE "quiz_attempts" ADD COLUMN "passing_score_percent" integer;--> statement-breakpoint
+ALTER TABLE "quiz_attempts" ADD COLUMN "feedback_enabled" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "quiz_attempts" ADD CONSTRAINT "quiz_attempts_passing_score_check" CHECK ("quiz_attempts"."passing_score_percent" IS NULL OR "quiz_attempts"."passing_score_percent" BETWEEN 1 AND 100);

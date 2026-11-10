@@ -141,6 +141,20 @@
       "when": 1794319294683,
       "tag": "0019_learning_resources",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794321101403,
+      "tag": "0020_quiz_assessment_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1794321102285,
+      "tag": "0021_quiz_selection_integrity",
+      "breakpoints": true
     }
   ]
 }

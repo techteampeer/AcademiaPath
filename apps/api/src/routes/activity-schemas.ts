@@ -30,6 +30,10 @@ const quizSettingsFields = {
   timeLimitMinutes: { type: ['integer', 'null'], minimum: 1, maximum: 300 },
   shuffleQuestions: { type: 'boolean' },
   shuffleOptions: { type: 'boolean' },
+  /** AP-022 assessment policies (defaults keep earlier quizzes unchanged). */
+  passingScorePercent: { type: ['integer', 'null'], minimum: 1, maximum: 100 },
+  showFeedback: { type: 'boolean' },
+  questionsPerAttempt: { type: ['integer', 'null'], minimum: 1, maximum: 100 },
 } as const;
 
 const assignmentFields = {
@@ -131,6 +135,9 @@ const contentSchema = {
     timeLimitMinutes: { type: ['integer', 'null'] },
     shuffleQuestions: { type: 'boolean' },
     shuffleOptions: { type: 'boolean' },
+    passingScorePercent: { type: ['integer', 'null'] },
+    showFeedback: { type: 'boolean' },
+    questionsPerAttempt: { type: ['integer', 'null'] },
     questionCount: { type: 'integer' },
     totalPoints: { type: 'integer' },
     dueAt: dateTime,

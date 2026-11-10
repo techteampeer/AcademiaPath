@@ -93,6 +93,10 @@ const en = {
     RESOURCE_FOLDER_NOT_EMPTY: 'Move or remove the folder’s content before deleting it.',
     RESOURCE_ORDER_STALE: 'The content changed in the meantime. Reload the course and try again.',
     RESOURCE_NOT_ORGANIZABLE: 'Only lessons, links and documents can be placed in folders or shown and hidden.',
+    QUIZ_POOL_TOO_SMALL: 'The quiz draws more questions per attempt than it has. Add questions or lower the number.',
+    QUIZ_POOL_POINTS_MIXED: 'When questions are drawn at random, every question must be worth the same points.',
+    QUIZ_SOURCE_INVALID: 'Choose another approved quiz of this course as the source.',
+    FEEDBACK_NOT_AVAILABLE: 'Feedback for this attempt is not available yet.',
   } as Record<string, string>,
 };
 
@@ -189,6 +193,10 @@ const es: ErrorMessages = {
     RESOURCE_FOLDER_NOT_EMPTY: 'Mueve o quita el contenido de la carpeta antes de eliminarla.',
     RESOURCE_ORDER_STALE: 'El contenido cambió mientras tanto. Recarga el curso e inténtalo de nuevo.',
     RESOURCE_NOT_ORGANIZABLE: 'Solo las lecciones, los enlaces y los documentos se pueden poner en carpetas u ocultar y mostrar.',
+    QUIZ_POOL_TOO_SMALL: 'El cuestionario elige más preguntas por intento de las que tiene. Agrega preguntas o reduce la cantidad.',
+    QUIZ_POOL_POINTS_MIXED: 'Si las preguntas se eligen al azar, todas deben valer los mismos puntos.',
+    QUIZ_SOURCE_INVALID: 'Elige otro cuestionario aprobado de este curso como origen.',
+    FEEDBACK_NOT_AVAILABLE: 'La retroalimentación de este intento aún no está disponible.',
   },
 };
 

@@ -69,6 +69,10 @@ export const quizAttempts = pgTable(
     deadlineAt: timestamp('deadline_at', { withTimezone: true }),
     submittedAt: timestamp('submitted_at', { withTimezone: true }),
     closedByTimeLimit: boolean('closed_by_time_limit').notNull().default(false),
+    /** AP-022: passing threshold of the quiz version the attempt was started from (null = none). */
+    passingScorePercent: integer('passing_score_percent'),
+    /** AP-022: whether that version lets students review correctness after their grade is released. */
+    feedbackEnabled: boolean('feedback_enabled').notNull().default(false),
     /** Server-computed result; not released to students yet. */
     score: integer('score'),
     maxScore: integer('max_score').notNull(),
@@ -97,6 +101,7 @@ export const quizAttempts = pgTable(
     ),
     check('quiz_attempts_score_check', sql`${t.maxScore} >= 0 AND (${t.score} IS NULL OR ${t.score} BETWEEN 0 AND ${t.maxScore})`),
     check('quiz_attempts_deadline_check', sql`${t.deadlineAt} IS NULL OR ${t.deadlineAt} > ${t.startedAt}`),
+    check('quiz_attempts_passing_score_check', sql`${t.passingScorePercent} IS NULL OR ${t.passingScorePercent} BETWEEN 1 AND 100`),
   ],
 );
 

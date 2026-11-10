@@ -13,7 +13,7 @@ import { normalizeResourceUrl, normalizeSafeHttpUrl } from '../../src/content/ur
 import { gradeResponse, normalizeResponse } from '../../src/quizzes/grading.js';
 import { assignmentFromInput, validateScores } from '../../src/assignments/model.js';
 import { courseTotal, toScale20 } from '../../src/grading/scale.js';
-import { buildQuestion, shuffle } from '../../src/quizzes/model.js';
+import { buildQuestion, passed, selectQuestions, shuffle, validatePool } from '../../src/quizzes/model.js';
 import { decodeCursor, encodeCursor, toPage } from '../../src/http/pagination.js';
 import { hasCycle, isReadingType, summarize } from '../../src/progress/model.js';
 
@@ -264,5 +264,37 @@ describe('learning resource URLs (AP-021)', () => {
     ]) {
       assert.equal(normalizeResourceUrl(value.replace('\\n', '\n')), null, value);
     }
+  });
+});
+
+describe('assessment controls (AP-022)', () => {
+  const questions = Array.from({ length: 5 }, (_, i) => ({ id: `q${i}`, points: 2 }));
+
+  it('draws a uniformly random subset of the requested size, in course order unless shuffled', () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      const drawn = selectQuestions({ questionsPerAttempt: 3, shuffleQuestions: false }, questions);
+      assert.equal(drawn.length, 3);
+      assert.equal(new Set(drawn).size, 3);
+      assert.deepEqual(drawn, [...drawn].sort((a, b) => a.id.localeCompare(b.id)), 'course order kept');
+      drawn.forEach((q) => seen.add(q.id));
+    }
+    assert.equal(seen.size, 5, 'every question can be drawn');
+    assert.deepEqual(selectQuestions({ questionsPerAttempt: null, shuffleQuestions: false }, questions), questions, 'default: every question, in order');
+    assert.equal(selectQuestions({ questionsPerAttempt: 9, shuffleQuestions: true }, questions).length, 5);
+  });
+
+  it('rejects pools that are too small or mix point values', () => {
+    assert.doesNotThrow(() => validatePool({ questionsPerAttempt: null }, [{ points: 1 }, { points: 3 }]));
+    assert.doesNotThrow(() => validatePool({ questionsPerAttempt: 5 }, questions));
+    assert.throws(() => validatePool({ questionsPerAttempt: 6 }, questions), /QUIZ_POOL_TOO_SMALL|draws 6/);
+    assert.throws(() => validatePool({ questionsPerAttempt: 2 }, [{ points: 1 }, { points: 2 }, { points: 1 }]), /same points/);
+  });
+
+  it('computes passing status exactly at the threshold and only when one is set', () => {
+    assert.equal(passed(3, 5, 60), true);
+    assert.equal(passed(59, 100, 60), false);
+    assert.equal(passed(2, 3, 67), false, '66.67% is below 67%');
+    assert.equal(passed(4, 6, null), null);
   });
 });

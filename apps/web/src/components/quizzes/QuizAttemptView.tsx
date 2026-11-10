@@ -26,16 +26,20 @@ function selectionsOf(attempt: StudentQuizAttempt): Selections {
   return Object.fromEntries(attempt.questions.map((question) => [question.questionId, question.selectedOptionIds]));
 }
 
-/** Display-only countdown. The server enforces the deadline regardless of the browser clock. */
-function TimeRemaining({ deadlineAt }: { deadlineAt: string }) {
+/**
+ * Display-only countdown. The server enforces the deadline regardless of the browser clock; the display
+ * uses the server's time (sent with the attempt) so a wrong or changed browser clock cannot skew it.
+ */
+function TimeRemaining({ deadlineAt, serverTime }: { deadlineAt: string; serverTime: string }) {
   const { t, locale } = useLocale();
   const a = t.quiz.attempt;
+  const [offset] = useState(() => Date.parse(serverTime) - Date.now());
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
-  const seconds = Math.max(0, Math.floor((Date.parse(deadlineAt) - now) / 1000));
+  const seconds = Math.max(0, Math.floor((Date.parse(deadlineAt) - (now + offset)) / 1000));
   const display = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   return (
     <p className="text-sm text-slate-700">
@@ -175,7 +179,7 @@ function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: 
   return (
     <div className="space-y-6">
       {header}
-      {attempt.deadlineAt ? <TimeRemaining deadlineAt={attempt.deadlineAt} /> : null}
+      {attempt.deadlineAt ? <TimeRemaining key={attempt.serverTime} deadlineAt={attempt.deadlineAt} serverTime={attempt.serverTime} /> : null}
       {result ? <Alert tone={result.tone}>{result.message}</Alert> : null}
       <form
         noValidate

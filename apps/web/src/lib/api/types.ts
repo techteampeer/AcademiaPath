@@ -127,3 +127,5 @@ export type ResourceFolder = Schemas['ResourceFolder'];
 export type ResourceFolderList = Schemas['ResourceFolderList'];
 export type ActivityOrganization = Schemas['ActivityOrganization'];
 export type ActivityOrganizationResult = Schemas['ActivityOrganizationResult'];
+
+export type QuizFeedback = Schemas['QuizFeedback'];

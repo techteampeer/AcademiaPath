@@ -7,6 +7,7 @@ import type { QuizContent } from '@/lib/api/types';
 export function QuizSummary({ content }: { content: QuizContent }) {
   const { t } = useLocale();
   const s = t.quiz.summary;
+  const a = t.assessment;
   return (
     <div className="space-y-3">
       {content.instructions ? <p className="whitespace-pre-wrap break-words text-slate-800">{content.instructions}</p> : null}
@@ -22,6 +23,18 @@ export function QuizSummary({ content }: { content: QuizContent }) {
         <div>
           <dt className="text-slate-500">{s.timeLimit}</dt>
           <dd className="font-medium text-slate-900">{content.timeLimitMinutes ? s.minutes(content.timeLimitMinutes) : s.none}</dd>
+        </div>
+        <div>
+          <dt className="text-slate-500">{a.questionsPerAttempt}</dt>
+          <dd className="font-medium text-slate-900">{content.questionsPerAttempt ? a.drawn(content.questionsPerAttempt, content.questionCount) : a.allQuestions}</dd>
+        </div>
+        <div>
+          <dt className="text-slate-500">{a.passingScore}</dt>
+          <dd className="font-medium text-slate-900">{content.passingScorePercent ? a.percent(content.passingScorePercent) : a.none}</dd>
+        </div>
+        <div>
+          <dt className="text-slate-500">{a.feedback}</dt>
+          <dd className="font-medium text-slate-900">{content.showFeedback ? a.feedbackOn : a.feedbackOff}</dd>
         </div>
       </dl>
     </div>

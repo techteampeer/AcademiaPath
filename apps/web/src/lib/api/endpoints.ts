@@ -49,6 +49,7 @@ import type {
   QuizAttemptSubmit,
   QuizQuestion,
   QuizQuestionInput,
+  QuizFeedback,
   QuizQuestionList,
   QuizResultPage,
   ResourceFolder,
@@ -287,6 +288,11 @@ export const api = {
       body: { requiredSectionIds },
       csrfToken,
     }),
+
+  // Assessment controls (AP-022).
+  quizFeedback: (courseId: string, attemptId: string) => apiRequest<QuizFeedback>('GET', `${attempt(courseId, attemptId)}/feedback`),
+  importQuizQuestions: (courseId: string, quizId: string, sourceActivityId: string, csrfToken: string) =>
+    apiRequest<QuizQuestionList>('POST', `${activity(courseId, quizId)}/questions/import`, { body: { sourceActivityId }, csrfToken }),
 
   // Learning resources: folders, ordering and visibility (the API enforces every rule).
   listResourceFolders: (courseId: string, sectionId: string) =>

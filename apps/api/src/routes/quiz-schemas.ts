@@ -145,7 +145,7 @@ const attemptCore = {
 
 export const studentAttemptSchema = {
   type: 'object',
-  required: ['id', 'activityId', 'attemptLimit', 'resultsReleased', 'questions', ...Object.keys(attemptCore)],
+  required: ['id', 'activityId', 'attemptLimit', 'resultsReleased', 'serverTime', 'questions', ...Object.keys(attemptCore)],
   additionalProperties: false,
   properties: {
     id: uuid,
@@ -153,6 +153,7 @@ export const studentAttemptSchema = {
     attemptLimit: { type: 'integer' },
     ...attemptCore,
     resultsReleased: { type: 'boolean' },
+    serverTime: dateTime,
     questions: {
       type: 'array',
       items: {
@@ -175,17 +176,37 @@ export const studentAttemptSchema = {
 
 export const studentAttemptSummarySchema = {
   type: 'object',
-  required: ['attemptLimit', 'attemptsUsed', 'timeLimitMinutes', 'activeAttemptId', 'gradeReleased', 'items'],
+  required: [
+    'attemptLimit',
+    'attemptsUsed',
+    'attemptsRemaining',
+    'timeLimitMinutes',
+    'questionsPerAttempt',
+    'passingScorePercent',
+    'activeAttemptId',
+    'gradeReleased',
+    'passed',
+    'items',
+  ],
   additionalProperties: false,
   properties: {
     attemptLimit: { type: 'integer' },
     attemptsUsed: { type: 'integer' },
+    attemptsRemaining: { type: 'integer', minimum: 0 },
     gradeReleased: { type: 'boolean' },
     timeLimitMinutes: { type: ['integer', 'null'] },
+    questionsPerAttempt: { type: ['integer', 'null'] },
+    passingScorePercent: { type: ['integer', 'null'] },
+    passed: { type: ['boolean', 'null'] },
     activeAttemptId: { type: ['string', 'null'], format: 'uuid' },
     items: {
       type: 'array',
-      items: { type: 'object', required: ['id', ...Object.keys(attemptCore)], additionalProperties: false, properties: { id: uuid, ...attemptCore } },
+      items: {
+        type: 'object',
+        required: ['id', 'feedbackAvailable', ...Object.keys(attemptCore)],
+        additionalProperties: false,
+        properties: { id: uuid, ...attemptCore, feedbackAvailable: { type: 'boolean' } },
+      },
     },
   },
 } as const;
@@ -202,6 +223,8 @@ const resultCore = {
   ...attemptCore,
   score: { type: ['integer', 'null'] },
   maxScore: { type: 'integer' },
+  passingScorePercent: { type: ['integer', 'null'] },
+  passed: { type: ['boolean', 'null'] },
   student,
 } as const;
 
@@ -241,4 +264,49 @@ export const quizAttemptResultSchema = {
       },
     },
   },
+} as const;
+
+/**
+ * A student's correctness review of one released attempt (AP-022): their own selections, whether each
+ * question was answered correctly and the points awarded. Answer keys are never included.
+ */
+export const quizFeedbackSchema = {
+  type: 'object',
+  required: ['attemptId', 'attemptNumber', 'submittedAt', 'score', 'maxScore', 'passed', 'questions'],
+  additionalProperties: false,
+  properties: {
+    attemptId: uuid,
+    attemptNumber: { type: 'integer' },
+    submittedAt: dateTime,
+    score: { type: 'integer' },
+    maxScore: { type: 'integer' },
+    passed: { type: ['boolean', 'null'] },
+    questions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['questionId', 'position', 'type', 'prompt', 'points', 'options', 'selectedOptionIds', 'isCorrect', 'awardedPoints'],
+        additionalProperties: false,
+        properties: {
+          questionId: uuid,
+          position: { type: 'integer' },
+          type: questionType,
+          prompt: { type: 'string' },
+          points: { type: 'integer' },
+          options: { type: 'array', items: optionForStudent },
+          selectedOptionIds: { type: 'array', items: { type: 'string' } },
+          isCorrect: { type: 'boolean' },
+          awardedPoints: { type: 'integer' },
+        },
+      },
+    },
+  },
+} as const;
+
+/** Copies the approved questions of another quiz of the same course into this quiz's question bank. */
+export const questionImportSchema = {
+  type: 'object',
+  required: ['sourceActivityId'],
+  additionalProperties: false,
+  properties: { sourceActivityId: uuid },
 } as const;

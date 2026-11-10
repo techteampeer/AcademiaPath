@@ -15,6 +15,7 @@ import { setup } from './catalog/setup';
 import { tutor } from './catalog/tutor';
 import { progress } from './catalog/progress';
 import { resources } from './catalog/resources';
+import { assessment } from './catalog/assessment';
 
 export type Locale = 'en' | 'es';
 export const LOCALES: Locale[] = ['en', 'es'];
@@ -255,6 +256,7 @@ const en = {
   programs: programs.en,
   progress: progress.en,
   resources: resources.en,
+  assessment: assessment.en,
   academics: {
     hierarchy: 'Hierarchy',
     treeLabel: 'Academic hierarchy',
@@ -688,6 +690,7 @@ const es: Messages = {
   programs: programs.es,
   progress: progress.es,
   resources: resources.es,
+  assessment: assessment.es,
   academics: {
     hierarchy: 'Jerarquía',
     treeLabel: 'Jerarquía académica',
