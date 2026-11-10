@@ -24,8 +24,11 @@ if ! gcloud sql instances describe "$SQL_INSTANCE" >/dev/null 2>&1; then
   gcloud sql instances create "$SQL_INSTANCE" \
     --database-version=POSTGRES_16 --edition=ENTERPRISE --tier=db-f1-micro \
     --region="$REGION" --storage-size=10 --storage-auto-increase \
-    --backup-start-time=07:00 --labels=app=academiapath
+    --backup-start-time=07:00
 fi
+# Labels on Cloud SQL are only in the beta track of gcloud; a missing label must not stop the setup.
+gcloud beta sql instances patch "$SQL_INSTANCE" --update-labels=app=academiapath --quiet >/dev/null 2>&1 \
+  || echo "   (label app=academiapath not applied to Cloud SQL; add it later from the console)"
 gcloud sql databases describe "$DB_NAME" --instance="$SQL_INSTANCE" >/dev/null 2>&1 \
   || gcloud sql databases create "$DB_NAME" --instance="$SQL_INSTANCE"
 
