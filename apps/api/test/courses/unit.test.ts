@@ -27,10 +27,16 @@ describe('course role permissions', () => {
       'sections.viewHidden',
       'content.viewUnapproved',
     ];
-    const grader = ['grades.grade', 'grades.release', 'grades.view'];
+    const grader = ['grades.export', 'grades.grade', 'grades.view'];
     assert.deepEqual(granted('student'), ['assignment.submit', 'course.view', 'grades.viewOwn', 'progress.own', 'quiz.attempt', 'tutor.use']);
+    // AP-023: non-editing instructors read and export the gradebook but neither release grades nor configure weights.
     assert.deepEqual(granted('non_editing_instructor'), [...staff, 'quiz.viewResults', ...grader, 'tutor.use', 'progress.viewAll'].sort());
-    assert.deepEqual(granted('instructor'), [...staff, 'content.edit', 'content.submit', 'quiz.viewResults', ...grader, 'tutor.use', 'progress.viewAll'].sort());
+    assert.deepEqual(
+      granted('instructor'),
+      [...staff, 'content.edit', 'content.submit', 'quiz.viewResults', ...grader, 'grades.release', 'grades.configure', 'tutor.use', 'progress.viewAll'].sort(),
+    );
+    assert.equal(hasCoursePermission('non_editing_instructor', 'grades.release'), false);
+    assert.equal(hasCoursePermission('non_editing_instructor', 'grades.configure'), false);
     assert.deepEqual(granted('design_team'), [...staff, 'content.edit', 'content.submit', 'content.review'].sort());
     assert.equal(hasCoursePermission('design_team', 'quiz.attempt'), false, 'staff never take quizzes');
     assert.equal(hasCoursePermission('design_team', 'progress.viewAll'), false, 'the design team never reads student progress');

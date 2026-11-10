@@ -171,10 +171,10 @@ function LessonContent({ courseId, activityId, user }: { courseId: string; activ
           onChanged={() => void load()}
         />
       ) : null}
-      {isQuiz && abilities.viewResults ? <QuizResultsPanel courseId={courseId} quizId={activity.id} canRelease={abilities.grade} /> : null}
+      {isQuiz && abilities.viewResults ? <QuizResultsPanel courseId={courseId} quizId={activity.id} canRelease={abilities.release} /> : null}
       {isQuiz && abilities.attempt ? <QuizStudentPanel courseId={courseId} quizId={activity.id} /> : null}
       {activity.type === 'assignment' && abilities.viewGrades ? (
-        <AssignmentGradingPanel courseId={courseId} assignmentId={activity.id} canGrade={abilities.grade} />
+        <AssignmentGradingPanel courseId={courseId} assignmentId={activity.id} canGrade={abilities.grade} canRelease={abilities.release} />
       ) : null}
       {activity.type === 'assignment' && abilities.attempt ? <AssignmentStudentPanel courseId={courseId} assignmentId={activity.id} /> : null}
       {abilities.trackProgress ? <LessonCompletion courseId={courseId} activity={activity} /> : null}

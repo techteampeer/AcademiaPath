@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.15.0
+  version: 0.16.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -133,6 +133,30 @@ info:
     job) whenever attempts, results, grades or progress are read, exactly once even under concurrent
     requests. Passing status and correctness feedback are shown to students only after their grade is
     released; answer keys are never shown to students.
+
+    Quiz timer (0.16.0): the answer window of a timed attempt is [startedAt, deadlineAt], both taken from the
+    API server clock. An answer is accepted only if the server clock, read after the attempt is locked, is at
+    or before `deadlineAt` (the deadline instant itself is inside the window; one millisecond later is not).
+    There is no grace period: nothing extends the answer window (the earlier 10-second grace was removed).
+    A late save returns `409 ATTEMPT_EXPIRED`; a late submit closes the attempt with the answers saved in
+    time. An attempt closed by its time limit is recorded as submitted at its deadline. Released quiz results
+    are judged by the passing threshold saved with the released attempt, so changing a quiz never alters the
+    pass/fail status of completed attempts.
+
+    Advanced gradebook (0.16.0): instructors (and administrators) may define grade categories with integer
+    weights (for example Quizzes 40 %, Assignments 60 %) and place each quiz or assignment in at most one
+    category. A draft policy never affects grades; a published one must total exactly 100 %. Without a
+    published policy the course grade is the original unweighted sum of points. With one, each category's
+    percentage is its graded points over its graded maxima, and the course percentage is the weighted average
+    over the categories that have graded work (their weights scaled up to 100 %); activities outside every
+    category are not counted. Ungraded or unsubmitted work is never treated as zero (an earned 0 is), and is
+    reported as pending. A course grade is `final` only when it has graded work and every counted activity
+    that students can see, or that has a grade, has a released grade unchanged since its release; otherwise
+    it is `provisional`. All values are calculated on the server and rounded once, half up, to one decimal.
+    Staff see the calculation on current grades; students see it on released grades only. Grades are
+    released per activity or selectively (individual or bulk, each item naming the reviewed revision), and
+    only instructors release (non-editing instructors have read-only gradebook access). Staff may export the
+    gradebook as CSV. Program-management grants give no gradebook access.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -2879,13 +2903,14 @@ paths:
       operationId: releaseGrades
       summary: Release the current grades of a quiz or assignment to its students
       description: |
-        Requires `grades.release` (instructor, non-editing instructor; never the administrator or
-        design-team roles). In one transaction, copies each graded student's current grade (points,
-        feedback and rubric scores; for quizzes the best attempt's score) to the released grade the
-        student can see. Grades given or changed later stay hidden until the next release, and
-        releasing again without changes releases nothing. Answer keys are never released. For quizzes,
-        attempts whose time limit has passed are finalized and graded first, so the release includes them.
-        Audited as `grades.released`. No request body.
+        Requires `grades.release` (instructors only since 0.16.0; never non-editing instructors, the
+        administrator or design-team roles). In one transaction, copies each graded student's current grade
+        (points, feedback and rubric scores; for quizzes the best attempt's score, and which attempt it was)
+        to the released grade the student can see. Grades given or changed later stay hidden until the next
+        release, and releasing again without changes releases nothing. Ungraded work has no grade and is
+        never released. Answer keys are never released. For quizzes, attempts whose time limit has passed
+        are finalized and graded first, so the release includes them. Audited as `grades.released` (one
+        entry per call) and `grade.released` (one per released grade). No request body.
       tags: [Grades]
       security:
         - sessionCookie: []
@@ -2912,10 +2937,13 @@ paths:
       summary: Course gradebook (staff)
       description: |
         Requires `grades.view` (instructor, non-editing instructor) or the administrator role
-        (read-only). Columns are the course's approved quizzes and assignments; rows are active
-        students ordered by email and paginated. Cells hold the current server-calculated grade and
-        its release status. A quiz counts the best submitted attempt, once per student. The total
-        sums points over graded items and converts them to the 0–20 scale.
+        (read-only); program-management grants give no access. Columns are the course's approved quizzes
+        and assignments (with their visibility and published category); rows are active students ordered by
+        email and paginated. Cells hold the current server-calculated grade, its revision and its release
+        status. A quiz counts the best submitted attempt, once per student. `total` is the original
+        unweighted sum of points over graded items (unchanged); `courseGrade` applies the course's
+        published grading policy and is labeled `final` or `provisional`; `counts` summarizes pending and
+        unreleased work.
       tags: [Grades]
       security:
         - sessionCookie: []
@@ -2944,10 +2972,13 @@ paths:
       summary: The signed-in student's released grades in a course
       description: |
         Students only (`grades.viewOwn`). Lists the course's quizzes and assignments. Released items
-        include points, the 0–20 grade and, for assignments, feedback and rubric scores; everything
-        else is `pending` without numbers. Answer keys are never included. The total uses released
-        grades only. Activities in sections that a prerequisite still locks are omitted unless their
-        grade was released.
+        include points, the 0–20 grade, for assignments feedback and rubric scores, and for quizzes whether
+        the released result passed (by the threshold saved with the released attempt); everything else is
+        `pending` without numbers. `workStatus` tells apart work not submitted, in progress, submitted and
+        awaiting a result, and released. Answer keys are never included. `total` and `courseGrade` use
+        released grades only (`courseGrade` applies the published weighting, whose categories are listed in
+        `policy`; drafts are never shown). Activities in sections that a prerequisite still locks are omitted
+        unless their grade was released. Completion progress is reported separately (`/progress`).
       tags: [Grades]
       security:
         - sessionCookie: []
@@ -2960,6 +2991,184 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StudentGrades"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/grading-policy:
+    get:
+      operationId: getGradingPolicy
+      summary: The course grading policy (grade categories and weights)
+      description: |
+        Requires `grades.view` (instructor, non-editing instructor) or the administrator role. Returns the
+        saved policy, draft or published, or `status: none` (version 0) when the course has none and uses the
+        unweighted calculation.
+      tags: [Grades]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: The grading policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GradingPolicy"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: saveGradingPolicy
+      summary: Save the whole grading policy (categories, weights and memberships)
+      description: |
+        Requires `grades.configure` (instructor) or the administrator role; never non-editing instructors.
+        Replaces every category at once. `expectedVersion` is the version the edit was based on (0 when the
+        course has no policy); a different current version returns `409 GRADING_POLICY_CONFLICT`. Weights are
+        integers from 1 to 100; names are unique per course (`422 GRADE_CATEGORY_DUPLICATE`); an activity may
+        be in at most one category (`422 GRADE_CATEGORY_ACTIVITY_DUPLICATE`) and must be a quiz or assignment
+        of this course (`422 GRADE_CATEGORY_ACTIVITY_INVALID`). A `published` policy needs at least one
+        category and weights totalling exactly 100 (`422 GRADE_WEIGHTS_INVALID`); a `draft` may total
+        anything and never affects grades. Grades, attempts and submissions are never changed. Audited as
+        `grading_policy.updated` with the previous and new policy.
+      tags: [Grades]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GradingPolicyInput"
+      responses:
+        "200":
+          description: The saved policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GradingPolicy"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/gradebook/students/{userId}:
+    get:
+      operationId: getStudentGradebook
+      summary: One student's gradebook (staff drilldown)
+      description: |
+        Requires `grades.view` (instructor, non-editing instructor) or the administrator role. For an active
+        student of the course: every gradebook activity with its status, current grade and revision, released
+        grade, submission time, attempts used and (quizzes) the pass/fail status by the threshold saved with
+        the counted attempt; the course grade on current grades, and `releasedCourseGrade`, exactly what the
+        student sees. Never includes answer keys or attempt contents. Other users return 404.
+      tags: [Grades]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: The student's gradebook.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentGradebook"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/grades/release:
+    post:
+      operationId: releaseSelectedGrades
+      summary: Release selected grades (individually or in bulk)
+      description: |
+        Requires `grades.release` (instructors of the course only). Each item names a student, an activity and
+        the grade revision the instructor reviewed (from the gradebook). In one transaction, with the grade
+        rows locked, each item is released only if its grade exists and still has that revision; otherwise it
+        is reported, not released: `already_released` (nothing to do; repeated requests are safe),
+        `stale` (the grade changed since it was reviewed), `not_graded` (not submitted or awaiting grading:
+        ungraded work is never released) or `not_found` (not a quiz or assignment of this course). Expired
+        quiz attempts are finalized first. Each released grade is audited as `grade.released`, and the
+        request as `grades.released_selection`. A student or activity pair may appear once
+        (`422 GRADE_RELEASE_DUPLICATE`).
+      tags: [Grades]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GradeSelectionRelease"
+      responses:
+        "200":
+          description: What was released, and why anything else was not.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GradeSelectionReleaseResult"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/gradebook/export.csv:
+    get:
+      operationId: exportGradebook
+      summary: Export the course gradebook as CSV
+      description: |
+        Requires `grades.export` (instructor, non-editing instructor) or the administrator role (read-only);
+        program-management grants give no access. One row per active student of this course, ordered by
+        email. Columns, in this order:
+        `student_id`, `student_email`, `student_name`; for each gradebook activity n (course order)
+        `An <title> [quiz|assignment] points`, `... max_points` and `... status` (`not_submitted`,
+        `needs_grading`, `unreleased`, `released`, `changed_since_release`); for each published category
+        `Category <name> (<weight>%) percent`; then `course_grade_method`, `course_grade_0_20`,
+        `course_grade_percent`, `course_grade_status` (`final` or `provisional`), `graded_items`,
+        `pending_items`, `released_items`, `unreleased_items`, `needs_grading_items`. Empty fields mean "no
+        grade". UTF-8 with a byte order mark, every field quoted, CRLF line ends. Text that a spreadsheet
+        could run as a formula (starting with `=`, `+`, `-`, `@`, tab or carriage return) is prefixed with
+        an apostrophe. No answer keys, attempt contents or data from other courses. Nothing is stored or sent
+        anywhere. Audited as `gradebook.exported`.
+      tags: [Grades]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: The gradebook as a CSV file (`Content-Disposition` attachment).
+          content:
+            text/csv:
+              schema:
+                type: string
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -3542,7 +3751,8 @@ components:
         `IMPORT_CONFLICT`, `ENROLLMENT_HAS_HISTORY`; or a course lifecycle rule:
         `COURSE_VERSION_CONFLICT`, `INVALID_COURSE_TRANSITION`, `COURSE_CODE_LOCKED`,
         `SECTION_ORDER_STALE`; or `PROGRAM_MANAGER_EXISTS` (the user already manages the program); or a
-        learning-resource rule: `RESOURCE_FOLDER_NOT_EMPTY`, `RESOURCE_ORDER_STALE`.
+        learning-resource rule: `RESOURCE_FOLDER_NOT_EMPTY`, `RESOURCE_ORDER_STALE`; or
+        `GRADING_POLICY_CONFLICT` (the grading policy changed since it was loaded).
       content:
         application/problem+json:
           schema:
@@ -3569,7 +3779,9 @@ components:
         `COMPLETION_AUTOMATIC` (quizzes and assignments complete on submission), `PREREQUISITE_SELF`,
         `PREREQUISITE_SECTION_NOT_FOUND` or `PREREQUISITE_CYCLE`; or a learning-resource rule:
         `RESOURCE_FOLDER_NOT_FOUND` or `RESOURCE_NOT_ORGANIZABLE`; or an assessment rule:
-        `QUIZ_POOL_TOO_SMALL`, `QUIZ_POOL_POINTS_MIXED` or `QUIZ_SOURCE_INVALID`.
+        `QUIZ_POOL_TOO_SMALL`, `QUIZ_POOL_POINTS_MIXED` or `QUIZ_SOURCE_INVALID`; or a gradebook rule:
+        `GRADE_CATEGORY_DUPLICATE`, `GRADE_CATEGORY_ACTIVITY_DUPLICATE`, `GRADE_CATEGORY_ACTIVITY_INVALID`,
+        `GRADE_WEIGHTS_INVALID` or `GRADE_RELEASE_DUPLICATE`.
       content:
         application/problem+json:
           schema:
@@ -3802,6 +4014,12 @@ components:
             - QUIZ_POOL_POINTS_MIXED
             - QUIZ_SOURCE_INVALID
             - FEEDBACK_NOT_AVAILABLE
+            - GRADE_CATEGORY_DUPLICATE
+            - GRADE_CATEGORY_ACTIVITY_DUPLICATE
+            - GRADE_CATEGORY_ACTIVITY_INVALID
+            - GRADE_WEIGHTS_INVALID
+            - GRADE_RELEASE_DUPLICATE
+            - GRADING_POLICY_CONFLICT
     ResourceKind:
       type: string
       description: What a link points to. Every kind is only a link opened in a new tab; nothing is embedded, fetched or executed.
@@ -5451,7 +5669,7 @@ components:
           description: True when the student may open this attempt's correctness review (see `getQuizAttemptFeedback`).
     StudentQuizAttemptSummary:
       type: object
-      required: [attemptLimit, attemptsUsed, attemptsRemaining, timeLimitMinutes, questionsPerAttempt, passingScorePercent, activeAttemptId, gradeReleased, passed, items]
+      required: [attemptLimit, attemptsUsed, attemptsRemaining, timeLimitMinutes, questionsPerAttempt, passingScorePercent, releasedPassingScorePercent, activeAttemptId, gradeReleased, passed, items]
       additionalProperties: false
       properties:
         attemptLimit:
@@ -5465,9 +5683,13 @@ components:
           type: [integer, "null"]
         passingScorePercent:
           type: [integer, "null"]
+          description: The current quiz setting, which applies to new attempts.
+        releasedPassingScorePercent:
+          type: [integer, "null"]
+          description: The threshold saved with the released attempt, which decides `passed` (null until released or without a threshold).
         passed:
           type: [boolean, "null"]
-          description: Whether the released grade meets the passing threshold; null until released or without a threshold.
+          description: Whether the released grade meets the threshold saved with the released attempt; null until released or without a threshold.
         gradeReleased:
           type: boolean
           description: True once staff have released this student's grade for the quiz.
@@ -5879,7 +6101,7 @@ components:
           format: date-time
     GradebookColumn:
       type: object
-      required: [activityId, title, type, maxPoints]
+      required: [activityId, title, type, maxPoints, visible, categoryId]
       additionalProperties: false
       properties:
         activityId:
@@ -5892,9 +6114,16 @@ components:
         maxPoints:
           type: integer
           description: Points of the approved version.
+        visible:
+          type: boolean
+          description: Whether students can see the activity (it and its section are visible).
+        categoryId:
+          type: [string, "null"]
+          format: uuid
+          description: Category of the published grading policy; null without one or when not in a category.
     GradebookCell:
       type: object
-      required: [activityId, status, points, maxPoints, grade20, releasedAt]
+      required: [activityId, status, points, maxPoints, grade20, releasedAt, revision]
       additionalProperties: false
       properties:
         activityId:
@@ -5913,6 +6142,9 @@ components:
         releasedAt:
           type: [string, "null"]
           format: date-time
+        revision:
+          type: [integer, "null"]
+          description: The grade's current revision (name it when releasing selected grades); null without a grade.
     CourseTotal:
       type: object
       description: Sum of points over the counted items, converted to the 0–20 scale (null when none).
@@ -5931,7 +6163,7 @@ components:
           type: integer
     GradebookRow:
       type: object
-      required: [student, cells, total]
+      required: [student, cells, total, courseGrade, counts]
       additionalProperties: false
       properties:
         student:
@@ -5943,14 +6175,328 @@ components:
             $ref: "#/components/schemas/GradebookCell"
         total:
           $ref: "#/components/schemas/CourseTotal"
-    Gradebook:
+        courseGrade:
+          $ref: "#/components/schemas/CourseGrade"
+        counts:
+          $ref: "#/components/schemas/GradeCounts"
+    GradeCounts:
       type: object
-      required: [scaleMax, columns, items, nextCursor]
+      description: Activities of one student by status (`unreleased` includes grades changed since their release).
+      required: [notSubmitted, needsGrading, unreleased, released]
+      additionalProperties: false
+      properties:
+        notSubmitted:
+          type: integer
+        needsGrading:
+          type: integer
+        unreleased:
+          type: integer
+        released:
+          type: integer
+    GradeCategoryRef:
+      type: object
+      required: [id, name, weightPercent]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        weightPercent:
+          type: integer
+    GradingPolicySummary:
+      type: object
+      description: The policy status and the categories that currently weight grades (published only).
+      required: [status, version, method, categories]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [none, draft, published]
+        version:
+          type: integer
+        method:
+          type: string
+          enum: [points, weighted]
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/GradeCategoryRef"
+    GradeCategorySummary:
+      type: object
+      required: [categoryId, name, weightPercent, points, maxPoints, gradedItems, countedItems, percent, grade20]
+      additionalProperties: false
+      properties:
+        categoryId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        weightPercent:
+          type: integer
+        points:
+          type: integer
+        maxPoints:
+          type: integer
+        gradedItems:
+          type: integer
+        countedItems:
+          type: integer
+        percent:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 100
+          description: Graded points / graded maxima (one decimal); null while the category has no graded work.
+        grade20:
+          oneOf:
+            - $ref: "#/components/schemas/Grade20"
+            - type: "null"
+    CourseGrade:
+      type: object
+      description: |
+        The course grade under the course's grading policy (see "Advanced gradebook" above). `points`: the
+        unweighted sum; `weighted`: the published categories. Pending work is never counted as zero.
+      required: [method, status, grade20, percent, countedItems, gradedItems, pendingItems, categories]
+      additionalProperties: false
+      properties:
+        method:
+          type: string
+          enum: [points, weighted]
+        status:
+          type: string
+          enum: [final, provisional]
+        grade20:
+          oneOf:
+            - $ref: "#/components/schemas/Grade20"
+            - type: "null"
+        percent:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 100
+        countedItems:
+          type: integer
+        gradedItems:
+          type: integer
+        pendingItems:
+          type: integer
+          description: Counted activities that students can see (or that have a grade) without a released, current grade.
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/GradeCategorySummary"
+    GradingPolicy:
+      type: object
+      required: [status, version, publishedAt, updatedAt, totalWeightPercent, categories]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [none, draft, published]
+        version:
+          type: integer
+          minimum: 0
+        publishedAt:
+          type: [string, "null"]
+          format: date-time
+        updatedAt:
+          type: [string, "null"]
+          format: date-time
+        totalWeightPercent:
+          type: integer
+        categories:
+          type: array
+          items:
+            type: object
+            required: [id, name, weightPercent, activityIds]
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              weightPercent:
+                type: integer
+              activityIds:
+                type: array
+                items:
+                  type: string
+                  format: uuid
+    GradingPolicyInput:
+      type: object
+      required: [expectedVersion, status, categories]
+      additionalProperties: false
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum: [draft, published]
+        categories:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [name, weightPercent, activityIds]
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+                minLength: 1
+                maxLength: 80
+                pattern: "\\S"
+              weightPercent:
+                type: integer
+                minimum: 1
+                maximum: 100
+              activityIds:
+                type: array
+                maxItems: 200
+                uniqueItems: true
+                items:
+                  type: string
+                  format: uuid
+    StudentGradebookActivity:
+      type: object
+      required: [activity, status, grade, released, submittedAt, isLate, inProgress, attemptsUsed, passingScorePercent, passed]
+      additionalProperties: false
+      properties:
+        activity:
+          $ref: "#/components/schemas/GradebookColumn"
+        status:
+          $ref: "#/components/schemas/GradeStatus"
+        grade:
+          type: [object, "null"]
+          required: [points, maxPoints, grade20, revision, gradedAt]
+          additionalProperties: false
+          properties:
+            points:
+              type: integer
+            maxPoints:
+              type: integer
+            grade20:
+              $ref: "#/components/schemas/Grade20"
+            revision:
+              type: integer
+            gradedAt:
+              type: string
+              format: date-time
+        released:
+          type: [object, "null"]
+          required: [points, maxPoints, grade20, revision, releasedAt]
+          additionalProperties: false
+          properties:
+            points:
+              type: integer
+            maxPoints:
+              type: integer
+            grade20:
+              $ref: "#/components/schemas/Grade20"
+            revision:
+              type: integer
+            releasedAt:
+              type: string
+              format: date-time
+        submittedAt:
+          type: [string, "null"]
+          format: date-time
+        isLate:
+          type: boolean
+        inProgress:
+          type: boolean
+        attemptsUsed:
+          type: [integer, "null"]
+        passingScorePercent:
+          type: [integer, "null"]
+          description: Quizzes only; the threshold saved with the counted attempt.
+        passed:
+          type: [boolean, "null"]
+    StudentGradebook:
+      type: object
+      required: [scaleMax, student, policy, courseGrade, releasedCourseGrade, counts, activities]
       additionalProperties: false
       properties:
         scaleMax:
           type: integer
           const: 20
+        student:
+          $ref: "#/components/schemas/QuizResultStudent"
+        policy:
+          $ref: "#/components/schemas/GradingPolicySummary"
+        courseGrade:
+          $ref: "#/components/schemas/CourseGrade"
+        releasedCourseGrade:
+          $ref: "#/components/schemas/CourseGrade"
+        counts:
+          $ref: "#/components/schemas/GradeCounts"
+        activities:
+          type: array
+          items:
+            $ref: "#/components/schemas/StudentGradebookActivity"
+    GradeSelectionRelease:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 500
+          uniqueItems: true
+          items:
+            type: object
+            required: [activityId, userId, revision]
+            additionalProperties: false
+            properties:
+              activityId:
+                type: string
+                format: uuid
+              userId:
+                type: string
+                format: uuid
+              revision:
+                type: integer
+                minimum: 1
+    GradeSelectionReleaseResult:
+      type: object
+      required: [releasedCount, releasedAt, results]
+      additionalProperties: false
+      properties:
+        releasedCount:
+          type: integer
+        releasedAt:
+          type: [string, "null"]
+          format: date-time
+        results:
+          type: array
+          items:
+            type: object
+            required: [activityId, userId, revision, outcome]
+            additionalProperties: false
+            properties:
+              activityId:
+                type: string
+                format: uuid
+              userId:
+                type: string
+                format: uuid
+              revision:
+                type: integer
+              outcome:
+                type: string
+                enum: [released, already_released, stale, not_graded, not_found]
+    Gradebook:
+      type: object
+      required: [scaleMax, policy, columns, items, nextCursor]
+      additionalProperties: false
+      properties:
+        scaleMax:
+          type: integer
+          const: 20
+        policy:
+          $ref: "#/components/schemas/GradingPolicySummary"
         columns:
           type: array
           items:
@@ -5963,7 +6509,7 @@ components:
           type: [string, "null"]
     StudentGradeItem:
       type: object
-      required: [activityId, title, type, status, grade]
+      required: [activityId, title, type, categoryId, status, workStatus, grade, passed]
       additionalProperties: false
       properties:
         activityId:
@@ -5973,26 +6519,50 @@ components:
           type: string
         type:
           $ref: "#/components/schemas/GradableType"
+        categoryId:
+          type: [string, "null"]
+          format: uuid
         status:
           $ref: "#/components/schemas/StudentGradeStatus"
+        workStatus:
+          type: string
+          description: "`submitted` means submitted and awaiting a released result (whether it is graded yet is not shown)."
+          enum: [not_submitted, in_progress, submitted, released]
         grade:
           oneOf:
             - $ref: "#/components/schemas/ReleasedGrade"
             - type: "null"
+        passed:
+          type: [boolean, "null"]
+          description: Released quizzes only; by the threshold saved with the released attempt.
     StudentGrades:
       type: object
-      required: [scaleMax, items, total]
+      required: [scaleMax, policy, items, total, courseGrade]
       additionalProperties: false
       properties:
         scaleMax:
           type: integer
           const: 20
+        policy:
+          type: object
+          required: [method, categories]
+          additionalProperties: false
+          properties:
+            method:
+              type: string
+              enum: [points, weighted]
+            categories:
+              type: array
+              items:
+                $ref: "#/components/schemas/GradeCategoryRef"
         items:
           type: array
           items:
             $ref: "#/components/schemas/StudentGradeItem"
         total:
           $ref: "#/components/schemas/CourseTotal"
+        courseGrade:
+          $ref: "#/components/schemas/CourseGrade"
     TutorLanguage:
       type: string
       description: Response language. Sources are never translated.

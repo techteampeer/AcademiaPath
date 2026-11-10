@@ -126,12 +126,12 @@ export function QuizStudentPanel({ courseId, quizId }: { courseId: string; quizI
             {q.used(state.summary.attemptsUsed, state.summary.attemptLimit)}
             {state.summary.attemptsRemaining > 0 ? <span className="text-slate-500"> · {as.remaining(state.summary.attemptsRemaining)}</span> : null}
           </p>
-          {state.summary.passed !== null && state.summary.passingScorePercent !== null ? (
+          {state.summary.passed !== null && state.summary.releasedPassingScorePercent !== null ? (
             <p className="text-sm font-medium text-slate-900" data-passed={String(state.summary.passed)}>
               <Badge tone={state.summary.passed ? 'success' : 'warning'} className="mr-2">
                 {state.summary.passed ? as.passed : as.notPassed}
               </Badge>
-              {as.passedLine(state.summary.passed, state.summary.passingScorePercent)}
+              {as.passedLine(state.summary.passed, state.summary.releasedPassingScorePercent)}
             </p>
           ) : null}
           {state.summary.activeAttemptId ? (

@@ -245,8 +245,8 @@ const itil: CourseSpec = {
       body: 'I chose the virtual campus. Engage covers the help channels where students report needs; plan sets the semester priorities; design and transition prepares new course spaces; obtain or build configures the platform; deliver and support keeps it running during exams; improve reviews incident trends. Improvement: publish a short status page during peak weeks.',
     },
     { kind: 'grade', grader: 'ta', student: 'learnerA', assignment: ITIL_ESSAY, scores: [5, 3], feedback: 'Clear mapping of the activities. Explain the improvement with an expected outcome.' },
-    { kind: 'release', grader: 'ta', activity: ITIL_QUIZ, whenNotReleasedFor: 'learnerA' },
-    { kind: 'release', grader: 'ta', activity: ITIL_ESSAY, whenNotReleasedFor: 'learnerA' },
+    { kind: 'release', grader: 'instructor', activity: ITIL_QUIZ, whenNotReleasedFor: 'learnerA' },
+    { kind: 'release', grader: 'instructor', activity: ITIL_ESSAY, whenNotReleasedFor: 'learnerA' },
     {
       kind: 'quiz',
       student: 'learnerB',
@@ -435,8 +435,8 @@ const pm: CourseSpec = {
       body: 'Project: peer tutoring for first-year mathematics. Objective: 80 percent of participating students pass the midterm. Scope: weekly sessions, tutor training and a feedback survey. Stakeholders: tutors, students, the mathematics department. Milestones: training in week 2, sessions from week 3, report in week 15. Budget: snacks and printed guides.',
     },
     { kind: 'grade', grader: 'ta', student: 'student', assignment: PM_CHARTER, scores: [4, 3, 2], feedback: 'Strong objectives. Add the approval authority and two risks.' },
-    { kind: 'release', grader: 'ta', activity: PM_CHARTER, whenNotReleasedFor: 'student' },
-    { kind: 'release', grader: 'ta', activity: PM_QUIZ, whenNotReleasedFor: 'student' },
+    { kind: 'release', grader: 'instructor', activity: PM_CHARTER, whenNotReleasedFor: 'student' },
+    { kind: 'release', grader: 'instructor', activity: PM_QUIZ, whenNotReleasedFor: 'student' },
     {
       kind: 'submit',
       student: 'learnerA',

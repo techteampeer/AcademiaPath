@@ -12,15 +12,29 @@ import {
   assignmentSubmissions,
   enrollments,
   grades,
+  quizAttempts,
   sections,
   users,
-  type ReleasedGradeDetail,
 } from '../db/schema/index.js';
+import {
+  auditReleasedGrades,
+  GRADABLE,
+  loadGradebookColumns,
+  loadStudentWork,
+  releasedCourseGrade,
+  releaseGradeRows,
+  staffCourseGrade,
+  workKey,
+  type GradableType,
+  type GradebookColumn,
+  type StudentWork,
+} from '../grading/gradebook.js';
 import { gradeStatus, releasedGradeColumns, releasedGradeView, staffGradeView, type GradeRecord, type ReleasedGradeRow } from '../grading/grades.js';
+import { loadGradingPolicy, weightingCategories, type GradingPolicy } from '../grading/policy.js';
 import { courseTotal, GRADE_SCALE_MAX, toScale20 } from '../grading/scale.js';
 import { ApiProblem } from '../http/errors.js';
 import { decodeCursor, paginationQuerySchema, toPage, type PaginationQuery } from '../http/pagination.js';
-import { readSettings, readSnapshotQuestions } from '../quizzes/model.js';
+import { passed } from '../quizzes/model.js';
 import { assertSectionOpen, lockedSectionsFor } from '../progress/model.js';
 import { closeExpiredAttempts } from '../quizzes/attempts.js';
 import { courseActivityParamsSchema } from './activity-schemas.js';
@@ -42,28 +56,14 @@ type ActivityParams = { id: string; activityId: string };
 type SubmissionParams = ActivityParams & { submissionId: string };
 type GradeBody = { scores: Array<{ criterionId: string; points: number }>; feedback?: string };
 type Executor = Pick<Database, 'select' | 'insert' | 'update'>;
-type ActivityRecord = typeof activities.$inferSelect;
 type SubmissionRecord = typeof assignmentSubmissions.$inferSelect;
 type StudentRecord = { id: string; email: string; givenName: string; familyName: string };
-type GradableType = 'quiz' | 'assignment';
-
-const GRADABLE: GradableType[] = ['quiz', 'assignment'];
 const notFound = (what: string) => new ApiProblem(404, 'NOT_FOUND', `${what} not found.`);
 const forbidden = (detail: string) => new ApiProblem(403, 'FORBIDDEN', detail);
 const submissionExists = () =>
   new ApiProblem(409, 'SUBMISSION_EXISTS', 'You have already submitted this assignment. Only one final submission is allowed.');
 const submissionClosed = () => new ApiProblem(409, 'SUBMISSION_CLOSED', 'The submission deadline for this assignment has passed.');
 const studentColumns = { id: users.id, email: users.email, givenName: users.givenName, familyName: users.familyName };
-
-/** Points available in the approved version of a quiz or assignment. */
-function approvedMaxPoints(activity: Pick<ActivityRecord, 'type' | 'approvedConfig'>): number {
-  if (activity.type === 'assignment') return rubricTotal(readAssignment(activity.approvedConfig).rubric);
-  const questions = readSnapshotQuestions(activity.approvedConfig);
-  const drawn = readSettings(activity.approvedConfig).questionsPerAttempt;
-  // Pooled quizzes draw N questions of equal points (enforced on approval), so every attempt is worth N × points.
-  if (drawn !== null && drawn < questions.length) return drawn * (questions[0]?.points ?? 0);
-  return questions.reduce((total, question) => total + question.points, 0);
-}
 
 /** A student's own submission: the grade appears only once released (copied at release time). */
 function studentSubmissionView(submission: SubmissionRecord, released: ReleasedGradeRow | undefined) {
@@ -87,6 +87,62 @@ function submissionSummary(submission: SubmissionRecord, student: StudentRecord,
     isLate: submission.isLate,
     status: gradeStatus(grade, true),
     grade: staffGradeView(grade),
+  };
+}
+
+const categoryView = (category: { id: string; name: string; weightPercent: number }) => ({ id: category.id, name: category.name, weightPercent: category.weightPercent });
+
+/** The policy as shown with the gradebook: its status, and the categories that currently weight grades. */
+export function policySummary(policy: GradingPolicy) {
+  const categories = weightingCategories(policy);
+  return {
+    status: policy.status,
+    version: policy.version,
+    method: categories ? ('weighted' as const) : ('points' as const),
+    categories: (categories ?? []).map(categoryView),
+  };
+}
+
+export const columnView = (column: GradebookColumn) => ({
+  activityId: column.activityId,
+  title: column.title,
+  type: column.type,
+  maxPoints: column.maxPoints,
+  visible: column.visible,
+  categoryId: column.categoryId,
+});
+
+/** A staff gradebook row: cells, the unweighted total (unchanged), the policy's course grade and status counts. */
+export function staffRow(
+  columns: GradebookColumn[],
+  categories: ReturnType<typeof weightingCategories>,
+  workFor: (activityId: string) => StudentWork | undefined,
+) {
+  const cells = columns.map((column) => {
+    const own = workFor(column.activityId);
+    const grade = own?.grade ?? null;
+    return {
+      activityId: column.activityId,
+      status: gradeStatus(grade, own?.submitted ?? false),
+      points: grade?.points ?? null,
+      maxPoints: grade?.maxPoints ?? null,
+      grade20: grade ? toScale20(grade.points, grade.maxPoints) : null,
+      releasedAt: grade?.releasedAt ?? null,
+      revision: grade?.revision ?? null,
+    };
+  });
+  const graded = cells.flatMap((cell) => (cell.points !== null && cell.maxPoints !== null ? [{ points: cell.points, maxPoints: cell.maxPoints }] : []));
+  const tally = (status: string) => cells.filter((cell) => cell.status === status).length;
+  return {
+    cells,
+    total: courseTotal(graded),
+    courseGrade: staffCourseGrade(columns, categories, workFor),
+    counts: {
+      notSubmitted: tally('not_submitted'),
+      needsGrading: tally('needs_grading'),
+      unreleased: tally('unreleased') + tally('changed_since_release'),
+      released: tally('released'),
+    },
   };
 }
 
@@ -378,37 +434,12 @@ export const gradingRoutes: FastifyPluginAsync = async (app) => {
 
   // ---- Grade release (staff) ----
 
-  /** What students see after release: feedback and rubric scores of assignments (nothing else for quizzes). */
-  async function releaseDetails(tx: Executor, pending: GradeRecord[]): Promise<Map<string, ReleasedGradeDetail>> {
-    const submissionIds = pending.flatMap((grade) => (grade.submissionId ? [grade.submissionId] : []));
-    const scores = submissionIds.length
-      ? await tx.select().from(assignmentCriterionScores).where(inArray(assignmentCriterionScores.submissionId, submissionIds))
-      : [];
-    const rubrics = submissionIds.length
-      ? await tx
-          .select({ id: assignmentSubmissions.id, rubric: assignmentSubmissions.rubric })
-          .from(assignmentSubmissions)
-          .where(inArray(assignmentSubmissions.id, submissionIds))
-      : [];
-    const rubricById = new Map(rubrics.map((row) => [row.id, row.rubric]));
-    return new Map(
-      pending.map((grade): [string, ReleasedGradeDetail] => {
-        if (!grade.submissionId) return [grade.id, { feedback: null, criteria: [] }];
-        const own = new Map(scores.filter((score) => score.submissionId === grade.submissionId).map((score) => [score.criterionId, score.points]));
-        const criteria = (rubricById.get(grade.submissionId) ?? [])
-          .filter((criterion) => own.has(criterion.id))
-          .map((criterion) => ({ criterionId: criterion.id, title: criterion.title, points: own.get(criterion.id)!, maxPoints: criterion.maxPoints }));
-        return [grade.id, { feedback: grade.feedback, criteria }];
-      }),
-    );
-  }
-
   app.post<{ Params: ActivityParams }>(
     '/courses/:id/activities/:activityId/grades/release',
     { ...authenticatedWrite, schema: { params: courseActivityParamsSchema, response: { 200: releaseResultSchema } } },
     async (request) => {
       const access = await courseAccess(request, request.params.id);
-      requireRole(access, 'grades.release', 'Only instructors and non-editing instructors assigned to this course can release grades.');
+      requireRole(access, 'grades.release', 'Only instructors assigned to this course can release grades.');
       const { user } = getAuth(request);
       return db.transaction(async (tx) => {
         const activity = await loadActivity(tx, access, request.params.activityId, GRADABLE, 'Activity');
@@ -422,23 +453,7 @@ export const gradingRoutes: FastifyPluginAsync = async (app) => {
           .orderBy(asc(grades.id))
           .for('update');
         if (!pending.length) return { activityId: activity.id, releasedCount: 0, releasedAt: null };
-        const details = await releaseDetails(tx, pending);
-        const released: GradeRecord[] = [];
-        for (const grade of pending) {
-          const [row] = await tx
-            .update(grades)
-            .set({
-              releasedRevision: grade.revision,
-              releasedPoints: grade.points,
-              releasedMaxPoints: grade.maxPoints,
-              releasedDetail: details.get(grade.id) ?? { feedback: null, criteria: [] },
-              releasedAt: sql`now()`,
-              releasedByUserId: user.id,
-            })
-            .where(eq(grades.id, grade.id))
-            .returning();
-          if (row) released.push(row);
-        }
+        const released = await releaseGradeRows(tx, user.id, pending);
         await recordAudit(tx, request, {
           action: 'grades.released',
           entityType: 'activity',
@@ -455,6 +470,7 @@ export const gradingRoutes: FastifyPluginAsync = async (app) => {
             })),
           },
         });
+        await auditReleasedGrades(tx, request, released, 'activity');
         return { activityId: activity.id, releasedCount: released.length, releasedAt: released[0]?.releasedAt ?? null };
       });
     },
@@ -472,18 +488,9 @@ export const gradingRoutes: FastifyPluginAsync = async (app) => {
       await db.transaction((tx) => closeExpiredAttempts(tx, request, { courseId: access.course.id }));
       const { limit } = request.query;
       const after = decodeCursor(request.query.cursor, 'string');
-      const columnRows = await db
-        .select({ id: activities.id, type: activities.type, title: activities.approvedTitle, approvedConfig: activities.approvedConfig })
-        .from(activities)
-        .innerJoin(sections, eq(sections.id, activities.sectionId))
-        .where(and(eq(sections.courseId, access.course.id), inArray(activities.type, GRADABLE), isNotNull(activities.approvedConfig)))
-        .orderBy(asc(sections.position), asc(activities.position), asc(activities.id));
-      const columns = columnRows.map((column) => ({
-        activityId: column.id,
-        title: column.title ?? '',
-        type: column.type as GradableType,
-        maxPoints: approvedMaxPoints(column),
-      }));
+      const policy = await loadGradingPolicy(db, access.course.id);
+      const categories = weightingCategories(policy);
+      const columns = await loadGradebookColumns(db, access.course.id, categories);
 
       const sortKey = sql<string>`lower(${users.email})`;
       const studentRows = await db
@@ -501,47 +508,17 @@ export const gradingRoutes: FastifyPluginAsync = async (app) => {
         .orderBy(asc(sortKey), asc(users.id))
         .limit(limit + 1);
       const page = toPage(studentRows, limit, (row) => [row.sortKey, row.student.id]);
-      const userIds = page.items.map((row) => row.student.id);
-      const activityIds = columns.map((column) => column.activityId);
-      const scope = userIds.length && activityIds.length;
-      const [gradeRows, submissionRows] = scope
-        ? await Promise.all([
-            db
-              .select()
-              .from(grades)
-              .where(and(eq(grades.courseId, access.course.id), inArray(grades.userId, userIds), inArray(grades.activityId, activityIds))),
-            db
-              .select({ activityId: assignmentSubmissions.activityId, userId: assignmentSubmissions.userId })
-              .from(assignmentSubmissions)
-              .where(
-                and(
-                  eq(assignmentSubmissions.courseId, access.course.id),
-                  inArray(assignmentSubmissions.userId, userIds),
-                  inArray(assignmentSubmissions.activityId, activityIds),
-                ),
-              ),
-          ])
-        : [[], []];
-      const gradeByKey = new Map(gradeRows.map((grade) => [`${grade.activityId}|${grade.userId}`, grade]));
-      const submitted = new Set(submissionRows.map((row) => `${row.activityId}|${row.userId}`));
-
+      const work = await loadStudentWork(
+        db,
+        access.course.id,
+        columns.map((column) => column.activityId),
+        page.items.map((row) => row.student.id),
+      );
       const items = page.items.map(({ student }) => {
-        const cells = columns.map((column) => {
-          const key = `${column.activityId}|${student.id}`;
-          const grade = gradeByKey.get(key) ?? null;
-          return {
-            activityId: column.activityId,
-            status: gradeStatus(grade, submitted.has(key)),
-            points: grade?.points ?? null,
-            maxPoints: grade?.maxPoints ?? null,
-            grade20: grade ? toScale20(grade.points, grade.maxPoints) : null,
-            releasedAt: grade?.releasedAt ?? null,
-          };
-        });
-        const graded = cells.flatMap((cell) => (cell.points !== null && cell.maxPoints !== null ? [{ points: cell.points, maxPoints: cell.maxPoints }] : []));
-        return { student, cells, total: courseTotal(graded) };
+        const workFor = (activityId: string) => work.get(workKey(activityId, student.id));
+        return { student, ...staffRow(columns, categories, workFor) };
       });
-      return { scaleMax: GRADE_SCALE_MAX, columns, items, nextCursor: page.nextCursor };
+      return { scaleMax: GRADE_SCALE_MAX, policy: policySummary(policy), columns: columns.map(columnView), items, nextCursor: page.nextCursor };
     },
   );
 
@@ -553,28 +530,56 @@ export const gradingRoutes: FastifyPluginAsync = async (app) => {
       requireRole(access, 'grades.viewOwn', 'Only students have grades in a course.');
       await db.transaction((tx) => closeExpiredAttempts(tx, request, { courseId: access.course.id, userId: access.userId }));
       const { user } = getAuth(request);
-      // Only released columns are read: current (unreleased) grades are never loaded for a student.
-      const released = await db
-        .select(releasedGradeColumns)
+      const policy = await loadGradingPolicy(db, access.course.id);
+      const categories = weightingCategories(policy);
+      const columns = await loadGradebookColumns(db, access.course.id, categories);
+      // Release state only: current (unreleased) points, feedback or rubric scores are never loaded for a student.
+      const states = await db
+        .select({ ...releasedGradeColumns, revision: grades.revision, releasedQuizAttemptId: grades.releasedQuizAttemptId })
         .from(grades)
-        .where(and(eq(grades.courseId, access.course.id), eq(grades.userId, user.id), isNotNull(grades.releasedRevision)));
-      const releasedByActivity = new Map(released.map((row) => [row.activityId, row]));
-      const rows = await db
-        .select({ id: activities.id, sectionId: activities.sectionId, type: activities.type, title: activities.approvedTitle, isVisible: activities.isVisible, sectionVisible: sections.isVisible })
-        .from(activities)
-        .innerJoin(sections, eq(sections.id, activities.sectionId))
-        .where(and(eq(sections.courseId, access.course.id), inArray(activities.type, GRADABLE), isNotNull(activities.approvedConfig)))
-        .orderBy(asc(sections.position), asc(activities.position), asc(activities.id));
+        .where(and(eq(grades.courseId, access.course.id), eq(grades.userId, user.id)));
+      const stateByActivity = new Map(states.map((row) => [row.activityId, row]));
+      const work = await loadStudentWork(db, access.course.id, columns.map((column) => column.activityId), [user.id], { grades: false });
+      // Released quiz results are judged by the passing threshold saved with the released attempt (never the current one).
+      const releasedAttemptIds = states.flatMap((row) => (row.releasedRevision !== null && row.releasedQuizAttemptId ? [row.releasedQuizAttemptId] : []));
+      const thresholds = new Map(
+        (releasedAttemptIds.length
+          ? await db
+              .select({ id: quizAttempts.id, passingScorePercent: quizAttempts.passingScorePercent })
+              .from(quizAttempts)
+              .where(and(inArray(quizAttempts.id, releasedAttemptIds), eq(quizAttempts.userId, user.id)))
+          : []
+        ).map((row) => [row.id, row.passingScorePercent]),
+      );
       // Activities in sections locked by a prerequisite stay unnamed until they open (released grades always show).
       const locked = await lockedSectionsFor(db, access);
-      const items = rows
-        .filter((row) => (row.isVisible && row.sectionVisible && !locked.has(row.sectionId)) || releasedByActivity.has(row.id))
-        .map((row) => {
-          const grade = releasedGradeView(releasedByActivity.get(row.id));
-          return { activityId: row.id, title: row.title ?? '', type: row.type as GradableType, status: grade ? ('released' as const) : ('pending' as const), grade };
+      const items = columns
+        .filter((column) => (column.visible && !locked.has(column.sectionId)) || stateByActivity.get(column.activityId)?.releasedRevision != null)
+        .map((column) => {
+          const state = stateByActivity.get(column.activityId);
+          const grade = releasedGradeView(state);
+          const own = work.get(workKey(column.activityId, user.id));
+          const threshold = state?.releasedQuizAttemptId ? (thresholds.get(state.releasedQuizAttemptId) ?? null) : null;
+          return {
+            activityId: column.activityId,
+            title: column.title,
+            type: column.type,
+            categoryId: column.categoryId,
+            status: grade ? ('released' as const) : ('pending' as const),
+            // Submitted versus awaiting a result versus released; whether a grade exists before release is not shown.
+            workStatus: grade ? ('released' as const) : own?.submitted ? ('submitted' as const) : own?.inProgress ? ('in_progress' as const) : ('not_submitted' as const),
+            grade,
+            passed: grade && column.type === 'quiz' ? passed(grade.points, grade.maxPoints, threshold) : null,
+          };
         });
       const counted = items.flatMap((item) => (item.grade ? [{ points: item.grade.points, maxPoints: item.grade.maxPoints }] : []));
-      return { scaleMax: GRADE_SCALE_MAX, items, total: courseTotal(counted) };
+      return {
+        scaleMax: GRADE_SCALE_MAX,
+        policy: { method: categories ? ('weighted' as const) : ('points' as const), categories: (categories ?? []).map(categoryView) },
+        items,
+        total: courseTotal(counted),
+        courseGrade: releasedCourseGrade(columns, categories, (activityId) => stateByActivity.get(activityId)),
+      };
     },
   );
 };

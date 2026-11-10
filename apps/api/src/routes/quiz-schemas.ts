@@ -183,6 +183,7 @@ export const studentAttemptSummarySchema = {
     'timeLimitMinutes',
     'questionsPerAttempt',
     'passingScorePercent',
+    'releasedPassingScorePercent',
     'activeAttemptId',
     'gradeReleased',
     'passed',
@@ -197,6 +198,7 @@ export const studentAttemptSummarySchema = {
     timeLimitMinutes: { type: ['integer', 'null'] },
     questionsPerAttempt: { type: ['integer', 'null'] },
     passingScorePercent: { type: ['integer', 'null'] },
+    releasedPassingScorePercent: { type: ['integer', 'null'] },
     passed: { type: ['boolean', 'null'] },
     activeAttemptId: { type: ['string', 'null'], format: 'uuid' },
     items: {

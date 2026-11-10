@@ -374,7 +374,9 @@ describe('assignments, grading and gradebook (PostgreSQL)', { skip: testServerUr
     const counts = releases.map((res) => expectStatus(res, 200).releasedCount as number);
     assert.equal(counts.reduce((a, b) => a + b, 0), 2, `released ${counts.join(',')}`);
     assert.equal(await auditCount('grades.released', id('assignment')), 1, 'one release recorded');
-    assert.deepEqual(expectStatus(await call('assistant', 'POST', releaseUrl(id('assignment'))), 200), {
+    // AP-023: non-editing instructors have read-only gradebook access and can no longer release grades.
+    expectProblem(await call('assistant', 'POST', releaseUrl(id('assignment'))), 403, 'FORBIDDEN');
+    assert.deepEqual(expectStatus(await call('instructor', 'POST', releaseUrl(id('assignment'))), 200), {
       activityId: id('assignment'),
       releasedCount: 0,
       releasedAt: null,

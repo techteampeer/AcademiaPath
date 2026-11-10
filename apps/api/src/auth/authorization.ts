@@ -30,8 +30,12 @@ export type CoursePermission =
   | 'grades.view'
   /** Grade submissions and give feedback (role-only check). */
   | 'grades.grade'
-  /** Release grades to students (role-only check). */
+  /** Release grades to students (role-only check; instructors only since AP-023). */
   | 'grades.release'
+  /** Configure the course grading policy: grade categories and weights (administrators via the override). */
+  | 'grades.configure'
+  /** Export the course gradebook as CSV (read-only; administrators via the override). */
+  | 'grades.export'
   /** Use the course tutor (role-only check: students, instructors, non-editing instructors). */
   | 'tutor.use'
   /** Read and update one's own learning progress (students only; role-only check). */
@@ -51,14 +55,26 @@ const STAFF_READ: CoursePermission[] = [
   'content.viewUnapproved',
 ];
 
-const GRADER: CoursePermission[] = ['grades.view', 'grades.grade', 'grades.release'];
+/** Grade submissions and read the gradebook (instructors and non-editing instructors). */
+const GRADER: CoursePermission[] = ['grades.view', 'grades.grade', 'grades.export'];
 
 export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermission>> = {
   // Design team reviews (approves/returns) content and can also author it.
   design_team: new Set([...STAFF_READ, 'content.edit', 'content.submit', 'content.review']),
-  // Instructors author and submit content but never approve it; they grade and release grades.
-  instructor: new Set([...STAFF_READ, 'content.edit', 'content.submit', 'quiz.viewResults', ...GRADER, 'tutor.use', 'progress.viewAll']),
-  // Non-editing instructors grade and release but never change content.
+  // Instructors author and submit content but never approve it; they grade, release grades and set the grading policy.
+  instructor: new Set([
+    ...STAFF_READ,
+    'content.edit',
+    'content.submit',
+    'quiz.viewResults',
+    ...GRADER,
+    'grades.release',
+    'grades.configure',
+    'tutor.use',
+    'progress.viewAll',
+  ]),
+  // Non-editing instructors grade submissions and read the gradebook, but never change content, the grading
+  // policy, or what students see: since AP-023 they cannot release grades.
   non_editing_instructor: new Set([...STAFF_READ, 'quiz.viewResults', ...GRADER, 'tutor.use', 'progress.viewAll']),
   student: new Set(['course.view', 'quiz.attempt', 'assignment.submit', 'grades.viewOwn', 'tutor.use', 'progress.own']),
 };

@@ -165,6 +165,107 @@ export const releaseResultSchema = {
   properties: { activityId: uuid, releasedCount: { type: 'integer' }, releasedAt: nullableDateTime },
 } as const;
 
+/** AP-023: a course grade under the course's grading policy (see grading/policy.ts for the exact rules). */
+const categorySummary = {
+  type: 'object',
+  required: ['categoryId', 'name', 'weightPercent', 'points', 'maxPoints', 'gradedItems', 'countedItems', 'percent', 'grade20'],
+  additionalProperties: false,
+  properties: {
+    categoryId: uuid,
+    name: { type: 'string' },
+    weightPercent: { type: 'integer' },
+    points: { type: 'integer' },
+    maxPoints: { type: 'integer' },
+    gradedItems: { type: 'integer' },
+    countedItems: { type: 'integer' },
+    percent: { type: ['number', 'null'], minimum: 0, maximum: 100 },
+    grade20: nullableGrade20,
+  },
+} as const;
+
+export const courseGradeSchema = {
+  type: 'object',
+  required: ['method', 'status', 'grade20', 'percent', 'countedItems', 'gradedItems', 'pendingItems', 'categories'],
+  additionalProperties: false,
+  properties: {
+    method: { type: 'string', enum: ['points', 'weighted'] },
+    status: { type: 'string', enum: ['final', 'provisional'] },
+    grade20: nullableGrade20,
+    percent: { type: ['number', 'null'], minimum: 0, maximum: 100 },
+    countedItems: { type: 'integer' },
+    gradedItems: { type: 'integer' },
+    pendingItems: { type: 'integer' },
+    categories: { type: 'array', items: categorySummary },
+  },
+} as const;
+
+const categoryRef = {
+  type: 'object',
+  required: ['id', 'name', 'weightPercent'],
+  additionalProperties: false,
+  properties: { id: uuid, name: { type: 'string' }, weightPercent: { type: 'integer' } },
+} as const;
+
+export const policySummarySchema = {
+  type: 'object',
+  required: ['status', 'version', 'method', 'categories'],
+  additionalProperties: false,
+  properties: {
+    status: { type: 'string', enum: ['none', 'draft', 'published'] },
+    version: { type: 'integer' },
+    method: { type: 'string', enum: ['points', 'weighted'] },
+    categories: { type: 'array', items: categoryRef },
+  },
+} as const;
+
+export const gradebookColumnSchema = {
+  type: 'object',
+  required: ['activityId', 'title', 'type', 'maxPoints', 'visible', 'categoryId'],
+  additionalProperties: false,
+  properties: {
+    activityId: uuid,
+    title: { type: 'string' },
+    type: gradableType,
+    maxPoints: { type: 'integer' },
+    visible: { type: 'boolean' },
+    categoryId: { type: ['string', 'null'], format: 'uuid' },
+  },
+} as const;
+
+export const gradebookCellSchema = {
+  type: 'object',
+  required: ['activityId', 'status', 'points', 'maxPoints', 'grade20', 'releasedAt', 'revision'],
+  additionalProperties: false,
+  properties: {
+    activityId: uuid,
+    status: gradeStatus,
+    points: { type: ['integer', 'null'] },
+    maxPoints: { type: ['integer', 'null'] },
+    grade20: nullableGrade20,
+    releasedAt: nullableDateTime,
+    revision: { type: ['integer', 'null'] },
+  },
+} as const;
+
+export const gradeCountsSchema = {
+  type: 'object',
+  required: ['notSubmitted', 'needsGrading', 'unreleased', 'released'],
+  additionalProperties: false,
+  properties: {
+    notSubmitted: { type: 'integer' },
+    needsGrading: { type: 'integer' },
+    unreleased: { type: 'integer' },
+    released: { type: 'integer' },
+  },
+} as const;
+
+export const studentRefSchema = {
+  type: 'object',
+  required: ['id', 'email', 'givenName', 'familyName'],
+  additionalProperties: false,
+  properties: { id: uuid, email: { type: 'string' }, givenName: { type: 'string' }, familyName: { type: 'string' } },
+} as const;
+
 const courseTotal = {
   type: 'object',
   required: ['points', 'maxPoints', 'grade20', 'gradedItems'],
@@ -174,44 +275,24 @@ const courseTotal = {
 
 export const gradebookSchema = {
   type: 'object',
-  required: ['scaleMax', 'columns', 'items', 'nextCursor'],
+  required: ['scaleMax', 'policy', 'columns', 'items', 'nextCursor'],
   additionalProperties: false,
   properties: {
     scaleMax: { type: 'integer', const: 20 },
-    columns: {
-      type: 'array',
-      items: {
-        type: 'object',
-        required: ['activityId', 'title', 'type', 'maxPoints'],
-        additionalProperties: false,
-        properties: { activityId: uuid, title: { type: 'string' }, type: gradableType, maxPoints: { type: 'integer' } },
-      },
-    },
+    policy: policySummarySchema,
+    columns: { type: 'array', items: gradebookColumnSchema },
     items: {
       type: 'array',
       items: {
         type: 'object',
-        required: ['student', 'cells', 'total'],
+        required: ['student', 'cells', 'total', 'courseGrade', 'counts'],
         additionalProperties: false,
         properties: {
           student,
-          cells: {
-            type: 'array',
-            items: {
-              type: 'object',
-              required: ['activityId', 'status', 'points', 'maxPoints', 'grade20', 'releasedAt'],
-              additionalProperties: false,
-              properties: {
-                activityId: uuid,
-                status: gradeStatus,
-                points: { type: ['integer', 'null'] },
-                maxPoints: { type: ['integer', 'null'] },
-                grade20: nullableGrade20,
-                releasedAt: nullableDateTime,
-              },
-            },
-          },
+          cells: { type: 'array', items: gradebookCellSchema },
           total: courseTotal,
+          courseGrade: courseGradeSchema,
+          counts: gradeCountsSchema,
         },
       },
     },
@@ -221,19 +302,35 @@ export const gradebookSchema = {
 
 export const studentGradesSchema = {
   type: 'object',
-  required: ['scaleMax', 'items', 'total'],
+  required: ['scaleMax', 'policy', 'items', 'total', 'courseGrade'],
   additionalProperties: false,
   properties: {
     scaleMax: { type: 'integer', const: 20 },
+    policy: {
+      type: 'object',
+      required: ['method', 'categories'],
+      additionalProperties: false,
+      properties: { method: { type: 'string', enum: ['points', 'weighted'] }, categories: { type: 'array', items: categoryRef } },
+    },
     items: {
       type: 'array',
       items: {
         type: 'object',
-        required: ['activityId', 'title', 'type', 'status', 'grade'],
+        required: ['activityId', 'title', 'type', 'categoryId', 'status', 'workStatus', 'grade', 'passed'],
         additionalProperties: false,
-        properties: { activityId: uuid, title: { type: 'string' }, type: gradableType, status: studentGradeStatus, grade: releasedGrade },
+        properties: {
+          activityId: uuid,
+          title: { type: 'string' },
+          type: gradableType,
+          categoryId: { type: ['string', 'null'], format: 'uuid' },
+          status: studentGradeStatus,
+          workStatus: { type: 'string', enum: ['not_submitted', 'in_progress', 'submitted', 'released'] },
+          grade: releasedGrade,
+          passed: { type: ['boolean', 'null'] },
+        },
       },
     },
     total: courseTotal,
+    courseGrade: courseGradeSchema,
   },
 } as const;

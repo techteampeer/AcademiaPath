@@ -297,7 +297,7 @@ describe('assessment controls (PostgreSQL, demo dataset)', { skip: testServerUrl
     expectProblem(await call('student', 'GET', `${c()}/activities/${ids.pool}/questions`), 403, 'FORBIDDEN');
     expectProblem(await call('student', 'GET', `${c()}/activities/${ids.pool}/results`), 403, 'FORBIDDEN');
     const grades = await ok<{ items: Array<{ activityId: string; status: string; grade: unknown }> }>('student', 'GET', `${c()}/grades/mine`);
-    assert.deepEqual(grades.items.find((i) => i.activityId === ids.pool), { activityId: ids.pool, title: 'Pooled check', type: 'quiz', status: 'pending', grade: null });
+    assert.deepEqual(grades.items.find((i) => i.activityId === ids.pool), { activityId: ids.pool, title: 'Pooled check', type: 'quiz', categoryId: null, status: 'pending', workStatus: 'submitted', grade: null, passed: null });
 
     // Release, then review.
     await ok('instructor', 'POST', `${c()}/activities/${ids.pool}/grades/release`);
