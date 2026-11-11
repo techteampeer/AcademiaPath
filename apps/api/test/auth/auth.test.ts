@@ -478,6 +478,129 @@ describe('authentication API (PostgreSQL)', { skip: testServerUrl ? false : 'TES
     assert.equal((await logout(token, csrfToken, { origin: WEB_ORIGIN })).statusCode, 204);
   });
 
+  // ---- Browser sign-in through the Cloud Run web proxy (production) ----
+  // Cloud Run serves the web app at its deterministic URL and at its default *.a.run.app URL. Next.js forwards
+  // /api/* to the API with the browser's Origin unchanged, the API's host as Host and the web host as
+  // X-Forwarded-Host. deploy.yml derives APP_ORIGINS from the web service's own URLs (infra/web-origins.sh).
+  const CLOUD_WEB = {
+    deterministic: 'https://academiapath-web-871079669510.us-central1.run.app',
+    default: 'https://academiapath-web-q2w3e4r5ta-uc.a.run.app',
+  };
+  const proxied = (origin: string): Record<string, string> => ({
+    host: 'academiapath-api-871079669510.us-central1.run.app',
+    origin,
+    'x-forwarded-host': new URL(origin).host,
+    'x-forwarded-proto': 'https',
+    'x-forwarded-for': '203.0.113.7',
+    'sec-fetch-site': 'same-origin',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-dest': 'empty',
+  });
+  const noOrigin = (headers: Record<string, string>) => Object.fromEntries(Object.entries(headers).filter(([name]) => name !== 'origin'));
+  const cloudApp = (appOrigins: string) =>
+    makeApp({ NODE_ENV: 'production', APP_ORIGINS: appOrigins, DOCUMENT_STORAGE_DIR: '/var/lib/academiapath/documents' });
+  const PROD_COOKIE = '__Host-ap_session';
+
+  it('Cloud Run: a web URL missing from APP_ORIGINS is refused with 403 ORIGIN_NOT_ALLOWED (the browser login failure)', async () => {
+    // Before the fix, deploy.yml listed only the deterministic URL.
+    const prodApp = cloudApp(CLOUD_WEB.deterministic);
+    try {
+      const { email } = await createAccount();
+      assert.equal((await login(prodApp, email, PASSWORD, { headers: proxied(CLOUD_WEB.deterministic) })).statusCode, 200);
+      const refused = await login(prodApp, email, PASSWORD, { headers: proxied(CLOUD_WEB.default) });
+      expectError(refused, 403, 'ORIGIN_NOT_ALLOWED');
+      assert.equal(refused.cookies.length, 0);
+      // The Origin check runs before the password is checked, so even a wrong password gets 403, not 401.
+      expectError(await login(prodApp, email, 'wrong-password-1', { headers: proxied(CLOUD_WEB.default) }), 403, 'ORIGIN_NOT_ALLOWED');
+    } finally {
+      await prodApp.close();
+    }
+  });
+
+  it('Cloud Run: browsers on either web URL sign in through the proxy; the session works and sign-out ends it', async () => {
+    const prodApp = cloudApp(`${CLOUD_WEB.deterministic},${CLOUD_WEB.default}`);
+    try {
+      for (const origin of [CLOUD_WEB.deterministic, CLOUD_WEB.default]) {
+        const { user, email } = await createAccount();
+        const wrong = await login(prodApp, email, `${PASSWORD}x`, { headers: proxied(origin) });
+        expectError(wrong, 401, 'INVALID_CREDENTIALS');
+        assert.equal(wrong.cookies.length, 0);
+
+        const res = await login(prodApp, email, PASSWORD, { headers: proxied(origin) });
+        assert.equal(res.statusCode, 200, `${origin}: ${res.body}`);
+        assert.equal(res.json().user.email, email);
+        const cookie = res.cookies.find((c) => c.name === PROD_COOKIE);
+        assert.ok(cookie, `${origin}: session cookie`);
+        assert.equal(cookie.secure, true);
+        assert.equal(cookie.httpOnly, true);
+        assert.equal(cookie.sameSite, 'Lax');
+        assert.equal(cookie.path, '/');
+        assert.equal(cookie.domain, undefined, 'host-only: the browser keeps it for the web host it signed in on');
+        const csrfToken = res.json().csrfToken as string;
+        assert.match(csrfToken, /^[A-Za-z0-9_-]{20,}$/);
+
+        // The browser sends the cookie back on same-origin requests (GET carries no Origin).
+        const getHeaders = noOrigin(proxied(origin));
+        const signedIn = await prodApp.inject({ method: 'GET', url: URLS.me, headers: getHeaders, cookies: { [PROD_COOKIE]: cookie.value } });
+        assert.equal(signedIn.statusCode, 200, signedIn.body);
+        assert.equal(signedIn.json().user.id, user.id);
+
+        const out = await prodApp.inject({
+          method: 'POST',
+          url: URLS.logout,
+          headers: { ...proxied(origin), 'x-csrf-token': csrfToken },
+          cookies: { [PROD_COOKIE]: cookie.value },
+        });
+        assert.equal(out.statusCode, 204, out.body);
+        assert.ok(isCleared(out.cookies.find((c) => c.name === PROD_COOKIE)));
+        const after = await prodApp.inject({ method: 'GET', url: URLS.me, headers: getHeaders, cookies: { [PROD_COOKIE]: cookie.value } });
+        expectError(after, 401, 'UNAUTHENTICATED');
+      }
+    } finally {
+      await prodApp.close();
+    }
+  });
+
+  it('Cloud Run: untrusted origins stay refused, whatever the proxy headers say', async () => {
+    const prodApp = cloudApp(`${CLOUD_WEB.deterministic},${CLOUD_WEB.default}`);
+    try {
+      const { email } = await createAccount();
+      const host = new URL(CLOUD_WEB.deterministic).host;
+      const untrusted = [
+        'https://evil.example',
+        `http://${host}`, // plain HTTP
+        `https://${host}:8443`, // another port
+        `https://${host}.evil.example`, // look-alike suffix
+        'https://evil-academiapath-web-871079669510.us-central1.run.app', // look-alike prefix
+        'https://academiapath-api-871079669510.us-central1.run.app', // the API's own URL is not a browser origin
+        'https://other-service-871079669510.us-central1.run.app', // another Cloud Run service
+        'null',
+      ];
+      for (const origin of untrusted) {
+        // X-Forwarded-Host claims an allowed web host: it must not launder an untrusted Origin.
+        const res = await login(prodApp, email, PASSWORD, { headers: { ...proxied(CLOUD_WEB.deterministic), origin } });
+        expectError(res, 403, 'ORIGIN_NOT_ALLOWED');
+        assert.equal(res.cookies.length, 0, origin);
+      }
+      expectError(await login(prodApp, email, PASSWORD, { headers: { ...noOrigin(proxied(CLOUD_WEB.deterministic)), 'sec-fetch-site': 'cross-site' } }), 403, 'ORIGIN_NOT_ALLOWED');
+
+      // A signed-in session cannot be ended (or used for any change) from another site.
+      const res = await login(prodApp, email, PASSWORD, { headers: proxied(CLOUD_WEB.default) });
+      const token = res.cookies.find((c) => c.name === PROD_COOKIE)!.value;
+      const csrfToken = res.json().csrfToken as string;
+      const forged = await prodApp.inject({
+        method: 'POST',
+        url: URLS.logout,
+        headers: { ...proxied(CLOUD_WEB.default), origin: 'https://evil.example', 'x-csrf-token': csrfToken },
+        cookies: { [PROD_COOKIE]: token },
+      });
+      expectError(forged, 403, 'ORIGIN_NOT_ALLOWED');
+      assert.equal((await prodApp.inject({ method: 'GET', url: URLS.me, cookies: { [PROD_COOKIE]: token } })).statusCode, 200);
+    } finally {
+      await prodApp.close();
+    }
+  });
+
   it('does not let users grant themselves administrator permissions', async () => {
     const { email } = await createAccount();
     const escalation = await app.inject({
