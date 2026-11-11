@@ -2809,6 +2809,174 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{id}/forum/topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Topics of a course forum, pinned first, then latest activity
+         * @description For the course's students, instructors and non-editing instructors (active enrollment, published course),
+         *     and for administrators (read and moderate only). `403 FORUM_NOT_AVAILABLE` when the caller can see the
+         *     course but has no forum access (design team, unpublished course). Hidden topics are listed only for
+         *     moderators. `q` searches topic titles and texts and visible replies; counts and the last reply only
+         *     include replies the caller may see.
+         */
+        get: operations["listForumTopics"];
+        put?: never;
+        /**
+         * Start a topic
+         * @description Participants only (administrators moderate but never post). Plain text. A retry with the same
+         *     `clientRequestId` returns the first topic (200). `announce` (instructors only) notifies the course's
+         *     participants. `429 RATE_LIMITED` beyond the per-person forum posting limit.
+         */
+        post: operations["createForumTopic"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/forum/topics/{topicId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A topic with the caller's permissions on it
+         * @description A hidden topic is "not found" except for moderators.
+         */
+        get: operations["getForumTopic"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit one's own topic
+         * @description Only its author, within `FORUM_EDIT_WINDOW_MINUTES` (default 30) of posting, while the topic is not
+         *     locked or hidden and has no replies (`409 EDIT_WINDOW_CLOSED`, `TOPIC_LOCKED` or `EDIT_NOT_ALLOWED`).
+         *     Sets `editedAt`.
+         */
+        patch: operations["updateForumTopic"];
+        trace?: never;
+    };
+    "/api/v1/forum/topics/{topicId}/moderation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pin, unpin, lock, unlock, hide or restore a topic (moderators)
+         * @description Instructors of the course, and administrators as institutional control. Non-editing instructors and
+         *     students get `403 FORBIDDEN`. Repeating the current state changes nothing. Every change is audited
+         *     without the title or text. Hiding withdraws the topic's notifications.
+         */
+        post: operations["moderateForumTopic"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/forum/topics/{topicId}/posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Replies of a topic, in order, each with the replies to it
+         * @description Pages hold replies to the topic ordered by `number`, each with all its replies (one level deep). Pass
+         *     `nextCursor` as `after` for the next page. Hidden replies, and replies to a hidden reply, are returned
+         *     only to moderators; `total` counts the replies the caller may see.
+         */
+        get: operations["listForumPosts"];
+        put?: never;
+        /**
+         * Reply to a topic or to a reply
+         * @description Participants only. `parentPostId` answers a reply to the topic (`422 REPLY_NESTING_LIMIT` for a reply
+         *     to a reply). `409 TOPIC_LOCKED` for non-moderators in a locked topic; `TOPIC_HIDDEN` or `POST_HIDDEN`
+         *     for moderators answering hidden content. A retry with the same `clientRequestId` returns the first
+         *     reply (200). Notifies the topic's author and the answered reply's author (one notification per person
+         *     and topic). `429 RATE_LIMITED` beyond the per-person forum posting limit.
+         */
+        post: operations["createForumPost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/forum/posts/{postId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit one's own reply
+         * @description Only its author, within `FORUM_EDIT_WINDOW_MINUTES` of posting, while the topic is open, the reply is
+         *     visible and has no replies (`409 EDIT_WINDOW_CLOSED`, `TOPIC_LOCKED` or `EDIT_NOT_ALLOWED`). Sets
+         *     `editedAt`.
+         */
+        patch: operations["updateForumPost"];
+        trace?: never;
+    };
+    "/api/v1/forum/posts/{postId}/moderation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hide or restore a reply (moderators)
+         * @description Instructors of the course and administrators. The reply is kept; while hidden, it and the replies to it
+         *     are visible only to moderators and its notifications are withdrawn. Audited without the text.
+         */
+        post: operations["moderateForumPost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/forums/courses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Forum activity and moderation state of published courses (administrators; counts only) */
+        get: operations["listForumCoursesAdmin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4947,11 +5115,12 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            type: "direct_message" | "course_message" | "announcement" | "grade_released" | "certificate_issued";
+            type: "direct_message" | "course_message" | "announcement" | "grade_released" | "certificate_issued" | "forum_reply" | "forum_topic";
             course: components["schemas"]["CourseRef"] | null;
             /**
              * @description Display values the recipient may see: `senderName`, `courseCode`, `title` (announcements),
-             *     `activityTitle` (grades), `courseTitle` (certificates). Never message text or grade values.
+             *     `activityTitle` (grades), `courseTitle` (certificates), `topicTitle`, `authorName` and `postId`
+             *     (forums). Never message or post text, or grade values.
              */
             data: {
                 [key: string]: string;
@@ -4968,6 +5137,179 @@ export interface components {
         };
         ReadAllResult: {
             updated: number;
+        };
+        ForumViewer: {
+            /**
+             * @description The caller's forum role; null for an administrator (moderation only).
+             * @enum {string|null}
+             */
+            role: "student" | "instructor" | "non_editing_instructor" | null;
+            canPost: boolean;
+            canModerate: boolean;
+        };
+        ForumLastReply: {
+            authorName: string;
+            /** Format: date-time */
+            createdAt: string;
+        } | null;
+        ForumTopicSummary: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            /** @description The start of the topic's text (plain text). */
+            excerpt: string;
+            author: components["schemas"]["PersonRef"];
+            mine: boolean;
+            pinned: boolean;
+            locked: boolean;
+            /** @description Only moderators ever receive hidden topics. */
+            hidden: boolean;
+            /** @description Replies the caller may see. */
+            replyCount: number;
+            lastReply: components["schemas"]["ForumLastReply"];
+            /** Format: date-time */
+            lastActivityAt: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            editedAt: string | null;
+        };
+        ForumTopicPage: {
+            course: components["schemas"]["CourseRef"];
+            viewer: components["schemas"]["ForumViewer"];
+            items: components["schemas"]["ForumTopicSummary"][];
+            nextCursor: string | null;
+        };
+        ForumTopic: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            excerpt: string;
+            author: components["schemas"]["PersonRef"];
+            mine: boolean;
+            pinned: boolean;
+            locked: boolean;
+            hidden: boolean;
+            replyCount: number;
+            lastReply: components["schemas"]["ForumLastReply"];
+            /** Format: date-time */
+            lastActivityAt: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            editedAt: string | null;
+            course: components["schemas"]["CourseRef"];
+            /** @description Plain text; clients render it literally. */
+            body: string;
+            canReply: boolean;
+            canEdit: boolean;
+            canModerate: boolean;
+            /**
+             * Format: date-time
+             * @description When the caller can no longer edit the topic; null when they cannot edit it now.
+             */
+            editableUntil: string | null;
+        };
+        ForumTopicInput: {
+            title: string;
+            body: string;
+            /**
+             * Format: uuid
+             * @description Chosen by the client for this topic; a retry with the same value returns the first topic.
+             */
+            clientRequestId: string;
+            /**
+             * @description Instructors only. Notifies the course's students and teaching staff.
+             * @default false
+             */
+            announce: boolean;
+        };
+        ForumTopicUpdate: {
+            title?: string;
+            body?: string;
+        };
+        ForumPost: {
+            /** Format: uuid */
+            id: string;
+            /** @description Position in the topic (1, 2, 3… in the order replies were recorded). */
+            number: number;
+            /**
+             * Format: uuid
+             * @description The reply this one answers, or null for a reply to the topic.
+             */
+            parentPostId: string | null;
+            author: components["schemas"]["PersonRef"];
+            /** @description Plain text; clients render it literally. */
+            body: string;
+            /** @description Only moderators ever receive hidden replies. */
+            hidden: boolean;
+            mine: boolean;
+            canEdit: boolean;
+            /** Format: date-time */
+            editableUntil: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            editedAt: string | null;
+        };
+        ForumThreadItem: {
+            /** Format: uuid */
+            id: string;
+            number: number;
+            /** Format: uuid */
+            parentPostId: string | null;
+            author: components["schemas"]["PersonRef"];
+            body: string;
+            hidden: boolean;
+            mine: boolean;
+            canEdit: boolean;
+            /** Format: date-time */
+            editableUntil: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            editedAt: string | null;
+            replies: components["schemas"]["ForumPost"][];
+        };
+        ForumPostPage: {
+            items: components["schemas"]["ForumThreadItem"][];
+            /** @description Pass as `after` for the next replies; null when there are none. */
+            nextCursor: number | null;
+            /** @description Replies in the topic that the caller may see. */
+            total: number;
+        };
+        ForumPostInput: {
+            body: string;
+            /** Format: uuid */
+            clientRequestId: string;
+            /**
+             * Format: uuid
+             * @description Answer this reply (which must itself answer the topic).
+             */
+            parentPostId?: string;
+        };
+        ForumPostUpdate: {
+            body: string;
+        };
+        ForumTopicModeration: {
+            /** @enum {string} */
+            action: "pin" | "unpin" | "lock" | "unlock" | "hide" | "restore";
+        };
+        ForumPostModeration: {
+            /** @enum {string} */
+            action: "hide" | "restore";
+        };
+        AdminForumCourseList: {
+            items: {
+                course: components["schemas"]["CourseRef"];
+                topicCount: number;
+                replyCount: number;
+                lockedTopicCount: number;
+                hiddenTopicCount: number;
+                hiddenReplyCount: number;
+                /** Format: date-time */
+                lastActivityAt: string | null;
+            }[];
         };
     };
     responses: {
@@ -5032,7 +5374,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
-        /** @description `code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks), `FEEDBACK_NOT_AVAILABLE` (correctness review not enabled or not yet released) or `MESSAGING_NOT_AVAILABLE` (messaging is for the students and teaching staff of a published course). */
+        /** @description `code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks), `FEEDBACK_NOT_AVAILABLE` (correctness review not enabled or not yet released) `MESSAGING_NOT_AVAILABLE` (messaging is for the students and teaching staff of a published course) or `FORUM_NOT_AVAILABLE` (the course forum is for the students and teaching staff of a published course). */
         Forbidden: {
             headers: {
                 [name: string]: unknown;
@@ -5090,7 +5432,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
-        /** @description Too many sign-in or activation attempts, tutor requests, messages or polling requests (`code`: `RATE_LIMITED`). */
+        /** @description Too many sign-in or activation attempts, tutor requests, messages, forum posts or polling requests (`code`: `RATE_LIMITED`). */
         RateLimited: {
             headers: {
                 /** @description Seconds until another attempt is allowed. */
@@ -5143,7 +5485,9 @@ export interface components {
          *     `GRADING_POLICY_CONFLICT` (the grading policy changed since it was loaded); or a certificate rule:
          *     `CERTIFICATE_POLICY_CONFLICT`, `CERTIFICATE_ALREADY_REVOKED`, `CERTIFICATE_REVOKED`; or an
          *     announcement or calendar rule: `ANNOUNCEMENT_ARCHIVED`, `ANNOUNCEMENT_NOT_SCHEDULED`, `EVENT_CANCELLED`,
-         *     `EVENT_WAS_PUBLISHED`; or a messaging rule: `CONVERSATION_LOCKED`, `RECIPIENT_UNAVAILABLE`.
+         *     `EVENT_WAS_PUBLISHED`; or a messaging rule: `CONVERSATION_LOCKED`, `RECIPIENT_UNAVAILABLE`; or a forum
+         *     rule: `TOPIC_LOCKED`, `TOPIC_HIDDEN`, `POST_HIDDEN`, `EDIT_NOT_ALLOWED` (hidden, or already answered),
+         *     `EDIT_WINDOW_CLOSED`.
          */
         Conflict: {
             headers: {
@@ -5183,7 +5527,7 @@ export interface components {
          *     `CERTIFICATE_POLICY_INVALID` or `CERTIFICATE_NOT_ELIGIBLE`; or an announcement or calendar rule:
          *     `PUBLISH_AT_INVALID`, `EVENT_TIME_INVALID`, `INVALID_TIME_ZONE` or `RANGE_INVALID`; or
          *     `RECIPIENT_NOT_ALLOWED` (a direct conversation that is not between a student and the course's teaching
-         *     staff).
+         *     staff); or `REPLY_NESTING_LIMIT` (a forum reply to a reply to a reply).
          */
         UnprocessableContent: {
             headers: {
@@ -5223,6 +5567,8 @@ export interface components {
         ConversationId: string;
         MessageId: string;
         NotificationId: string;
+        TopicId: string;
+        PostId: string;
         CertificateId: string;
         UserId: string;
         EnrollmentId: string;
@@ -9418,6 +9764,314 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    listForumTopics: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+                q?: string;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumTopicPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createForumTopic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForumTopicInput"];
+            };
+        };
+        responses: {
+            /** @description The topic of an earlier attempt with the same clientRequestId. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumTopic"];
+                };
+            };
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumTopic"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getForumTopic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topicId: components["parameters"]["TopicId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumTopic"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateForumTopic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topicId: components["parameters"]["TopicId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForumTopicUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumTopic"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    moderateForumTopic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topicId: components["parameters"]["TopicId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForumTopicModeration"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumTopic"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listForumPosts: {
+        parameters: {
+            query?: {
+                after?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                topicId: components["parameters"]["TopicId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumPostPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createForumPost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topicId: components["parameters"]["TopicId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForumPostInput"];
+            };
+        };
+        responses: {
+            /** @description The reply of an earlier attempt with the same clientRequestId. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumPost"];
+                };
+            };
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumPost"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    updateForumPost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                postId: components["parameters"]["PostId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForumPostUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumPost"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    moderateForumPost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                postId: components["parameters"]["PostId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForumPostModeration"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumPost"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listForumCoursesAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminForumCourseList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
 }

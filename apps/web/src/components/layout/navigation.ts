@@ -64,6 +64,7 @@ export function buildNavigation(
         { href: '/admin/certificates', label: t.nav.certificates },
         { href: '/admin/communications', label: t.nav.institutionCommunications },
         { href: '/admin/messaging', label: t.nav.courseMessaging },
+        { href: '/admin/forums', label: t.nav.courseForums },
       ],
     });
   }
@@ -76,6 +77,8 @@ export function buildNavigation(
     items.push({ href: `${base}/announcements`, label: t.nav.announcements }, { href: `${base}/calendar`, label: t.nav.calendar });
     // Messaging (AP-026): students, instructors and non-editing instructors only.
     if (role === 'student' || role === 'instructor' || role === 'non_editing_instructor') items.push({ href: `${base}/messages`, label: t.nav.messages });
+    // Course forum (AP-027): the same course roles, and administrators (moderation only).
+    if (role === 'student' || role === 'instructor' || role === 'non_editing_instructor' || (isAdmin && role === null)) items.push({ href: `${base}/forum`, label: t.nav.forum });
     if (role === 'instructor' || role === 'non_editing_instructor' || (isAdmin && role === null)) items.push({ href: `${base}/grades`, label: t.nav.gradebook });
     if (role === 'student') items.push({ href: `${base}/grades`, label: t.nav.myGrades });
     if (role === 'student' || role === 'instructor' || role === 'non_editing_instructor') items.push({ href: `${base}/tutor`, label: t.nav.tutor });

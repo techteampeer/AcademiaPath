@@ -23,6 +23,7 @@ import { createDatabase, type Database } from '../src/db/client.js';
 import { signIn, type Actor } from './demo/api.js';
 import { DEMO_COMMUNICATIONS, seedCommunications } from './demo/communications.js';
 import { DEMO_MESSAGING, seedMessaging } from './demo/messaging.js';
+import { DEMO_FORUMS, seedForums } from './demo/forums.js';
 import {
   ACCOUNTS,
   COURSES,
@@ -215,6 +216,9 @@ export async function seedDemoDataset(db: Database, options: SeedDatasetOptions)
 
     // ---------------------------------------------------------------- Messages (AP-026)
     await seedMessaging(actors, courseIds.get(DEMO_MESSAGING.courseCode)!, tally);
+
+    // ---------------------------------------------------------------- Course forum (AP-027)
+    await seedForums(actors, courseIds.get(DEMO_FORUMS.courseCode)!, tally);
 
     // ---------------------------------------------------------------- Files for the live upload step
     const uploadFiles: string[] = [];

@@ -38,6 +38,8 @@ const TABLES = [
   'conversations',
   'messages',
   'notifications',
+  'forum_topics',
+  'forum_posts',
 ];
 const collapse = (value: string) => value.replace(/\s+/g, ' ');
 
@@ -93,6 +95,9 @@ describe('demo dataset seed (PostgreSQL)', { skip: testServerUrl ? false : 'TEST
     assert.equal(first.counts['calendar events']?.created, 2);
     assert.equal(first.counts.conversations?.created, 3);
     assert.equal(first.counts.messages?.created, 7);
+    // AP-027: a pinned instructor topic, a student question (instructor answer, peer response), a locked discussion.
+    assert.equal(first.counts['forum topics']?.created, 3);
+    assert.equal(first.counts['forum replies']?.created, 4);
   });
 
   it('is repeatable: a second run creates nothing and leaves every table unchanged', async () => {

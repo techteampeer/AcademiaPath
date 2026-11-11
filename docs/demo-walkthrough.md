@@ -138,6 +138,14 @@ Messages (AP-026), in ITIL 4 Foundation, sent through the API. The matching in-a
 
 Students also get notifications for the published announcements and their released grades.
 
+Course forum (AP-027), in ITIL 4 Foundation, posted through the API:
+
+| Topic | Content |
+| --- | --- |
+| "Bienvenida y normas del foro" | Pinned instructor topic, announced to the class (students and teaching staff get a notification) |
+| "¿Cuál es la diferencia entre la cadena de valor y un flujo de valor?" | Question from `student@`, the instructor's answer and a peer response from `learner.a@` to that answer |
+| "Formato del examen de práctica (cerrado)" | Question from `learner.b@`, answers from `ta@` and the instructor; locked by the instructor |
+
 ## 4. Demo script
 
 Course paths below are relative to http://localhost:3000. The seed prints each course's ID, and the **My courses** and **Dashboard** pages link to every course.
@@ -241,6 +249,19 @@ Administrators publish institution-wide announcements and events under **Adminis
 **24. Administrator.** As `admin@`, **Administration → Course messaging** shows each published course's conversation with its state and message count. The administrator can lock or unlock it but cannot read it. The design team (`reviewer@`) gets no access to private conversations.
 
 New messages appear within a few seconds while a conversation is open. This is near-real-time polling (about every 8 seconds; badges every 30 seconds), not instant delivery.
+
+### Course forum (AP-027)
+**25. Student asks and replies.** As `student@`, open ITIL 4 Foundation → **Forum**:
+- The pinned "Bienvenida y normas del foro" comes first. The locked "Formato del examen de práctica" shows **Locked** and has no reply box.
+- Open the value-chain question: the instructor's answer has a peer response nested under it.
+- Use **Reply** under the instructor's answer, then **Start a topic** with a new question. Your own post shows **Edit** for 30 minutes, until somebody replies.
+
+**26. Instructor moderates.** As `instructor@`:
+- **Notifications** shows the reply to the instructor's answer, without its text.
+- In the student's new topic, answer it, then try **Pin**, **Lock** and **Hide** (with confirmation) and **Restore**. A hidden reply disappears for students, including from reply counts, search and notifications. Instructors see it marked **Hidden**.
+- **Start a topic** with **Notify the class** checked to announce it.
+
+**27. Other roles.** As `ta@`, reply in a topic: non-editing instructors take part but get no moderation buttons. As `admin@`, **Administration → Course forums** lists each published course's forum as counts only, with **Open forum** to moderate it; administrators cannot post. As `reviewer@`, the forum is not available: the design team has no access to student discussions.
 
 
 - **Bilingual UI.** The header's EN/ES switch translates the whole interface (AP-015). Course material stays in the language it was written in: English (ITIL, Project Management) and Spanish (Introduction to AI).

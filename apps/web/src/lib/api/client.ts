@@ -30,7 +30,7 @@ type RequestOptions = { body?: unknown; csrfToken?: string; signal?: AbortSignal
  * Sends a same-origin request. The HttpOnly session cookie is attached by the browser and is
  * never read or stored by script. Responses are never cached.
  */
-export async function apiRequest<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, options: RequestOptions = {}): Promise<T> {
+export async function apiRequest<T>(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { accept: 'application/json' };
   if (options.body !== undefined) headers['content-type'] = 'application/json';
   if (options.csrfToken) headers['x-csrf-token'] = options.csrfToken;

@@ -62,6 +62,10 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   'announcement',
   'grade_released',
   'certificate_issued',
+  // AP-027 discussion forums: a reply in a topic a person started or a post they wrote; a new topic an
+  // instructor announced to the course.
+  'forum_reply',
+  'forum_topic',
 ]);
 
 /** Tutor usage accounting: request kind and grounding outcome (never the question text). */

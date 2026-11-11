@@ -121,6 +121,13 @@ const en = {
     RECIPIENT_UNAVAILABLE: 'This person can no longer receive messages in this course.',
     CONVERSATION_LOCKED: 'This course conversation is locked; no new messages can be posted.',
     MESSAGING_NOT_AVAILABLE: 'Messaging is for the students and teaching staff of a published course.',
+    FORUM_NOT_AVAILABLE: 'The course forum is for the students and teaching staff of a published course.',
+    TOPIC_LOCKED: 'This topic is locked; no new replies or edits are possible.',
+    TOPIC_HIDDEN: 'This topic is hidden; restore it before replying.',
+    POST_HIDDEN: 'This reply is hidden; restore it before answering it.',
+    EDIT_NOT_ALLOWED: 'This post can no longer be edited (it is hidden or already has replies).',
+    EDIT_WINDOW_CLOSED: 'The time to edit this post has passed.',
+    REPLY_NESTING_LIMIT: 'Replies to replies are one level deep: answer the original reply instead.',
   } as Record<string, string>,
 };
 
@@ -245,6 +252,13 @@ const es: ErrorMessages = {
     RECIPIENT_UNAVAILABLE: 'Esta persona ya no puede recibir mensajes en este curso.',
     CONVERSATION_LOCKED: 'Esta conversación del curso está bloqueada; no se pueden publicar mensajes nuevos.',
     MESSAGING_NOT_AVAILABLE: 'La mensajería es para los estudiantes y docentes de un curso publicado.',
+    FORUM_NOT_AVAILABLE: 'El foro del curso es para los estudiantes y docentes de un curso publicado.',
+    TOPIC_LOCKED: 'Este tema está cerrado; ya no se puede responder ni editar.',
+    TOPIC_HIDDEN: 'Este tema está oculto; restáuralo antes de responder.',
+    POST_HIDDEN: 'Esta respuesta está oculta; restáurala antes de contestarla.',
+    EDIT_NOT_ALLOWED: 'Esta publicación ya no se puede editar (está oculta o ya tiene respuestas).',
+    EDIT_WINDOW_CLOSED: 'Ya pasó el tiempo para editar esta publicación.',
+    REPLY_NESTING_LIMIT: 'Las respuestas a respuestas tienen un solo nivel: contesta la respuesta original.',
   },
 };
 

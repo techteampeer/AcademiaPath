@@ -63,7 +63,14 @@ export type CoursePermission =
   | 'messages.direct'
   | 'messages.course'
   /** Hide course-conversation messages and lock or unlock the course conversation (instructors only). */
-  | 'messages.moderate';
+  | 'messages.moderate'
+  /**
+   * AP-027 course discussion forum (role-only; never via the design team): read the forum of a published course,
+   * start topics and reply. Administrators read and moderate through their institutional override, never post.
+   */
+  | 'forum.participate'
+  /** Pin, lock, hide and restore forum topics and replies (instructors only; administrators via the override). */
+  | 'forum.moderate';
 
 /**
  * Course-level permissions per role. Default deny: a permission not listed here is not granted.
@@ -103,6 +110,8 @@ export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermi
     'messages.direct',
     'messages.course',
     'messages.moderate',
+    'forum.participate',
+    'forum.moderate',
   ]),
   // Non-editing instructors grade submissions (rubric scores and feedback; AP-009, documented in the API
   // contract) and read the gradebook and certificates, but never change content, release grades, change the
@@ -120,6 +129,8 @@ export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermi
     // AP-026: they message students and take part in the course conversation, but never moderate it.
     'messages.direct',
     'messages.course',
+    // AP-027: they take part in the course forum (topics and replies) but never pin, lock, hide or restore.
+    'forum.participate',
   ]),
   student: new Set([
     'course.view',
@@ -131,6 +142,7 @@ export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermi
     'certificates.own',
     'messages.direct',
     'messages.course',
+    'forum.participate',
   ]),
 };
 

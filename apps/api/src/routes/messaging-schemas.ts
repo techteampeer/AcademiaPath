@@ -163,7 +163,7 @@ export const notificationSchema = {
   additionalProperties: false,
   properties: {
     id: uuid,
-    type: { type: 'string', enum: ['direct_message', 'course_message', 'announcement', 'grade_released', 'certificate_issued'] },
+    type: { type: 'string', enum: ['direct_message', 'course_message', 'announcement', 'grade_released', 'certificate_issued', 'forum_reply', 'forum_topic'] },
     course: { ...courseRef, type: ['object', 'null'] },
     data: notificationData,
     link: { type: 'string' },

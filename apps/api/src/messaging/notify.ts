@@ -10,7 +10,7 @@
  */
 import { and, eq, inArray, isNull, ne, sql, type SQL } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
-import { courses, enrollments, notifications, notificationTypeEnum, users } from '../db/schema/index.js';
+import { courses, enrollments, forumPosts, forumTopics, notifications, notificationTypeEnum, users } from '../db/schema/index.js';
 
 export type NotificationType = (typeof notificationTypeEnum.enumValues)[number];
 type Executor = Pick<Database, 'insert' | 'update' | 'select'>;
@@ -103,6 +103,8 @@ export async function activeUserIds(tx: Executor, except?: string): Promise<stri
  * Which of a person's notifications they may see now: their own, not withdrawn, already available, and, for
  * course notifications, only while they still hold an active enrollment that gives access to the course
  * (students: published courses only). Messaging notifications also need a messaging role in that course.
+ * Forum notifications (AP-027) also need a forum role in a published course, and disappear while their topic,
+ * the reply they announce or that reply's parent is hidden by moderation.
  */
 export function visibleTo(userId: string, at: Date): SQL {
   return and(
@@ -115,6 +117,14 @@ export function visibleTo(userId: string, at: Date): SQL {
         AND (c.status = 'published' OR e.role <> 'student')
         AND (${notifications.type} NOT IN ('direct_message', 'course_message')
              OR (c.status = 'published' AND e.role IN ('student', 'instructor', 'non_editing_instructor')))
+        AND (${notifications.type} NOT IN ('forum_reply', 'forum_topic')
+             OR (c.status = 'published' AND e.role IN ('student', 'instructor', 'non_editing_instructor')
+                 AND EXISTS (SELECT 1 FROM ${forumTopics} ft WHERE ft.id = ${notifications.entityId} AND ft.course_id = c.id AND ft.hidden_at IS NULL)
+                 AND (${notifications.data} ->> 'postId' IS NULL OR EXISTS (
+                   SELECT 1 FROM ${forumPosts} fp
+                   LEFT JOIN ${forumPosts} fpp ON fpp.id = fp.parent_post_id
+                   WHERE fp.id::text = ${notifications.data} ->> 'postId' AND fp.topic_id = ${notifications.entityId}
+                     AND fp.hidden_at IS NULL AND fpp.hidden_at IS NULL))))
     ))`,
   )!;
 }
@@ -131,5 +141,8 @@ export function notificationLink(row: { type: NotificationType; courseId: string
       return row.courseId ? `/courses/${row.courseId}/grades` : '/dashboard';
     case 'certificate_issued':
       return `/certificates/${row.entityId}`;
+    case 'forum_reply':
+    case 'forum_topic':
+      return row.courseId ? `/courses/${row.courseId}/forum/${row.entityId}` : '/dashboard';
   }
 }

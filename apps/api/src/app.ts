@@ -22,6 +22,7 @@ import { announcementRoutes } from './routes/announcements.js';
 import { calendarRoutes } from './routes/calendar.js';
 import { messagingRoutes } from './routes/messaging.js';
 import { notificationRoutes } from './routes/notifications.js';
+import { forumRoutes } from './routes/forums.js';
 import { quizRoutes } from './routes/quizzes.js';
 import { tutorRoutes } from './routes/tutor.js';
 import { courseLifecycleRoutes } from './routes/course-lifecycle.js';
@@ -100,6 +101,7 @@ export function buildApp({ config, database, logger = false, documents = {}, clo
   app.register(calendarRoutes, { prefix: API_PREFIX });
   app.register(messagingRoutes, { prefix: API_PREFIX });
   app.register(notificationRoutes, { prefix: API_PREFIX });
+  app.register(forumRoutes, { prefix: API_PREFIX });
   app.register(tutorRoutes, { prefix: API_PREFIX });
   app.register(progressRoutes, { prefix: API_PREFIX });
   app.register(resourceRoutes, { prefix: API_PREFIX });

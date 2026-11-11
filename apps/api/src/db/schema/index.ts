@@ -13,3 +13,4 @@ export * from './progress.js';
 export * from './certificates.js';
 export * from './communications.js';
 export * from './messaging.js';
+export * from './forums.js';

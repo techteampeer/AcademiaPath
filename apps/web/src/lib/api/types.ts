@@ -169,3 +169,15 @@ export type AppNotification = Schemas['Notification'];
 export type NotificationPage = Schemas['NotificationPage'];
 export type AdminCourseConversationList = Schemas['AdminCourseConversationList'];
 export type LockResult = Schemas['LockResult'];
+
+export type ForumViewer = Schemas['ForumViewer'];
+export type ForumTopicSummary = Schemas['ForumTopicSummary'];
+export type ForumTopicPage = Schemas['ForumTopicPage'];
+export type ForumTopic = Schemas['ForumTopic'];
+export type ForumTopicInput = Schemas['ForumTopicInput'];
+export type ForumPost = Schemas['ForumPost'];
+export type ForumThreadItem = Schemas['ForumThreadItem'];
+export type ForumPostPage = Schemas['ForumPostPage'];
+export type ForumTopicAction = Schemas['ForumTopicModeration']['action'];
+export type ForumPostAction = Schemas['ForumPostModeration']['action'];
+export type AdminForumCourseList = Schemas['AdminForumCourseList'];

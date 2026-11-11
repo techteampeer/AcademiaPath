@@ -20,6 +20,7 @@ import { gradebook } from './catalog/gradebook';
 import { certificates } from './catalog/certificates';
 import { communications } from './catalog/communications';
 import { messaging } from './catalog/messaging';
+import { forums } from './catalog/forums';
 
 export type Locale = 'en' | 'es';
 export const LOCALES: Locale[] = ['en', 'es'];
@@ -98,6 +99,8 @@ const en = {
     messages: 'Messages',
     notifications: 'Notifications',
     courseMessaging: 'Course messaging',
+    forum: 'Forum',
+    courseForums: 'Course forums',
     home: 'Home',
   },
   session: {
@@ -273,6 +276,7 @@ const en = {
   certificates: certificates.en,
   communications: communications.en,
   messaging: messaging.en,
+  forums: forums.en,
   academics: {
     hierarchy: 'Hierarchy',
     treeLabel: 'Academic hierarchy',
@@ -543,6 +547,8 @@ const es: Messages = {
     messages: 'Mensajes',
     notifications: 'Notificaciones',
     courseMessaging: 'Mensajería de cursos',
+    forum: 'Foro',
+    courseForums: 'Foros de cursos',
     tutor: 'Tutor',
     home: 'Inicio',
   },
@@ -719,6 +725,7 @@ const es: Messages = {
   certificates: certificates.es,
   communications: communications.es,
   messaging: messaging.es,
+  forums: forums.es,
   academics: {
     hierarchy: 'Jerarquía',
     treeLabel: 'Jerarquía académica',

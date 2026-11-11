@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.19.0
+  version: 0.20.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -217,6 +217,22 @@ info:
     text, grade value or answer) and are shown only while the recipient still has access to the course.
     Updates are near-real-time by polling (`/me/messaging/summary`, `/conversations/{id}/messages?after=`),
     not guaranteed instant delivery.
+
+    Discussion forums (0.20.0): every published course has one forum of topics (a title and a plain-text
+    opening) and replies; a reply answers the topic or a reply to it (one level deep). The course's students,
+    instructors and non-editing instructors (active account and enrollment) read and post; instructors also
+    moderate (pin, lock, hide and restore); administrators read and moderate any published course's forum as
+    institutional control but never post. The design team and program managers have no forum access, and
+    forums never expose private conversations. Access is derived from current enrollments on every request.
+    Replies are numbered within their topic in commit order (stable, gap-free ordering under concurrency).
+    Authors edit their own topic or reply for `FORUM_EDIT_WINDOW_MINUTES` (default 30) while the topic is open,
+    the post is visible and nobody has replied to it. Nothing is deleted; hidden topics and replies (and
+    replies to a hidden reply) are visible only to moderators and are left out of lists, counts, previews,
+    search and notifications. Posting is rate-limited per person (`FORUM_POST_RATE_LIMIT_MAX` per
+    `FORUM_POST_RATE_LIMIT_WINDOW_MINUTES`) and idempotent with a client-chosen `clientRequestId`. Replies
+    notify the topic's and the answered reply's authors, and announced instructor topics notify the course,
+    as one in-app notification per person and topic, never with the text. Moderation is audited without
+    text.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -251,6 +267,8 @@ tags:
     description: Direct and course conversations (polling, no real-time channel)
   - name: Notifications
     description: In-app notification center
+  - name: Forums
+    description: Course discussion forums (topics, threaded replies and moderation)
   - name: Tutor
     description: Course-grounded tutor (local mock provider) and usage
   - name: Documents
@@ -5018,6 +5036,364 @@ paths:
                 $ref: "#/components/schemas/ReadAllResult"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /api/v1/courses/{id}/forum/topics:
+    get:
+      operationId: listForumTopics
+      summary: Topics of a course forum, pinned first, then latest activity
+      description: |
+        For the course's students, instructors and non-editing instructors (active enrollment, published course),
+        and for administrators (read and moderate only). `403 FORUM_NOT_AVAILABLE` when the caller can see the
+        course but has no forum access (design team, unpublished course). Hidden topics are listed only for
+        moderators. `q` searches topic titles and texts and visible replies; counts and the last reply only
+        include replies the caller may see.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 500
+        - name: q
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopicPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createForumTopic
+      summary: Start a topic
+      description: |
+        Participants only (administrators moderate but never post). Plain text. A retry with the same
+        `clientRequestId` returns the first topic (200). `announce` (instructors only) notifies the course's
+        participants. `429 RATE_LIMITED` beyond the per-person forum posting limit.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForumTopicInput"
+      responses:
+        "200":
+          description: The topic of an earlier attempt with the same clientRequestId.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopic"
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopic"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/forum/topics/{topicId}:
+    get:
+      operationId: getForumTopic
+      summary: A topic with the caller's permissions on it
+      description: A hidden topic is "not found" except for moderators.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/TopicId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopic"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateForumTopic
+      summary: Edit one's own topic
+      description: |
+        Only its author, within `FORUM_EDIT_WINDOW_MINUTES` (default 30) of posting, while the topic is not
+        locked or hidden and has no replies (`409 EDIT_WINDOW_CLOSED`, `TOPIC_LOCKED` or `EDIT_NOT_ALLOWED`).
+        Sets `editedAt`.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/TopicId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForumTopicUpdate"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopic"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/forum/topics/{topicId}/moderation:
+    post:
+      operationId: moderateForumTopic
+      summary: Pin, unpin, lock, unlock, hide or restore a topic (moderators)
+      description: |
+        Instructors of the course, and administrators as institutional control. Non-editing instructors and
+        students get `403 FORBIDDEN`. Repeating the current state changes nothing. Every change is audited
+        without the title or text. Hiding withdraws the topic's notifications.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/TopicId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForumTopicModeration"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopic"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/forum/topics/{topicId}/posts:
+    get:
+      operationId: listForumPosts
+      summary: Replies of a topic, in order, each with the replies to it
+      description: |
+        Pages hold replies to the topic ordered by `number`, each with all its replies (one level deep). Pass
+        `nextCursor` as `after` for the next page. Hidden replies, and replies to a hidden reply, are returned
+        only to moderators; `total` counts the replies the caller may see.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/TopicId"
+        - name: after
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumPostPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createForumPost
+      summary: Reply to a topic or to a reply
+      description: |
+        Participants only. `parentPostId` answers a reply to the topic (`422 REPLY_NESTING_LIMIT` for a reply
+        to a reply). `409 TOPIC_LOCKED` for non-moderators in a locked topic; `TOPIC_HIDDEN` or `POST_HIDDEN`
+        for moderators answering hidden content. A retry with the same `clientRequestId` returns the first
+        reply (200). Notifies the topic's author and the answered reply's author (one notification per person
+        and topic). `429 RATE_LIMITED` beyond the per-person forum posting limit.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/TopicId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForumPostInput"
+      responses:
+        "200":
+          description: The reply of an earlier attempt with the same clientRequestId.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumPost"
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumPost"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/forum/posts/{postId}:
+    patch:
+      operationId: updateForumPost
+      summary: Edit one's own reply
+      description: |
+        Only its author, within `FORUM_EDIT_WINDOW_MINUTES` of posting, while the topic is open, the reply is
+        visible and has no replies (`409 EDIT_WINDOW_CLOSED`, `TOPIC_LOCKED` or `EDIT_NOT_ALLOWED`). Sets
+        `editedAt`.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/PostId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForumPostUpdate"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumPost"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/forum/posts/{postId}/moderation:
+    post:
+      operationId: moderateForumPost
+      summary: Hide or restore a reply (moderators)
+      description: |
+        Instructors of the course and administrators. The reply is kept; while hidden, it and the replies to it
+        are visible only to moderators and its notifications are withdrawn. Audited without the text.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/PostId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForumPostModeration"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumPost"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/admin/forums/courses:
+    get:
+      operationId: listForumCoursesAdmin
+      summary: Forum activity and moderation state of published courses (administrators; counts only)
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminForumCourseList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 components:
   parameters:
     Limit:
@@ -5142,6 +5518,20 @@ components:
       schema:
         type: string
         format: uuid
+    TopicId:
+      name: topicId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PostId:
+      name: postId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     CertificateId:
       name: certificateId
       in: path
@@ -5223,7 +5613,7 @@ components:
             detail: Invalid email or password.
             code: INVALID_CREDENTIALS
     Forbidden:
-      description: "`code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks), `FEEDBACK_NOT_AVAILABLE` (correctness review not enabled or not yet released) or `MESSAGING_NOT_AVAILABLE` (messaging is for the students and teaching staff of a published course)."
+      description: "`code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks), `FEEDBACK_NOT_AVAILABLE` (correctness review not enabled or not yet released) `MESSAGING_NOT_AVAILABLE` (messaging is for the students and teaching staff of a published course) or `FORUM_NOT_AVAILABLE` (the course forum is for the students and teaching staff of a published course)."
       content:
         application/problem+json:
           schema:
@@ -5262,7 +5652,7 @@ components:
             detail: Only PDF (.pdf), Word (.docx) and PowerPoint (.pptx) files are accepted.
             code: UNSUPPORTED_FILE_TYPE
     RateLimited:
-      description: "Too many sign-in or activation attempts, tutor requests, messages or polling requests (`code`: `RATE_LIMITED`)."
+      description: "Too many sign-in or activation attempts, tutor requests, messages, forum posts or polling requests (`code`: `RATE_LIMITED`)."
       headers:
         Retry-After:
           description: Seconds until another attempt is allowed.
@@ -5306,7 +5696,9 @@ components:
         `GRADING_POLICY_CONFLICT` (the grading policy changed since it was loaded); or a certificate rule:
         `CERTIFICATE_POLICY_CONFLICT`, `CERTIFICATE_ALREADY_REVOKED`, `CERTIFICATE_REVOKED`; or an
         announcement or calendar rule: `ANNOUNCEMENT_ARCHIVED`, `ANNOUNCEMENT_NOT_SCHEDULED`, `EVENT_CANCELLED`,
-        `EVENT_WAS_PUBLISHED`; or a messaging rule: `CONVERSATION_LOCKED`, `RECIPIENT_UNAVAILABLE`.
+        `EVENT_WAS_PUBLISHED`; or a messaging rule: `CONVERSATION_LOCKED`, `RECIPIENT_UNAVAILABLE`; or a forum
+        rule: `TOPIC_LOCKED`, `TOPIC_HIDDEN`, `POST_HIDDEN`, `EDIT_NOT_ALLOWED` (hidden, or already answered),
+        `EDIT_WINDOW_CLOSED`.
       content:
         application/problem+json:
           schema:
@@ -5339,7 +5731,7 @@ components:
         `CERTIFICATE_POLICY_INVALID` or `CERTIFICATE_NOT_ELIGIBLE`; or an announcement or calendar rule:
         `PUBLISH_AT_INVALID`, `EVENT_TIME_INVALID`, `INVALID_TIME_ZONE` or `RANGE_INVALID`; or
         `RECIPIENT_NOT_ALLOWED` (a direct conversation that is not between a student and the course's teaching
-        staff).
+        staff); or `REPLY_NESTING_LIMIT` (a forum reply to a reply to a reply).
       content:
         application/problem+json:
           schema:
@@ -9839,7 +10231,7 @@ components:
           format: uuid
         type:
           type: string
-          enum: [direct_message, course_message, announcement, grade_released, certificate_issued]
+          enum: [direct_message, course_message, announcement, grade_released, certificate_issued, forum_reply, forum_topic]
         course:
           oneOf:
             - $ref: "#/components/schemas/CourseRef"
@@ -9851,7 +10243,8 @@ components:
             type: string
           description: |
             Display values the recipient may see: `senderName`, `courseCode`, `title` (announcements),
-            `activityTitle` (grades), `courseTitle` (certificates). Never message text or grade values.
+            `activityTitle` (grades), `courseTitle` (certificates), `topicTitle`, `authorName` and `postId`
+            (forums). Never message or post text, or grade values.
         link:
           type: string
           description: Application path of the destination (which checks access again).
@@ -9879,3 +10272,335 @@ components:
         updated:
           type: integer
           minimum: 0
+    ForumViewer:
+      type: object
+      required: [role, canPost, canModerate]
+      additionalProperties: false
+      properties:
+        role:
+          type: [string, "null"]
+          enum: [student, instructor, non_editing_instructor, null]
+          description: The caller's forum role; null for an administrator (moderation only).
+        canPost:
+          type: boolean
+        canModerate:
+          type: boolean
+    ForumLastReply:
+      type: [object, "null"]
+      required: [authorName, createdAt]
+      additionalProperties: false
+      properties:
+        authorName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    ForumTopicSummary:
+      type: object
+      required: [id, title, excerpt, author, mine, pinned, locked, hidden, replyCount, lastReply, lastActivityAt, createdAt, editedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        excerpt:
+          type: string
+          description: The start of the topic's text (plain text).
+        author:
+          $ref: "#/components/schemas/PersonRef"
+        mine:
+          type: boolean
+        pinned:
+          type: boolean
+        locked:
+          type: boolean
+        hidden:
+          type: boolean
+          description: Only moderators ever receive hidden topics.
+        replyCount:
+          type: integer
+          minimum: 0
+          description: Replies the caller may see.
+        lastReply:
+          $ref: "#/components/schemas/ForumLastReply"
+        lastActivityAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        editedAt:
+          type: [string, "null"]
+          format: date-time
+    ForumTopicPage:
+      type: object
+      required: [course, viewer, items, nextCursor]
+      additionalProperties: false
+      properties:
+        course:
+          $ref: "#/components/schemas/CourseRef"
+        viewer:
+          $ref: "#/components/schemas/ForumViewer"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ForumTopicSummary"
+        nextCursor:
+          type: [string, "null"]
+    ForumTopic:
+      type: object
+      required: [id, title, excerpt, author, mine, pinned, locked, hidden, replyCount, lastReply, lastActivityAt, createdAt, editedAt, course, body, canReply, canEdit, canModerate, editableUntil]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        excerpt:
+          type: string
+        author:
+          $ref: "#/components/schemas/PersonRef"
+        mine:
+          type: boolean
+        pinned:
+          type: boolean
+        locked:
+          type: boolean
+        hidden:
+          type: boolean
+        replyCount:
+          type: integer
+          minimum: 0
+        lastReply:
+          $ref: "#/components/schemas/ForumLastReply"
+        lastActivityAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        editedAt:
+          type: [string, "null"]
+          format: date-time
+        course:
+          $ref: "#/components/schemas/CourseRef"
+        body:
+          type: string
+          description: Plain text; clients render it literally.
+        canReply:
+          type: boolean
+        canEdit:
+          type: boolean
+        canModerate:
+          type: boolean
+        editableUntil:
+          type: [string, "null"]
+          format: date-time
+          description: When the caller can no longer edit the topic; null when they cannot edit it now.
+    ForumTopicInput:
+      type: object
+      required: [title, body, clientRequestId]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: \S
+        body:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          pattern: \S
+        clientRequestId:
+          type: string
+          format: uuid
+          description: Chosen by the client for this topic; a retry with the same value returns the first topic.
+        announce:
+          type: boolean
+          default: false
+          description: Instructors only. Notifies the course's students and teaching staff.
+    ForumTopicUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: \S
+        body:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          pattern: \S
+    ForumPost:
+      type: object
+      required: [id, number, parentPostId, author, body, hidden, mine, canEdit, editableUntil, createdAt, editedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        number:
+          type: integer
+          minimum: 1
+          description: Position in the topic (1, 2, 3… in the order replies were recorded).
+        parentPostId:
+          type: [string, "null"]
+          format: uuid
+          description: The reply this one answers, or null for a reply to the topic.
+        author:
+          $ref: "#/components/schemas/PersonRef"
+        body:
+          type: string
+          description: Plain text; clients render it literally.
+        hidden:
+          type: boolean
+          description: Only moderators ever receive hidden replies.
+        mine:
+          type: boolean
+        canEdit:
+          type: boolean
+        editableUntil:
+          type: [string, "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        editedAt:
+          type: [string, "null"]
+          format: date-time
+    ForumThreadItem:
+      type: object
+      required: [id, number, parentPostId, author, body, hidden, mine, canEdit, editableUntil, createdAt, editedAt, replies]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        number:
+          type: integer
+          minimum: 1
+        parentPostId:
+          type: [string, "null"]
+          format: uuid
+        author:
+          $ref: "#/components/schemas/PersonRef"
+        body:
+          type: string
+        hidden:
+          type: boolean
+        mine:
+          type: boolean
+        canEdit:
+          type: boolean
+        editableUntil:
+          type: [string, "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        editedAt:
+          type: [string, "null"]
+          format: date-time
+        replies:
+          type: array
+          items:
+            $ref: "#/components/schemas/ForumPost"
+    ForumPostPage:
+      type: object
+      required: [items, nextCursor, total]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ForumThreadItem"
+        nextCursor:
+          type: [integer, "null"]
+          minimum: 1
+          description: Pass as `after` for the next replies; null when there are none.
+        total:
+          type: integer
+          minimum: 0
+          description: Replies in the topic that the caller may see.
+    ForumPostInput:
+      type: object
+      required: [body, clientRequestId]
+      additionalProperties: false
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          pattern: \S
+        clientRequestId:
+          type: string
+          format: uuid
+        parentPostId:
+          type: string
+          format: uuid
+          description: Answer this reply (which must itself answer the topic).
+    ForumPostUpdate:
+      type: object
+      required: [body]
+      additionalProperties: false
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          pattern: \S
+    ForumTopicModeration:
+      type: object
+      required: [action]
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+          enum: [pin, unpin, lock, unlock, hide, restore]
+    ForumPostModeration:
+      type: object
+      required: [action]
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+          enum: [hide, restore]
+    AdminForumCourseList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [course, topicCount, replyCount, lockedTopicCount, hiddenTopicCount, hiddenReplyCount, lastActivityAt]
+            additionalProperties: false
+            properties:
+              course:
+                $ref: "#/components/schemas/CourseRef"
+              topicCount:
+                type: integer
+                minimum: 0
+              replyCount:
+                type: integer
+                minimum: 0
+              lockedTopicCount:
+                type: integer
+                minimum: 0
+              hiddenTopicCount:
+                type: integer
+                minimum: 0
+              hiddenReplyCount:
+                type: integer
+                minimum: 0
+              lastActivityAt:
+                type: [string, "null"]
+                format: date-time

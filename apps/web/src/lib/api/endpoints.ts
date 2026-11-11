@@ -98,6 +98,14 @@ import type {
   NotificationPage,
   AdminCourseConversationList,
   LockResult,
+  AdminForumCourseList,
+  ForumPost,
+  ForumPostAction,
+  ForumPostPage,
+  ForumTopic,
+  ForumTopicAction,
+  ForumTopicInput,
+  ForumTopicPage,
   StudentProgressPage,
   StudentQuizAttempt,
   StudentQuizAttemptSummary,
@@ -379,6 +387,26 @@ export const api = {
   markNotificationRead: (notificationId: string, csrfToken: string) =>
     apiRequest<void>('PUT', `/me/notifications/${encodeURIComponent(notificationId)}/read`, { csrfToken }),
   markAllNotificationsRead: (csrfToken: string) => apiRequest<{ updated: number }>('POST', '/me/notifications/read-all', { csrfToken }),
+
+  // Course discussion forums (AP-027): access, visibility, edit windows and moderation are decided by the API.
+  forumTopics: (courseId: string, filter: { cursor?: string | null; q?: string | null } = {}) =>
+    apiRequest<ForumTopicPage>('GET', `${course(courseId)}/forum/topics?${rangeParams({ limit: '20', cursor: filter.cursor, q: filter.q })}`),
+  createForumTopic: (courseId: string, body: ForumTopicInput, csrfToken: string) =>
+    apiRequest<ForumTopic>('POST', `${course(courseId)}/forum/topics`, { body, csrfToken }),
+  getForumTopic: (topicId: string) => apiRequest<ForumTopic>('GET', `/forum/topics/${encodeURIComponent(topicId)}`),
+  updateForumTopic: (topicId: string, body: { title?: string; body?: string }, csrfToken: string) =>
+    apiRequest<ForumTopic>('PATCH', `/forum/topics/${encodeURIComponent(topicId)}`, { body, csrfToken }),
+  moderateForumTopic: (topicId: string, action: ForumTopicAction, csrfToken: string) =>
+    apiRequest<ForumTopic>('POST', `/forum/topics/${encodeURIComponent(topicId)}/moderation`, { body: { action }, csrfToken }),
+  forumPosts: (topicId: string, after?: number | null) =>
+    apiRequest<ForumPostPage>('GET', `/forum/topics/${encodeURIComponent(topicId)}/posts?${rangeParams({ limit: '20', after: after == null ? undefined : String(after) })}`),
+  createForumPost: (topicId: string, body: { body: string; clientRequestId: string; parentPostId?: string }, csrfToken: string) =>
+    apiRequest<ForumPost>('POST', `/forum/topics/${encodeURIComponent(topicId)}/posts`, { body, csrfToken }),
+  updateForumPost: (postId: string, body: string, csrfToken: string) =>
+    apiRequest<ForumPost>('PATCH', `/forum/posts/${encodeURIComponent(postId)}`, { body: { body }, csrfToken }),
+  moderateForumPost: (postId: string, action: ForumPostAction, csrfToken: string) =>
+    apiRequest<ForumPost>('POST', `/forum/posts/${encodeURIComponent(postId)}/moderation`, { body: { action }, csrfToken }),
+  adminForumCourses: () => apiRequest<AdminForumCourseList>('GET', '/admin/forums/courses'),
 
   // Advanced gradebook (AP-023): every calculation and permission check happens in the API.
   getGradingPolicy: (courseId: string) => apiRequest<GradingPolicy>('GET', `${course(courseId)}/grading-policy`),
