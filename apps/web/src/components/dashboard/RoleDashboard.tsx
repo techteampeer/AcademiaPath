@@ -290,16 +290,19 @@ function CardShell({ course, role, children, actions }: { course: Course; role: 
   );
 }
 
-/** Column count follows the number of figures so rows stay even (literal classes for Tailwind). */
-const FIGURE_COLUMNS: Record<number, string> = { 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4', 5: 'sm:grid-cols-3' };
+/**
+ * Column count follows the number of figures so rows stay even, on phones as well (literal classes for Tailwind):
+ * three or five figures use three compact columns instead of leaving half-empty rows.
+ */
+const FIGURE_COLUMNS: Record<number, string> = { 3: 'grid-cols-3', 4: 'grid-cols-2 sm:grid-cols-4', 5: 'grid-cols-3' };
 
 function Figures({ items }: { items: Array<{ label: string; value: number; tone?: 'warn' }> }) {
   return (
-    <dl className={`grid grid-cols-2 gap-2 ${FIGURE_COLUMNS[items.length] ?? 'sm:grid-cols-4'}`}>
+    <dl className={`grid gap-1.5 sm:gap-2 ${FIGURE_COLUMNS[items.length] ?? 'grid-cols-2 sm:grid-cols-4'}`}>
       {items.map((item) => (
-        <div key={item.label} className={`rounded-md border px-3 py-2 ${item.tone === 'warn' && item.value > 0 ? 'border-amber-200 bg-amber-50' : 'border-slate-200/70 bg-slate-50'}`}>
-          <dt className="text-xs text-slate-600">{item.label}</dt>
-          <dd className="font-serif text-xl font-semibold text-brand-600">{item.value}</dd>
+        <div key={item.label} className={`rounded-md border px-2 py-1.5 sm:px-3 sm:py-2 ${item.tone === 'warn' && item.value > 0 ? 'border-amber-200 bg-amber-50' : 'border-slate-200/70 bg-slate-50'}`}>
+          <dt className="text-xs leading-snug break-words text-slate-600">{item.label}</dt>
+          <dd className="font-serif text-lg font-semibold text-brand-600 sm:text-xl">{item.value}</dd>
         </div>
       ))}
     </dl>

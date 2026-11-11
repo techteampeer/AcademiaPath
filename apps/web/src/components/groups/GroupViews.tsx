@@ -316,7 +316,7 @@ function GroupWorkspace({ groupId }: { groupId: string }) {
                 <ul className="space-y-2 text-sm" data-group-activity>
                   {recentTopics.map((topic) => (
                     <li key={topic.id} className="break-words">
-                      <Link href={`/courses/${courseId}/forum/${topic.id}`} className="text-brand-700 hover:underline">
+                      <Link href={`/courses/${courseId}/forum/${topic.id}`} className="text-brand-700 underline decoration-brand-700/40 underline-offset-2 hover:decoration-brand-700">
                         {topic.title}
                       </Link>
                       <span className="block text-xs text-slate-500">

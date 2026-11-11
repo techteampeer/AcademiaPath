@@ -2,6 +2,7 @@
 
 import { useLocale } from '@/components/i18n/LocaleProvider';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
+import { ScrollRegion } from '@/components/ui/ScrollRegion';
 import type { AssignmentContent, GradeStatus, ReleasedGrade } from '@/lib/api/types';
 import { formatDateTimeOrDash } from '@/lib/i18n/messages';
 
@@ -62,7 +63,7 @@ export function AssignmentSummary({ content }: { content: AssignmentContent }) {
           </dd>
         </div>
       </dl>
-      <div className="relative overflow-x-auto">
+      <ScrollRegion label={s.rubricCaption(content.totalPoints)}>
         <table className="w-full text-left text-sm">
           <caption className="mb-2 text-left font-semibold text-slate-900">{s.rubricCaption(content.totalPoints)}</caption>
           <thead className="border-b border-slate-200 text-slate-500">
@@ -87,7 +88,7 @@ export function AssignmentSummary({ content }: { content: AssignmentContent }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollRegion>
     </div>
   );
 }
