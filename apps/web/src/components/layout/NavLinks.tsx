@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useLocale } from '@/components/i18n/LocaleProvider';
 import { useSession } from '@/components/session/SessionProvider';
 import { useWorkspace } from '@/components/session/WorkspaceProvider';
+import { useUnreadSummary } from '@/components/messaging/polling';
 import { cn } from '@/lib/cn';
 import { buildNavigation, isActivePath } from './navigation';
 
@@ -13,6 +14,9 @@ export function NavLinks({ idPrefix, onNavigate }: { idPrefix: string; onNavigat
   const { session } = useSession();
   const { t } = useLocale();
   const { roleByCourse, managedPrograms } = useWorkspace();
+  const { summary } = useUnreadSummary();
+  // Unread counts beside the workspace Messages and Notifications links (AP-026).
+  const badges: Record<string, number> = { '/messages': summary?.unreadMessages ?? 0, '/notifications': summary?.unreadNotifications ?? 0 };
   if (session.status === 'loading') return null;
   const user = session.status === 'authenticated' ? session.user : null;
   const sections = buildNavigation(t, user, pathname, roleByCourse, managedPrograms.length > 0);
@@ -40,7 +44,15 @@ export function NavLinks({ idPrefix, onNavigate }: { idPrefix: string; onNavigat
                         active ? 'bg-brand-50 text-brand-700' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900',
                       )}
                     >
-                      {item.label}
+                      <span className="flex items-center justify-between gap-2">
+                        <span>{item.label}</span>
+                        {badges[item.href] ? (
+                          <span className="rounded-full bg-brand-600 px-2 py-0.5 text-xs font-semibold text-white" data-nav-badge={item.href}>
+                            {badges[item.href]}
+                            <span className="sr-only"> {t.messaging.messages.unread(badges[item.href]!)}</span>
+                          </span>
+                        ) : null}
+                      </span>
                     </Link>
                   </li>
                 );

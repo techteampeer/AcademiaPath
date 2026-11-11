@@ -22,6 +22,11 @@ export type AppConfig = {
     max: number;
     windowMinutes: number;
   };
+  /** Messages a person may send within the window, across all conversations (AP-026; counted in PostgreSQL). */
+  messageRateLimit: {
+    max: number;
+    windowMinutes: number;
+  };
   /**
    * Fastify `trustProxy`: false, or a comma-separated list of trusted proxy IPs/CIDRs, so
    * X-Forwarded-For is honored only when the connecting peer is a trusted proxy. Never `true`
@@ -184,6 +189,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     tutorRateLimit: {
       max: readPositiveInt(env, 'TUTOR_RATE_LIMIT_MAX', 20, 1000),
       windowMinutes: readPositiveInt(env, 'TUTOR_RATE_LIMIT_WINDOW_MINUTES', 10, 24 * 60),
+    },
+    messageRateLimit: {
+      max: readPositiveInt(env, 'MESSAGE_RATE_LIMIT_MAX', 30, 1000),
+      windowMinutes: readPositiveInt(env, 'MESSAGE_RATE_LIMIT_WINDOW_MINUTES', 5, 24 * 60),
     },
     trustProxy: parseTrustProxy(env.TRUST_PROXY),
     documents: {

@@ -89,6 +89,15 @@ import type {
   CalendarEvent,
   CalendarEventInput,
   CalendarEventList,
+  Conversation,
+  ConversationPage,
+  CourseMessaging,
+  Message,
+  MessagePage,
+  MessagingSummary,
+  NotificationPage,
+  AdminCourseConversationList,
+  LockResult,
   StudentProgressPage,
   StudentQuizAttempt,
   StudentQuizAttemptSummary,
@@ -338,6 +347,38 @@ export const api = {
     apiRequest<CalendarEvent>('PUT', `/calendar/events/${encodeURIComponent(eventId)}`, { body, csrfToken }),
   cancelEvent: (eventId: string, csrfToken: string) => apiRequest<CalendarEvent>('POST', `/calendar/events/${encodeURIComponent(eventId)}/cancel`, { csrfToken }),
   deleteEvent: (eventId: string, csrfToken: string) => apiRequest<void>('DELETE', `/calendar/events/${encodeURIComponent(eventId)}`, { csrfToken }),
+
+  // Messaging and notifications (AP-026): who may read or write is decided by the API on every request.
+  messagingSummary: () => apiRequest<MessagingSummary>('GET', '/me/messaging/summary'),
+  myConversations: (cursor?: string | null) => apiRequest<ConversationPage>('GET', `/me/conversations?${rangeParams({ limit: '50', cursor })}`),
+  courseMessaging: (courseId: string) => apiRequest<CourseMessaging>('GET', `${course(courseId)}/messaging`),
+  openDirectConversation: (courseId: string, recipientUserId: string, csrfToken: string) =>
+    apiRequest<Conversation>('POST', `${course(courseId)}/conversations`, { body: { recipientUserId }, csrfToken }),
+  openCourseConversation: (courseId: string, csrfToken: string) => apiRequest<Conversation>('POST', `${course(courseId)}/course-conversation`, { csrfToken }),
+  getConversation: (conversationId: string) => apiRequest<Conversation>('GET', `/conversations/${encodeURIComponent(conversationId)}`),
+  listMessages: (conversationId: string, page: { before?: number; after?: number; limit?: number } = {}) =>
+    apiRequest<MessagePage>(
+      'GET',
+      `/conversations/${encodeURIComponent(conversationId)}/messages?${rangeParams({
+        limit: String(page.limit ?? 30),
+        before: page.before === undefined ? undefined : String(page.before),
+        after: page.after === undefined ? undefined : String(page.after),
+      })}`,
+    ),
+  sendMessage: (conversationId: string, body: string, clientMessageId: string, csrfToken: string) =>
+    apiRequest<Message>('POST', `/conversations/${encodeURIComponent(conversationId)}/messages`, { body: { body, clientMessageId }, csrfToken }),
+  markConversationRead: (conversationId: string, upToSeq: number, csrfToken: string) =>
+    apiRequest<void>('PUT', `/conversations/${encodeURIComponent(conversationId)}/read`, { body: { upToSeq }, csrfToken }),
+  hideMessage: (conversationId: string, messageId: string, csrfToken: string) =>
+    apiRequest<Message>('POST', `/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/hide`, { csrfToken }),
+  setConversationLock: (conversationId: string, locked: boolean, csrfToken: string) =>
+    apiRequest<LockResult>('POST', `/conversations/${encodeURIComponent(conversationId)}/${locked ? 'lock' : 'unlock'}`, { csrfToken }),
+  adminCourseConversations: () => apiRequest<AdminCourseConversationList>('GET', '/admin/messaging/courses'),
+  myNotifications: (filter: { cursor?: string | null; unread?: boolean } = {}) =>
+    apiRequest<NotificationPage>('GET', `/me/notifications?${rangeParams({ limit: '20', cursor: filter.cursor, unread: filter.unread ? 'true' : undefined })}`),
+  markNotificationRead: (notificationId: string, csrfToken: string) =>
+    apiRequest<void>('PUT', `/me/notifications/${encodeURIComponent(notificationId)}/read`, { csrfToken }),
+  markAllNotificationsRead: (csrfToken: string) => apiRequest<{ updated: number }>('POST', '/me/notifications/read-all', { csrfToken }),
 
   // Advanced gradebook (AP-023): every calculation and permission check happens in the API.
   getGradingPolicy: (courseId: string) => apiRequest<GradingPolicy>('GET', `${course(courseId)}/grading-policy`),

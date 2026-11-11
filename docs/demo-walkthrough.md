@@ -128,6 +128,16 @@ Announcements and calendar (AP-025), in ITIL 4 Foundation and institution-wide. 
 
 The assignment due date (4 Dec 2026) also appears in the course calendar; due dates come only from approved assignments.
 
+Messages (AP-026), in ITIL 4 Foundation, sent through the API. The matching in-app notifications are created by the API:
+
+| Conversation | Messages |
+| --- | --- |
+| Direct: `student@` ↔ `instructor@` | Question about the assignment, and the instructor's reply (left unread for the student) |
+| Direct: `learner.b@` ↔ `ta@` | Question about a grade, and the teaching assistant's reply |
+| Course conversation | Instructor welcome, a question from `learner.a@`, and the instructor's answer |
+
+Students also get notifications for the published announcements and their released grades.
+
 ## 4. Demo script
 
 Course paths below are relative to http://localhost:3000. The seed prints each course's ID, and the **My courses** and **Dashboard** pages link to every course.
@@ -213,7 +223,25 @@ Release publishes the current grades of every graded student for that activity. 
 
 Administrators publish institution-wide announcements and events under **Administration → Announcements & calendar**. Non-editing instructors (`ta@`) read every announcement and event of their courses but cannot publish; program managers and the design team get no publishing rights from their grants. No e-mail or push notifications are sent.
 
-## 5. Notes and limitations
+### Messaging and notifications (AP-026)
+**21. Student reads and replies.** As `student@`:
+- The sidebar shows unread badges beside **Messages** and **Notifications**, and the dashboard shows the same counts.
+- Open **Messages**: the conversation with Demo Instructor shows *1 unread*. Open it; the badge clears.
+- Write a reply and choose **Send**.
+- Open ITIL 4 Foundation → **Messages** → **Course conversation** to read the course conversation and post a question.
+
+**22. Instructor answers and moderates.** As `instructor@`:
+- **Notifications** lists the new direct message and the course-conversation message. Notifications never include message text or grade values.
+- Open the direct message from **Messages** and answer it.
+- In the course conversation, use **Hide** on one message. Students then see "This message was hidden by an instructor".
+- **Lock conversation** stops new posts until it is unlocked.
+
+**23. Non-editing instructor.** As `ta@`, answer Demo Learner B in **Messages**. The course conversation has no **Hide** or **Lock**: non-editing instructors take part but never moderate.
+
+**24. Administrator.** As `admin@`, **Administration → Course messaging** shows each published course's conversation with its state and message count. The administrator can lock or unlock it but cannot read it. The design team (`reviewer@`) gets no access to private conversations.
+
+New messages appear within a few seconds while a conversation is open. This is near-real-time polling (about every 8 seconds; badges every 30 seconds), not instant delivery.
+
 
 - **Bilingual UI.** The header's EN/ES switch translates the whole interface (AP-015). Course material stays in the language it was written in: English (ITIL, Project Management) and Spanish (Introduction to AI).
 - **Course lifecycle (optional extra step).** As `admin@`, **Courses & enrollments → Manage** on a course shows its status, sections and roster. Unpublishing ITIL 4 Foundation hides it from students at once without deleting anything; publishing it again restores the same view. Do this only on a rehearsal database.

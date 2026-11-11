@@ -35,6 +35,9 @@ const TABLES = [
   'grades',
   'course_documents',
   'document_summaries',
+  'conversations',
+  'messages',
+  'notifications',
 ];
 const collapse = (value: string) => value.replace(/\s+/g, ' ');
 
@@ -88,6 +91,8 @@ describe('demo dataset seed (PostgreSQL)', { skip: testServerUrl ? false : 'TEST
     // AP-025: a pinned and a scheduled course announcement, one institution-wide; a course and an institution event.
     assert.equal(first.counts.announcements?.created, 3);
     assert.equal(first.counts['calendar events']?.created, 2);
+    assert.equal(first.counts.conversations?.created, 3);
+    assert.equal(first.counts.messages?.created, 7);
   });
 
   it('is repeatable: a second run creates nothing and leaves every table unchanged', async () => {

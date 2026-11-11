@@ -323,7 +323,7 @@ export const gradebookRoutes: FastifyPluginAsync = async (app) => {
           eligible.push(grade);
           return 'released';
         });
-        const released = await releaseGradeRows(tx, user.id, eligible);
+        const released = await releaseGradeRows(tx, user.id, eligible, app.now());
         const releasedIds = new Set(released.map((grade) => grade.id));
         const results = items.map((item, index) => {
           let outcome = outcomes[index]!;

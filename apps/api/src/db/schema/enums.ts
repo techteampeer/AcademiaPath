@@ -52,6 +52,18 @@ export const announcementStatusEnum = pgEnum('announcement_status', ['draft', 'p
 /** Calendar event visibility: hidden from students, published, or cancelled (kept, shown as cancelled). */
 export const calendarEventStatusEnum = pgEnum('calendar_event_status', ['hidden', 'published', 'cancelled']);
 
+/** AP-026: a direct conversation joins two people of one course; a course conversation is the course's group. */
+export const conversationKindEnum = pgEnum('conversation_kind', ['direct', 'course']);
+
+/** AP-026: what an in-app notification is about. */
+export const notificationTypeEnum = pgEnum('notification_type', [
+  'direct_message',
+  'course_message',
+  'announcement',
+  'grade_released',
+  'certificate_issued',
+]);
+
 /** Tutor usage accounting: request kind and grounding outcome (never the question text). */
 export const tutorRequestKindEnum = pgEnum('tutor_request_kind', ['message', 'practice']);
 export const tutorOutcomeEnum = pgEnum('tutor_outcome', ['grounded', 'insufficient_material']);

@@ -55,7 +55,15 @@ export type CoursePermission =
   /** Read and update one's own learning progress (students only; role-only check). */
   | 'progress.own'
   /** See every student's learning progress in the course (read-only; administrators via the override). */
-  | 'progress.viewAll';
+  | 'progress.viewAll'
+  /**
+   * AP-026 messaging (role-only; never via the administrator override or the design team): direct conversations
+   * between a student and the course's teaching staff, and the course conversation.
+   */
+  | 'messages.direct'
+  | 'messages.course'
+  /** Hide course-conversation messages and lock or unlock the course conversation (instructors only). */
+  | 'messages.moderate';
 
 /**
  * Course-level permissions per role. Default deny: a permission not listed here is not granted.
@@ -92,6 +100,9 @@ export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermi
     'calendar.manage',
     'tutor.use',
     'progress.viewAll',
+    'messages.direct',
+    'messages.course',
+    'messages.moderate',
   ]),
   // Non-editing instructors grade submissions (rubric scores and feedback; AP-009, documented in the API
   // contract) and read the gradebook and certificates, but never change content, release grades, change the
@@ -106,8 +117,21 @@ export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermi
     'calendar.viewAll',
     'tutor.use',
     'progress.viewAll',
+    // AP-026: they message students and take part in the course conversation, but never moderate it.
+    'messages.direct',
+    'messages.course',
   ]),
-  student: new Set(['course.view', 'quiz.attempt', 'assignment.submit', 'grades.viewOwn', 'tutor.use', 'progress.own', 'certificates.own']),
+  student: new Set([
+    'course.view',
+    'quiz.attempt',
+    'assignment.submit',
+    'grades.viewOwn',
+    'tutor.use',
+    'progress.own',
+    'certificates.own',
+    'messages.direct',
+    'messages.course',
+  ]),
 };
 
 export function hasCoursePermission(role: CourseRole | null, permission: CoursePermission): boolean {

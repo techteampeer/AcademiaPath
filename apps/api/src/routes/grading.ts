@@ -453,7 +453,7 @@ export const gradingRoutes: FastifyPluginAsync = async (app) => {
           .orderBy(asc(grades.id))
           .for('update');
         if (!pending.length) return { activityId: activity.id, releasedCount: 0, releasedAt: null };
-        const released = await releaseGradeRows(tx, user.id, pending);
+        const released = await releaseGradeRows(tx, user.id, pending, app.now());
         await recordAudit(tx, request, {
           action: 'grades.released',
           entityType: 'activity',

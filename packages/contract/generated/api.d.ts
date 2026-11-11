@@ -2516,6 +2516,299 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/messaging/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Unread messages and notifications (for polling)
+         * @description Counts unread messages in the conversations the caller can read now and unread visible notifications.
+         *     Cheap enough to poll; rate-limited per person.
+         */
+        get: operations["getMyMessagingSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's conversations, most recent activity first */
+        get: operations["listMyConversations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/messaging": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's messaging in one course
+         * @description The course conversation (if opened), the caller's direct conversations in the course and the people
+         *     they may message (students: the teaching staff; teaching staff: the students). `403
+         *     MESSAGING_NOT_AVAILABLE` for people who can see the course without a messaging role (administrators,
+         *     design team) and in unpublished courses.
+         */
+        get: operations["getCourseMessaging"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open (or return) the direct conversation with a person of the course
+         * @description A student may open one with the course's instructors and non-editing instructors; teaching staff with
+         *     the course's students. Other pairs get `422 RECIPIENT_NOT_ALLOWED`. Returns the existing conversation
+         *     (200) or a new one (201).
+         */
+        post: operations["openDirectConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/course-conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open (or return) the course conversation */
+        post: operations["openCourseConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conversations/{conversationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One conversation the caller can read */
+        get: operations["getConversation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conversations/{conversationId}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Messages of a conversation, oldest first within the page
+         * @description Without a cursor: the latest page. `before`: older messages (pass `olderCursor`). `after`: newer
+         *     messages than a `seq` (polling). At most 100 per page; rate-limited per person.
+         */
+        get: operations["listMessages"];
+        put?: never;
+        /**
+         * Send a message
+         * @description Plain text, 1–4000 characters. A retry with the same `clientMessageId` returns the first message (200)
+         *     instead of creating another. `409 CONVERSATION_LOCKED` (course conversation locked) or
+         *     `RECIPIENT_UNAVAILABLE` (the other person can no longer receive messages in this course); `429
+         *     RATE_LIMITED` beyond the per-person limit.
+         */
+        post: operations["sendMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conversations/{conversationId}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Mark a conversation read up to a message
+         * @description Read positions only move forward; concurrent marks keep the highest.
+         */
+        put: operations["markConversationRead"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conversations/{conversationId}/messages/{messageId}/hide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hide a course-conversation message (instructors)
+         * @description The message is kept but its text is no longer returned. Audited without the text.
+         */
+        post: operations["hideMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conversations/{conversationId}/lock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lock a course conversation (instructors, administrators)
+         * @description No new messages while locked. Administrators may lock without being able to read it. Audited.
+         */
+        post: operations["lockConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conversations/{conversationId}/unlock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unlock a course conversation (instructors, administrators) */
+        post: operations["unlockConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/messaging/courses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Course conversations of published courses (administrators; never messages) */
+        get: operations["listCourseConversationsAdmin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's notifications, newest first
+         * @description Only the caller's own, not withdrawn, available, and for courses they can still access.
+         */
+        get: operations["listMyNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/notifications/{notificationId}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Mark one of the caller's notifications read */
+        put: operations["markNotificationRead"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/notifications/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark all of the caller's visible notifications read */
+        post: operations["markAllNotificationsRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4546,6 +4839,136 @@ export interface components {
                 createdAt: string;
             }[];
         };
+        PersonRef: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /**
+             * @description The person's course role (null when it no longer applies).
+             * @enum {string|null}
+             */
+            role: "student" | "instructor" | "non_editing_instructor" | null;
+        };
+        CourseRef: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            code: string;
+        };
+        Conversation: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "direct" | "course";
+            course: components["schemas"]["CourseRef"];
+            /** @description The other person of a direct conversation; null for the course conversation. */
+            counterpart: components["schemas"]["PersonRef"] | null;
+            locked: boolean;
+            canPost: boolean;
+            canModerate: boolean;
+            unreadCount: number;
+            lastMessage: {
+                senderName: string;
+                /** @description Start of the text; null when the message was hidden. */
+                preview: string | null;
+                /** Format: date-time */
+                createdAt: string;
+            } | null;
+        };
+        ConversationPage: {
+            items: components["schemas"]["Conversation"][];
+            nextCursor: string | null;
+        };
+        CourseMessaging: {
+            course: components["schemas"]["CourseRef"];
+            /** @enum {string} */
+            role: "student" | "instructor" | "non_editing_instructor";
+            courseConversation: components["schemas"]["Conversation"] | null;
+            directConversations: components["schemas"]["Conversation"][];
+            contacts: components["schemas"]["PersonRef"][];
+        };
+        DirectConversationInput: {
+            /** Format: uuid */
+            recipientUserId: string;
+        };
+        Message: {
+            /** Format: uuid */
+            id: string;
+            /** @description Server order (strictly increasing). */
+            seq: number;
+            sender: components["schemas"]["PersonRef"];
+            /** @description Plain text (never HTML); null when hidden by moderation. */
+            body: string | null;
+            hidden: boolean;
+            mine: boolean;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        MessagePage: {
+            items: components["schemas"]["Message"][];
+            /** @description Pass as `before` to load older messages; null when there are none. */
+            olderCursor: number | null;
+            latestSeq: number | null;
+            /** @description The caller's read position. */
+            readSeq: number;
+        };
+        MessageInput: {
+            body: string;
+            /**
+             * Format: uuid
+             * @description Chosen by the client for each message; a retry with the same value returns the first message.
+             */
+            clientMessageId: string;
+        };
+        ReadInput: {
+            upToSeq: number;
+        };
+        MessagingSummary: {
+            unreadMessages: number;
+            unreadNotifications: number;
+        };
+        LockResult: {
+            /** Format: uuid */
+            conversationId: string;
+            locked: boolean;
+        };
+        AdminCourseConversationList: {
+            items: {
+                course: components["schemas"]["CourseRef"];
+                /** Format: uuid */
+                conversationId: string | null;
+                locked: boolean;
+                messageCount: number;
+                /** Format: date-time */
+                lastMessageAt: string | null;
+            }[];
+        };
+        Notification: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            type: "direct_message" | "course_message" | "announcement" | "grade_released" | "certificate_issued";
+            course: components["schemas"]["CourseRef"] | null;
+            /**
+             * @description Display values the recipient may see: `senderName`, `courseCode`, `title` (announcements),
+             *     `activityTitle` (grades), `courseTitle` (certificates). Never message text or grade values.
+             */
+            data: {
+                [key: string]: string;
+            };
+            /** @description Application path of the destination (which checks access again). */
+            link: string;
+            /** Format: date-time */
+            eventAt: string;
+            read: boolean;
+        };
+        NotificationPage: {
+            items: components["schemas"]["Notification"][];
+            nextCursor: string | null;
+        };
+        ReadAllResult: {
+            updated: number;
+        };
     };
     responses: {
         /**
@@ -4609,7 +5032,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
-        /** @description `code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks) or `FEEDBACK_NOT_AVAILABLE` (correctness review not enabled or not yet released). */
+        /** @description `code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks), `FEEDBACK_NOT_AVAILABLE` (correctness review not enabled or not yet released) or `MESSAGING_NOT_AVAILABLE` (messaging is for the students and teaching staff of a published course). */
         Forbidden: {
             headers: {
                 [name: string]: unknown;
@@ -4667,7 +5090,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
-        /** @description Too many sign-in or activation attempts, or tutor requests (`code`: `RATE_LIMITED`). */
+        /** @description Too many sign-in or activation attempts, tutor requests, messages or polling requests (`code`: `RATE_LIMITED`). */
         RateLimited: {
             headers: {
                 /** @description Seconds until another attempt is allowed. */
@@ -4720,7 +5143,7 @@ export interface components {
          *     `GRADING_POLICY_CONFLICT` (the grading policy changed since it was loaded); or a certificate rule:
          *     `CERTIFICATE_POLICY_CONFLICT`, `CERTIFICATE_ALREADY_REVOKED`, `CERTIFICATE_REVOKED`; or an
          *     announcement or calendar rule: `ANNOUNCEMENT_ARCHIVED`, `ANNOUNCEMENT_NOT_SCHEDULED`, `EVENT_CANCELLED`,
-         *     `EVENT_WAS_PUBLISHED`.
+         *     `EVENT_WAS_PUBLISHED`; or a messaging rule: `CONVERSATION_LOCKED`, `RECIPIENT_UNAVAILABLE`.
          */
         Conflict: {
             headers: {
@@ -4758,7 +5181,9 @@ export interface components {
          *     `GRADE_CATEGORY_DUPLICATE`, `GRADE_CATEGORY_ACTIVITY_DUPLICATE`, `GRADE_CATEGORY_ACTIVITY_INVALID`,
          *     `GRADE_WEIGHTS_INVALID` or `GRADE_RELEASE_DUPLICATE`; or a certificate rule:
          *     `CERTIFICATE_POLICY_INVALID` or `CERTIFICATE_NOT_ELIGIBLE`; or an announcement or calendar rule:
-         *     `PUBLISH_AT_INVALID`, `EVENT_TIME_INVALID`, `INVALID_TIME_ZONE` or `RANGE_INVALID`.
+         *     `PUBLISH_AT_INVALID`, `EVENT_TIME_INVALID`, `INVALID_TIME_ZONE` or `RANGE_INVALID`; or
+         *     `RECIPIENT_NOT_ALLOWED` (a direct conversation that is not between a student and the course's teaching
+         *     staff).
          */
         UnprocessableContent: {
             headers: {
@@ -4795,6 +5220,9 @@ export interface components {
         SubmissionId: string;
         AnnouncementId: string;
         EventId: string;
+        ConversationId: string;
+        MessageId: string;
+        NotificationId: string;
         CertificateId: string;
         UserId: string;
         EnrollmentId: string;
@@ -8553,6 +8981,443 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getMyMessagingSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessagingSummary"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    listMyConversations: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor from the previous page's `nextCursor`. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getCourseMessaging: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseMessaging"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    openDirectConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DirectConversationInput"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    openCourseConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMessages: {
+        parameters: {
+            query?: {
+                before?: number;
+                after?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessagePage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    sendMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MessageInput"];
+            };
+        };
+        responses: {
+            /** @description The message of an earlier attempt with the same clientMessageId. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    markConversationRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadInput"];
+            };
+        };
+        responses: {
+            /** @description Done (no content). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    hideMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+                messageId: components["parameters"]["MessageId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    lockConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LockResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    unlockConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LockResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listCourseConversationsAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCourseConversationList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listMyNotifications: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor from the previous page's `nextCursor`. */
+                cursor?: components["parameters"]["Cursor"];
+                unread?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    markNotificationRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notificationId: components["parameters"]["NotificationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Done (no content). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    markAllNotificationsRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadAllResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
 }

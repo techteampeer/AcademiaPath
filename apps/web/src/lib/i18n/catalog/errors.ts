@@ -117,6 +117,10 @@ const en = {
     RANGE_INVALID: 'The calendar period is not valid.',
     EVENT_CANCELLED: 'This event is cancelled and can no longer change.',
     EVENT_WAS_PUBLISHED: 'This event was published, so it can only be cancelled.',
+    RECIPIENT_NOT_ALLOWED: 'Students can message the teaching staff of their course, and teaching staff can message its students.',
+    RECIPIENT_UNAVAILABLE: 'This person can no longer receive messages in this course.',
+    CONVERSATION_LOCKED: 'This course conversation is locked; no new messages can be posted.',
+    MESSAGING_NOT_AVAILABLE: 'Messaging is for the students and teaching staff of a published course.',
   } as Record<string, string>,
 };
 
@@ -237,6 +241,10 @@ const es: ErrorMessages = {
     RANGE_INVALID: 'El periodo del calendario no es válido.',
     EVENT_CANCELLED: 'Este evento está cancelado y ya no se puede cambiar.',
     EVENT_WAS_PUBLISHED: 'Este evento ya se publicó, así que solo se puede cancelar.',
+    RECIPIENT_NOT_ALLOWED: 'Los estudiantes pueden escribir a los docentes de su curso, y los docentes a sus estudiantes.',
+    RECIPIENT_UNAVAILABLE: 'Esta persona ya no puede recibir mensajes en este curso.',
+    CONVERSATION_LOCKED: 'Esta conversación del curso está bloqueada; no se pueden publicar mensajes nuevos.',
+    MESSAGING_NOT_AVAILABLE: 'La mensajería es para los estudiantes y docentes de un curso publicado.',
   },
 };
 

@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { recordAudit } from '../audit.js';
+import { notifyUsers } from '../messaging/notify.js';
 import { canAsCourseRole, canInCourse, getCourseAccess, type CourseAccess, type CoursePermission } from '../auth/authorization.js';
 import { getAuth } from '../auth/hooks.js';
 import { eligibilityContext, evaluateEligibility, loadCertificatePolicy, policySnapshot, type CertificatePolicyRecord } from '../certificates/eligibility.js';
@@ -387,6 +388,14 @@ export const certificateRoutes: FastifyPluginAsync = async (app) => {
               policyVersion: certificate.policyVersion,
               requirements: eligibility.requirements.map((requirement) => requirement.key),
             },
+          });
+          await notifyUsers(tx, [studentId], {
+            type: 'certificate_issued',
+            courseId: course.id,
+            entityId: certificate.id,
+            dedupeKey: `certificate:${certificate.id}`,
+            data: { courseTitle: course.title, courseCode: course.code },
+            at: app.now(),
           });
           return { certificate, created: true };
         })

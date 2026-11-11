@@ -6,6 +6,7 @@ import { getAuth } from '../auth/hooks.js';
 import type { Database } from '../db/client.js';
 import { announcementReads, announcements, courses, enrollments } from '../db/schema/index.js';
 import { ApiProblem } from '../http/errors.js';
+import { activeUserIds, courseMemberIds, notifyUsers, withdrawNotifications } from '../messaging/notify.js';
 import { decodeCursor, encodeCursor } from '../http/pagination.js';
 import {
   announcementCreateSchema,
@@ -322,6 +323,8 @@ export const announcementRoutes: FastifyPluginAsync = async (app) => {
     announcementId: string,
     action: string,
     apply: (row: AnnouncementRecord, at: Date) => Partial<typeof announcements.$inferInsert> | null,
+    /** Runs in the same transaction after a change (AP-026 notifications). */
+    after?: (tx: Database, row: AnnouncementRecord, at: Date) => Promise<void>,
   ) {
     const { user } = getAuth(request);
     return db.transaction(async (tx) => {
@@ -339,11 +342,34 @@ export const announcementRoutes: FastifyPluginAsync = async (app) => {
       if (!row) throw notFound();
       const snapshot = (value: AnnouncementRecord) => ({ title: value.title, pinned: value.pinned, status: displayStatus(value, at), publishAt: value.publishAt, bodyLength: value.body.length });
       await recordAudit(tx, request, { action, entityType: 'announcement', entityId: row.id, before: snapshot(current), after: snapshot(row) });
+      if (after) await after(tx as unknown as Database, row, at);
       const read = await readSet(tx, user.id, [row.id]);
       return view(row, course, read.has(row.id), at);
     });
   }
   const archivedConflict = () => new ApiProblem(409, 'ANNOUNCEMENT_ARCHIVED', 'This announcement is archived and can no longer change.');
+
+  /**
+   * AP-026: everyone who can read the announcement is notified when it is published, available from its
+   * publication time (a scheduled announcement's notification stays hidden until then): the active members of
+   * the course, or every active account for an institution-wide announcement; never the author.
+   */
+  async function notifyPublished(tx: Database, row: AnnouncementRecord, at: Date) {
+    if (!row.publishAt) return;
+    const recipients = row.courseId ? await courseMemberIds(tx, row.courseId, { except: row.updatedByUserId }) : await activeUserIds(tx, row.updatedByUserId);
+    const [course] = row.courseId ? await tx.select({ code: courses.code }).from(courses).where(eq(courses.id, row.courseId)) : [];
+    await notifyUsers(tx, recipients, {
+      type: 'announcement',
+      courseId: row.courseId,
+      entityId: row.id,
+      dedupeKey: `announcement:${row.id}`,
+      data: { title: row.title, ...(course ? { courseCode: course.code } : {}) },
+      at: row.publishAt.getTime() > at.getTime() ? row.publishAt : at,
+      availableAt: row.publishAt,
+    });
+  }
+  /** Unscheduled or archived: the announcement's notifications are withdrawn (kept, but no longer shown). */
+  const withdraw = (tx: Database, row: AnnouncementRecord, at: Date) => withdrawNotifications(tx, `announcement:${row.id}`, at);
 
   app.put<{ Params: { announcementId: string }; Body: { title?: string; body?: string; pinned?: boolean } }>(
     '/announcements/:announcementId',
@@ -375,7 +401,7 @@ export const announcementRoutes: FastifyPluginAsync = async (app) => {
         // Publish now; publishing an already visible announcement changes nothing (idempotent).
         if (row.status === 'published' && row.publishAt && row.publishAt.getTime() <= at.getTime()) return null;
         return { status: 'published', publishAt: at };
-      });
+      }, notifyPublished);
     },
   );
 
@@ -386,14 +412,14 @@ export const announcementRoutes: FastifyPluginAsync = async (app) => {
       change(request, request.params.announcementId, 'announcement.unscheduled', (row, at) => {
         if (displayStatus(row, at) !== 'scheduled') throw new ApiProblem(409, 'ANNOUNCEMENT_NOT_SCHEDULED', 'Only a scheduled announcement can be moved back to draft.');
         return { status: 'draft', publishAt: null };
-      }),
+      }, withdraw),
   );
 
   app.post<{ Params: { announcementId: string } }>(
     '/announcements/:announcementId/archive',
     { ...authenticatedWrite, schema: { params: announcementParamsSchema, response: { 200: announcementSchema } } },
     async (request) =>
-      change(request, request.params.announcementId, 'announcement.archived', (row, at) => (row.status === 'archived' ? null : { status: 'archived', archivedAt: at, pinned: false })),
+      change(request, request.params.announcementId, 'announcement.archived', (row, at) => (row.status === 'archived' ? null : { status: 'archived', archivedAt: at, pinned: false }), withdraw),
   );
 };
 

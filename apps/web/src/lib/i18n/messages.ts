@@ -19,6 +19,7 @@ import { assessment } from './catalog/assessment';
 import { gradebook } from './catalog/gradebook';
 import { certificates } from './catalog/certificates';
 import { communications } from './catalog/communications';
+import { messaging } from './catalog/messaging';
 
 export type Locale = 'en' | 'es';
 export const LOCALES: Locale[] = ['en', 'es'];
@@ -94,6 +95,9 @@ const en = {
     announcements: 'Announcements',
     calendar: 'Calendar',
     institutionCommunications: 'Announcements & calendar',
+    messages: 'Messages',
+    notifications: 'Notifications',
+    courseMessaging: 'Course messaging',
     home: 'Home',
   },
   session: {
@@ -268,6 +272,7 @@ const en = {
   gradebook: gradebook.en,
   certificates: certificates.en,
   communications: communications.en,
+  messaging: messaging.en,
   academics: {
     hierarchy: 'Hierarchy',
     treeLabel: 'Academic hierarchy',
@@ -535,6 +540,9 @@ const es: Messages = {
     announcements: 'Anuncios',
     calendar: 'Calendario',
     institutionCommunications: 'Anuncios y calendario',
+    messages: 'Mensajes',
+    notifications: 'Notificaciones',
+    courseMessaging: 'Mensajería de cursos',
     tutor: 'Tutor',
     home: 'Inicio',
   },
@@ -710,6 +718,7 @@ const es: Messages = {
   gradebook: gradebook.es,
   certificates: certificates.es,
   communications: communications.es,
+  messaging: messaging.es,
   academics: {
     hierarchy: 'Jerarquía',
     treeLabel: 'Jerarquía académica',

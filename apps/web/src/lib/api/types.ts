@@ -158,3 +158,14 @@ export type ActivityOrganization = Schemas['ActivityOrganization'];
 export type ActivityOrganizationResult = Schemas['ActivityOrganizationResult'];
 
 export type QuizFeedback = Schemas['QuizFeedback'];
+
+export type Conversation = Schemas['Conversation'];
+export type ConversationPage = Schemas['ConversationPage'];
+export type CourseMessaging = Schemas['CourseMessaging'];
+export type Message = Schemas['Message'];
+export type MessagePage = Schemas['MessagePage'];
+export type MessagingSummary = Schemas['MessagingSummary'];
+export type AppNotification = Schemas['Notification'];
+export type NotificationPage = Schemas['NotificationPage'];
+export type AdminCourseConversationList = Schemas['AdminCourseConversationList'];
+export type LockResult = Schemas['LockResult'];

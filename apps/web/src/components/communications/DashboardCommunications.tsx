@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { AnnouncementPage, Calendar, CurrentUser, UnreadCount } from '@/lib/api/types';
+import { useUnreadSummary } from '@/components/messaging/polling';
 import { SourceLabel, announcementDate, formatEventWhen, formatInZone } from './communicationDisplay';
 
 const UPCOMING_DAYS = 14;
@@ -27,6 +28,7 @@ export function DashboardCommunications({ user }: { user: CurrentUser }) {
   const c = t.communications.calendar;
   const { handleUnauthorized } = useSession();
   const [state, setState] = useState<State>({ status: 'loading' });
+  const { summary } = useUnreadSummary();
   useEffect(() => {
     let active = true;
     const now = new Date();
@@ -67,6 +69,16 @@ export function DashboardCommunications({ user }: { user: CurrentUser }) {
           </Link>
         ) : null}
       </div>
+      {summary ? (
+        <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm" data-dashboard-messaging>
+          <Link href="/messages" className="font-medium text-brand-700 hover:underline" data-dashboard-unread-messages={summary.unreadMessages}>
+            {t.messaging.dashboard.unreadMessages(summary.unreadMessages)}
+          </Link>
+          <Link href="/notifications" className="font-medium text-brand-700 hover:underline" data-dashboard-unread-notifications={summary.unreadNotifications}>
+            {t.messaging.dashboard.unreadNotifications(summary.unreadNotifications)}
+          </Link>
+        </p>
+      ) : null}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card as="section" aria-labelledby="recent-announcements" className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">

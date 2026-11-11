@@ -28,10 +28,11 @@ describe('course role permissions', () => {
       'content.viewUnapproved',
     ];
     const grader = ['grades.export', 'grades.grade', 'grades.view'];
-    assert.deepEqual(granted('student'), ['assignment.submit', 'certificates.own', 'course.view', 'grades.viewOwn', 'progress.own', 'quiz.attempt', 'tutor.use']);
+    // AP-026: students message the course's teaching staff and take part in the course conversation.
+    assert.deepEqual(granted('student'), ['assignment.submit', 'certificates.own', 'course.view', 'grades.viewOwn', 'messages.course', 'messages.direct', 'progress.own', 'quiz.attempt', 'tutor.use']);
     // AP-023: non-editing instructors read and export the gradebook but neither release grades nor configure weights.
     // AP-024: non-editing instructors keep grading (documented) and only read certificates.
-    assert.deepEqual(granted('non_editing_instructor'), [...staff, 'quiz.viewResults', ...grader, 'certificates.view', 'announcements.viewAll', 'calendar.viewAll', 'tutor.use', 'progress.viewAll'].sort());
+    assert.deepEqual(granted('non_editing_instructor'), [...staff, 'quiz.viewResults', ...grader, 'certificates.view', 'announcements.viewAll', 'calendar.viewAll', 'tutor.use', 'progress.viewAll', 'messages.direct', 'messages.course'].sort());
     assert.deepEqual(
       granted('instructor'),
       [
@@ -50,8 +51,14 @@ describe('course role permissions', () => {
         'calendar.manage',
         'tutor.use',
         'progress.viewAll',
+        'messages.direct',
+        'messages.course',
+        'messages.moderate',
       ].sort(),
     );
+    // AP-026: only instructors moderate; the design team has no messaging at all.
+    assert.equal(hasCoursePermission('non_editing_instructor', 'messages.moderate'), false);
+    for (const permission of ['messages.direct', 'messages.course', 'messages.moderate'] as const) assert.equal(hasCoursePermission('design_team', permission), false);
     assert.equal(hasCoursePermission('non_editing_instructor', 'grades.release'), false);
     assert.equal(hasCoursePermission('non_editing_instructor', 'grades.configure'), false);
     assert.equal(hasCoursePermission('non_editing_instructor', 'certificates.manage'), false);
