@@ -60,7 +60,7 @@ export function PrerequisitesCard({ courseId, sections }: { courseId: string; se
   return (
     <Card as="section" aria-labelledby="prerequisites-heading" className="space-y-4">
       <div>
-        <h2 id="prerequisites-heading" className="text-lg font-semibold text-slate-900">
+        <h2 id="prerequisites-heading" className="text-lg font-semibold text-brand-600">
           {p.prerequisitesTitle}
         </h2>
         <p className="text-sm text-slate-600">{p.prerequisitesIntro}</p>
@@ -82,7 +82,7 @@ export function PrerequisitesCard({ courseId, sections }: { courseId: string; se
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <p className="font-medium text-slate-900">
-                      <span className="mr-2 text-slate-400">{index + 1}.</span>
+                      <span className="mr-2 text-slate-500">{index + 1}.</span>
                       {section.title}
                       {section.isVisible ? null : (
                         <Badge tone="warning" className="ml-2">

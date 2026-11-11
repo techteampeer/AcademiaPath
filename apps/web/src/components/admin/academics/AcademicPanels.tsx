@@ -90,7 +90,7 @@ function PanelHeader({ kicker, title, meta, badge }: { kicker: string; title: st
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
         <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">{kicker}</p>
-        <h2 className="mt-1 text-xl font-semibold break-words text-slate-900">{title}</h2>
+        <h2 className="mt-1 text-xl font-semibold break-words text-brand-600">{title}</h2>
         {meta ? <p className="text-sm text-slate-500">{meta}</p> : null}
       </div>
       {badge}

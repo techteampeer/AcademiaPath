@@ -32,7 +32,7 @@ export function VerifyCertificateView({ token }: { token: string }) {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{v.title}</h1>
+      <h1 className="text-[1.75rem] leading-tight font-semibold text-brand-600 sm:text-[2.1rem]">{v.title}</h1>
       {state.status === 'loading' ? (
         <p role="status" className="text-sm text-slate-600">
           {v.checking}

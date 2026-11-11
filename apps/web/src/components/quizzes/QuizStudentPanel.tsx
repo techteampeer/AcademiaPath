@@ -110,7 +110,7 @@ export function QuizStudentPanel({ courseId, quizId }: { courseId: string; quizI
 
   return (
     <Card as="section" aria-labelledby="my-attempts-heading" className="space-y-4">
-      <h2 id="my-attempts-heading" className="text-lg font-semibold text-slate-900">
+      <h2 id="my-attempts-heading" className="text-lg font-semibold text-brand-600">
         {q.heading}
       </h2>
       {result ? <Alert tone={result.tone}>{result.message}</Alert> : null}

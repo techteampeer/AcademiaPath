@@ -111,7 +111,7 @@ function CourseForum({ courseId }: { courseId: string }) {
       {data.viewer.role === null ? <Alert tone="info">{f.moderatorOnly}</Alert> : null}
       <Card as="section" aria-labelledby="forum-topics-heading" className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <h2 id="forum-topics-heading" className="font-semibold text-slate-900">
+          <h2 id="forum-topics-heading" className="font-semibold text-brand-600">
             {t.nav.forum}
           </h2>
           <form role="search" className="flex w-full flex-wrap items-end gap-2 sm:w-auto" onSubmit={submitSearch}>
@@ -211,7 +211,7 @@ export function NewTopicForm({ courseId, canAnnounce, groupId, heading }: { cour
   };
   return (
     <Card as="section" aria-labelledby="new-topic-heading" className="space-y-3">
-      <h2 id="new-topic-heading" className="font-semibold text-slate-900">
+      <h2 id="new-topic-heading" className="font-semibold text-brand-600">
         {heading ?? f.newTopic}
       </h2>
       <form className="space-y-3" onSubmit={(event) => void submit(event)} data-new-topic>
@@ -367,7 +367,7 @@ function TopicPage({ courseId, topicId }: { courseId: string; topicId: string })
         {topic.canModerate ? <TopicModeration topic={topic} onChanged={(updated) => { setState({ status: 'ready', data: updated }); void reloadPosts(posts?.items.length ?? 0); }} /> : null}
       </Card>
       <Card as="section" aria-labelledby="replies-heading" className="space-y-4">
-        <h2 id="replies-heading" className="font-semibold text-slate-900">
+        <h2 id="replies-heading" className="font-semibold text-brand-600">
           {p.repliesTitle} <span className="text-sm font-normal text-slate-500">({posts?.total ?? topic.replyCount})</span>
         </h2>
         {postsError ? <Alert tone="error">{postsError}</Alert> : null}
@@ -390,7 +390,7 @@ function TopicPage({ courseId, topicId }: { courseId: string; topicId: string })
       </Card>
       {topic.canReply ? (
         <Card as="section" aria-labelledby="reply-heading" className="space-y-3">
-          <h2 id="reply-heading" className="font-semibold text-slate-900">
+          <h2 id="reply-heading" className="font-semibold text-brand-600">
             {p.replyTitle}
           </h2>
           <ReplyForm topicId={topic.id} label={p.replyLabel} inputId="reply-body" onPosted={() => void refresh()} />

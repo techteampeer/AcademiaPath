@@ -1,21 +1,152 @@
 @import "tailwindcss";
 
+/*
+ * AcademiaPath "University Heritage" design system.
+ *
+ * Every page is built from Tailwind utilities, so the identity lives in these theme tokens: `brand` is the
+ * institutional burgundy, `slate` the warm charcoal/parchment neutrals, `white` the warm reading surface,
+ * and the status colours are tuned to the palette. Components never use raw hex values.
+ */
 @theme {
-  --color-brand-50: #eef6ff;
-  --color-brand-100: #d9eaff;
-  --color-brand-600: #1d5fd1;
-  --color-brand-700: #1a4ca8;
-  --color-brand-900: #142c5c;
+  /* Institutional burgundy. 600 is the primary colour (#4B1420); 700 is the slightly brighter interactive
+     burgundy used for links and hover states, so links stay distinguishable from body text. */
+  --color-brand-50: #f8eeee;
+  --color-brand-100: #efdadc;
+  --color-brand-200: #ddb4b9;
+  --color-brand-300: #c2848d;
+  --color-brand-400: #9e5562;
+  --color-brand-500: #7b2f3d;
+  --color-brand-600: #4b1420;
+  --color-brand-700: #6a1e2c;
+  --color-brand-800: #3b0f19;
+  --color-brand-900: #2c0b12;
+  --color-brand-950: #1f070c;
+
+  /* Warm neutrals replacing the default cool greys: ivory and parchment surfaces, warm borders, muted
+     text (#625F58) and charcoal (#252922). */
+  --color-slate-50: #faf6ee;
+  --color-slate-100: #f1ebdf;
+  --color-slate-200: #ded3c2;
+  --color-slate-300: #cbbfa9;
+  --color-slate-400: #a39a88;
+  --color-slate-500: #6b675e;
+  --color-slate-600: #625f58;
+  --color-slate-700: #4a4740;
+  --color-slate-800: #36382f;
+  --color-slate-900: #252922;
+  --color-slate-950: #1a1d17;
+
+  /* Warm white for panels on the ivory page. */
+  --color-white: #fffcf7;
+
+  /* Success: forest greens. */
+  --color-emerald-50: #eef3ec;
+  --color-emerald-100: #dce7d8;
+  --color-emerald-200: #c3d4bf;
+  --color-emerald-500: #3f7a4c;
+  --color-emerald-600: #2f5f3a;
+  --color-emerald-700: #264d2f;
+  --color-emerald-800: #1c3a24;
+
+  /* Warning: antique gold tints with brown text. */
+  --color-amber-50: #fbf4e3;
+  --color-amber-100: #f4e6c4;
+  --color-amber-200: #e7d2a3;
+  --color-amber-300: #d8bc82;
+  --color-amber-600: #8a6a2a;
+  --color-amber-700: #735620;
+  --color-amber-800: #5c4418;
+  --color-amber-900: #463312;
+
+  /* Error: a warm red, distinct from the burgundy brand (errors also carry text and role="alert"). */
+  --color-red-50: #fbedeb;
+  --color-red-200: #efc3bd;
+  --color-red-500: #b8382c;
+  --color-red-700: #962a20;
+  --color-red-800: #7a221a;
+
+  /* Heritage accents. */
+  --color-forest-50: #edf1ec;
+  --color-forest-100: #d6e0d4;
+  --color-forest-700: #2a4430;
+  --color-forest-800: #233a29;
+  --color-forest-900: #1c3021;
+  --color-forest-950: #142318;
+  --color-gold-100: #f1e6cf;
+  --color-gold-200: #e3d0a6;
+  --color-gold-300: #d2b886;
+  --color-gold-400: #b99a61;
+  --color-gold-600: #8c6f38;
+  --color-ivory: #f7f2e8;
+  --color-parchment: #eee7da;
+  --color-olive: #697358;
+
+  /* Typography: an academic serif for headings, a clean sans-serif for everything else. System fonts only. */
+  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", "URW Palladio L", P052, Charter, "Bitstream Charter", Cambria, Georgia, "DejaVu Serif", serif;
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+
+  --shadow-panel: 0 1px 2px rgb(37 41 34 / 0.05), 0 1px 3px rgb(37 41 34 / 0.04);
+  --shadow-raised: 0 4px 14px rgb(37 41 34 / 0.08);
 }
 
 @layer base {
+  html {
+    background-color: var(--color-ivory);
+  }
+
   body {
-    @apply bg-white text-slate-900 antialiased;
+    background-color: var(--color-ivory);
+    color: var(--color-slate-900);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Headings are set in the academic serif; utilities still choose size, weight and colour. */
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-serif);
+    letter-spacing: -0.005em;
+  }
+
+  ::selection {
+    background-color: var(--color-gold-200);
+    color: var(--color-slate-900);
   }
 
   /* Visible, consistent keyboard focus for every interactive element. */
   :focus-visible {
     outline: 2px solid var(--color-brand-600);
     outline-offset: 2px;
+  }
+
+  /* On the burgundy header and forest sidebar, focus is drawn in antique gold. */
+  .on-dark :focus-visible {
+    outline-color: var(--color-gold-300);
+  }
+
+  input,
+  select,
+  textarea {
+    accent-color: var(--color-brand-600);
+  }
+}
+
+@layer components {
+  /* A thin antique-gold rule used under page titles and in the header. */
+  .heritage-rule {
+    height: 1px;
+    background: linear-gradient(90deg, var(--color-gold-400), rgb(185 154 97 / 0));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

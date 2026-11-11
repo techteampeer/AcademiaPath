@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/Badge';
 import { buttonClasses } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { HeritageBanner } from '@/components/layout/Heritage';
 import { LoadingCards } from '@/components/ui/Skeleton';
 import { StatCard } from '@/components/ui/StatCard';
 import { isApiError } from '@/lib/api/client';
@@ -54,7 +54,16 @@ function OverviewContent() {
   const { t, locale } = useLocale();
   const { state, load } = useAdminRecords();
 
-  const header = <PageHeader kicker={t.roles.administrator} title={t.admin.title} description={t.admin.intro} />;
+  const header = (
+    <HeritageBanner compact>
+      <div className="max-w-xl">
+        <p className="text-xs font-semibold tracking-[0.14em] text-gold-200 uppercase">{t.roles.administrator}</p>
+        <h1 className="mt-2 text-[1.9rem] leading-tight font-semibold text-ivory sm:text-[2.4rem]">{t.admin.title}</h1>
+        <div aria-hidden="true" className="heritage-rule mt-3 w-28" />
+        <p className="mt-3 text-ivory/90">{t.admin.intro}</p>
+      </div>
+    </HeritageBanner>
+  );
   if (state.status === 'loading') {
     return (
       <div className="space-y-6">
@@ -115,7 +124,7 @@ function OverviewContent() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
         <Card as="section" aria-labelledby="terms-heading" className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 id="terms-heading" className="text-lg font-semibold text-slate-900">
+            <h2 id="terms-heading" className="text-lg font-semibold text-brand-600">
               {t.admin.upcomingTerms}
             </h2>
             {current ? (
@@ -149,7 +158,7 @@ function OverviewContent() {
 
         <div className="space-y-6">
           <Card as="section" aria-labelledby="actions-heading" className="space-y-3">
-            <h2 id="actions-heading" className="text-lg font-semibold text-slate-900">
+            <h2 id="actions-heading" className="text-lg font-semibold text-brand-600">
               {t.admin.quickActions}
             </h2>
             <div className="flex flex-col gap-2">
@@ -168,7 +177,7 @@ function OverviewContent() {
             </div>
           </Card>
           <Card as="section" aria-labelledby="unavailable-heading" className="space-y-2">
-            <h2 id="unavailable-heading" className="text-base font-semibold text-slate-900">
+            <h2 id="unavailable-heading" className="text-base font-semibold text-brand-600">
               {t.admin.notAvailableTitle}
             </h2>
             <p className="text-sm text-slate-600">{t.admin.notAvailableIntro}</p>

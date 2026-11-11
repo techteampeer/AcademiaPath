@@ -93,7 +93,7 @@ function StudentCertificates({ courseId }: { courseId: string }) {
     <div className="space-y-4">
       <Card as="section" aria-labelledby="my-status-heading" className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 id="my-status-heading" className="font-semibold text-slate-900">
+          <h2 id="my-status-heading" className="font-semibold text-brand-600">
             {c.student.heading}
           </h2>
           {eligibility ? <EligibilityBadge eligible={eligibility.eligible} /> : null}
@@ -147,7 +147,7 @@ function StaffCertificates({ courseId, canManage }: { courseId: string; canManag
     <div className="space-y-6">
       <PolicyForm courseId={courseId} policy={data.policy} canManage={canManage} onSaved={reload} />
       <Card as="section" aria-labelledby="eligibility-heading" className="space-y-3">
-        <h2 id="eligibility-heading" className="font-semibold text-slate-900">
+        <h2 id="eligibility-heading" className="font-semibold text-brand-600">
           {c.eligibility.heading}
         </h2>
         {data.items.length === 0 ? (
@@ -181,7 +181,7 @@ function StaffCertificates({ courseId, canManage }: { courseId: string; canManag
         )}
       </Card>
       <Card as="section" aria-labelledby="issued-heading" className="space-y-3">
-        <h2 id="issued-heading" className="font-semibold text-slate-900">
+        <h2 id="issued-heading" className="font-semibold text-brand-600">
           {c.issuedList.heading}
         </h2>
         {issued.state.status !== 'ready' ? (
@@ -226,7 +226,7 @@ function PolicyForm({ courseId, policy, canManage, onSaved }: { courseId: string
   return (
     <Card as="section" aria-labelledby="policy-heading" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="policy-heading" className="font-semibold text-slate-900">
+        <h2 id="policy-heading" className="font-semibold text-brand-600">
           {p.heading}
         </h2>
         <span data-policy-configured={String(policy.configured)}>

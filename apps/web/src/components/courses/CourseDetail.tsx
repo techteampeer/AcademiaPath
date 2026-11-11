@@ -15,6 +15,7 @@ import { buttonClasses } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Breadcrumbs } from '@/components/ui/PageHeader';
+import { CourseEmblem, HeritageBanner } from '@/components/layout/Heritage';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { Activity, ActivityProgress, Course, CourseProgress, CurrentUser, ResourceFolder, Section } from '@/lib/api/types';
@@ -179,38 +180,45 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
     <div className="space-y-8">
       <div>
         <Breadcrumbs label={t.common.breadcrumb} items={[{ label: t.nav.myCourses, href: '/courses' }, { label: course.title }]} />
-        <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
-          <h1 className="text-2xl font-bold tracking-tight break-words text-slate-900 sm:text-3xl">{course.title}</h1>
-          <CourseStatusBadge status={course.status} />
-        </div>
-        <p className="mt-1 text-sm text-slate-500">
-          {course.code}
-          {course.viewerRole ? ` · ${t.courses.yourRoleLabel(t.roles[course.viewerRole])}` : ''}
-        </p>
-        {course.description ? <p className="mt-3 max-w-3xl text-slate-600">{course.description}</p> : null}
-        <div className="mt-4 flex flex-wrap gap-3">
-          {abilities.viewGrades || abilities.attempt ? (
-            <Link href={`/courses/${course.id}/grades`} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
-              {abilities.viewGrades ? t.nav.gradebook : t.nav.myGrades}
-            </Link>
-          ) : null}
-          {abilities.tutor ? (
-            <Link href={`/courses/${course.id}/tutor`} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
-              {t.nav.tutor}
-            </Link>
-          ) : null}
-          {abilities.viewProgress ? (
-            <Link href={`/courses/${course.id}/progress`} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
-              {t.progress.studentProgress}
-            </Link>
-          ) : null}
-        </div>
+        <HeritageBanner compact className="mt-4">
+          <div className="flex items-start gap-4 sm:gap-5">
+            <CourseEmblem code={course.code} className="hidden h-20 w-[4.5rem] ring-gold-400/50 sm:block" />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <h1 className="text-[1.75rem] leading-tight font-semibold break-words text-ivory sm:text-[2.1rem]">{course.title}</h1>
+                <CourseStatusBadge status={course.status} />
+              </div>
+              <p className="mt-1 text-sm text-gold-200">
+                {course.code}
+                {course.viewerRole ? ` · ${t.courses.yourRoleLabel(t.roles[course.viewerRole])}` : ''}
+              </p>
+              {course.description ? <p className="mt-3 max-w-3xl text-ivory/90">{course.description}</p> : null}
+              <div className="mt-4 flex flex-wrap gap-3">
+                {abilities.viewGrades || abilities.attempt ? (
+                  <Link href={`/courses/${course.id}/grades`} className={buttonClasses({ variant: 'light', size: 'sm' })}>
+                    {abilities.viewGrades ? t.nav.gradebook : t.nav.myGrades}
+                  </Link>
+                ) : null}
+                {abilities.tutor ? (
+                  <Link href={`/courses/${course.id}/tutor`} className={buttonClasses({ variant: 'inverse', size: 'sm' })}>
+                    {t.nav.tutor}
+                  </Link>
+                ) : null}
+                {abilities.viewProgress ? (
+                  <Link href={`/courses/${course.id}/progress`} className={buttonClasses({ variant: 'inverse', size: 'sm' })}>
+                    {t.progress.studentProgress}
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </HeritageBanner>
       </div>
 
       {progress ? (
         <Card as="section" aria-labelledby="my-progress-heading" className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 id="my-progress-heading" className="text-lg font-semibold text-slate-900">
+            <h2 id="my-progress-heading" className="text-lg font-semibold text-brand-600">
               {t.progress.yourProgress}
             </h2>
             {continueAt ? (
@@ -228,7 +236,7 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
 
       {abilities.review ? (
         <Card as="section" aria-labelledby="review-queue-heading">
-          <h2 id="review-queue-heading" className="text-lg font-semibold text-slate-900">
+          <h2 id="review-queue-heading" className="text-lg font-semibold text-brand-600">
             {t.courses.waitingForReview}
           </h2>
           {waitingForReview.length ? (
@@ -251,7 +259,7 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
       <DocumentLibrary courseId={course.id} sections={sections} activities={activities} abilities={abilities} onUploaded={refreshActivities} />
 
       <section aria-labelledby="sections-heading">
-        <h2 id="sections-heading" className="text-xl font-semibold tracking-tight text-slate-900">
+        <h2 id="sections-heading" className="text-xl font-semibold tracking-tight text-brand-600">
           {t.courses.sections}
         </h2>
         {sections.length === 0 ? (
@@ -264,7 +272,7 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
                 <Card as="li" key={section.id} data-section-locked={mine?.locked ? 'true' : undefined}>
                   <div className="flex items-start justify-between gap-3">
                     <h3 className="font-semibold text-slate-900">
-                      <span className="mr-2 text-slate-400">{index + 1}.</span>
+                      <span className="mr-2 text-slate-500">{index + 1}.</span>
                       {section.title}
                     </h3>
                     <div className="flex flex-wrap justify-end gap-2">

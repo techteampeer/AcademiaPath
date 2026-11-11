@@ -103,7 +103,7 @@ export function ActivateAccount() {
   if (state.status === 'done') {
     return wrap(
       <Card className="space-y-4">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t.activation.doneTitle}</h1>
+        <h1 className="text-[1.75rem] leading-tight font-semibold text-brand-600">{t.activation.doneTitle}</h1>
         <Alert tone="success">{t.activation.doneDescription}</Alert>
         <Link href={`/login`} className={buttonClasses()}>
           {t.activation.goToSignIn}
@@ -116,7 +116,7 @@ export function ActivateAccount() {
   return wrap(
     <Card className="space-y-5">
       <div className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t.activation.title}</h1>
+        <h1 className="text-[1.75rem] leading-tight font-semibold text-brand-600">{t.activation.title}</h1>
         <p className="text-sm text-slate-600">{t.activation.intro}</p>
       </div>
       <dl className="rounded-lg bg-slate-50 p-3 text-sm">

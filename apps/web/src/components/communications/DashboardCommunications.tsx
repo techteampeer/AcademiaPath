@@ -6,10 +6,10 @@ import { useLocale } from '@/components/i18n/LocaleProvider';
 import { useSession } from '@/components/session/SessionProvider';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
+import { Icon } from '@/components/layout/Heritage';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { AnnouncementPage, Calendar, CurrentUser, UnreadCount } from '@/lib/api/types';
-import { useUnreadSummary } from '@/components/messaging/polling';
 import { SourceLabel, announcementDate, formatEventWhen, formatInZone } from './communicationDisplay';
 
 const UPCOMING_DAYS = 14;
@@ -28,7 +28,6 @@ export function DashboardCommunications({ user }: { user: CurrentUser }) {
   const c = t.communications.calendar;
   const { handleUnauthorized } = useSession();
   const [state, setState] = useState<State>({ status: 'loading' });
-  const { summary } = useUnreadSummary();
   useEffect(() => {
     let active = true;
     const now = new Date();
@@ -60,7 +59,7 @@ export function DashboardCommunications({ user }: { user: CurrentUser }) {
   return (
     <section aria-labelledby="communications-heading" className="space-y-3" data-dashboard-communications>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="communications-heading" className="text-xl font-semibold tracking-tight text-slate-900">
+        <h2 id="communications-heading" className="text-[1.4rem] font-semibold text-brand-600">
           {d.heading}
         </h2>
         {user.systemRole === 'administrator' ? (
@@ -69,20 +68,12 @@ export function DashboardCommunications({ user }: { user: CurrentUser }) {
           </Link>
         ) : null}
       </div>
-      {summary ? (
-        <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm" data-dashboard-messaging>
-          <Link href="/messages" className="font-medium text-brand-700 hover:underline" data-dashboard-unread-messages={summary.unreadMessages}>
-            {t.messaging.dashboard.unreadMessages(summary.unreadMessages)}
-          </Link>
-          <Link href="/notifications" className="font-medium text-brand-700 hover:underline" data-dashboard-unread-notifications={summary.unreadNotifications}>
-            {t.messaging.dashboard.unreadNotifications(summary.unreadNotifications)}
-          </Link>
-        </p>
-      ) : null}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div aria-hidden="true" className="heritage-rule w-24" />
+      <div className="grid gap-4 md:grid-cols-2">
         <Card as="section" aria-labelledby="recent-announcements" className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 id="recent-announcements" className="font-semibold text-slate-900">
+            <h3 id="recent-announcements" className="flex items-center gap-2 text-lg font-semibold text-brand-600">
+              <Icon name="megaphone" className="h-5 w-5 shrink-0 text-gold-600" />
               {d.recent}
             </h3>
             <span data-dashboard-unread={state.status === 'ready' ? state.data.unread.unreadCount : ''}>
@@ -98,7 +89,7 @@ export function DashboardCommunications({ user }: { user: CurrentUser }) {
           ) : state.data.feed.items.length === 0 ? (
             <p className="text-sm text-slate-600">{d.noAnnouncements}</p>
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-slate-200/70">
               {state.data.feed.items.map((item) => (
                 <li key={item.id} className="py-2" data-dashboard-announcement={item.title}>
                   <div className="flex flex-wrap items-center gap-2">
@@ -119,7 +110,8 @@ export function DashboardCommunications({ user }: { user: CurrentUser }) {
           </Link>
         </Card>
         <Card as="section" aria-labelledby="upcoming-events" className="space-y-3">
-          <h3 id="upcoming-events" className="font-semibold text-slate-900">
+          <h3 id="upcoming-events" className="flex items-center gap-2 text-lg font-semibold text-brand-600">
+            <Icon name="calendar" className="h-5 w-5 shrink-0 text-gold-600" />
             {d.upcoming}
           </h3>
           {state.status === 'loading' ? (
@@ -129,10 +121,10 @@ export function DashboardCommunications({ user }: { user: CurrentUser }) {
           ) : upcoming.length === 0 ? (
             <p className="text-sm text-slate-600">{d.noEvents}</p>
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-slate-200/70">
               {upcoming.map((entry) => (
-                <li key={entry.key} className="py-2" data-dashboard-upcoming={entry.title}>
-                  <p className="text-xs font-medium text-slate-500">
+                <li key={entry.key} className="border-l-2 border-gold-400/70 py-2 pl-3" data-dashboard-upcoming={entry.title}>
+                  <p className="text-xs font-semibold text-olive">
                     {entry.source}
                     {entry.cancelled ? ` · ${c.cancelled}` : ''}
                   </p>

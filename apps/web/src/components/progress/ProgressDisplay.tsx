@@ -32,10 +32,10 @@ export function ProgressBar({ figures, label, compact = false }: { figures: Prog
         aria-valuemax={100}
         aria-valuenow={figures.percent}
         aria-valuetext={`${p.activitiesCompleted(figures.completedCount, figures.totalCount)} (${p.percentComplete(figures.percent)})`}
-        className={`w-full overflow-hidden rounded-full bg-slate-100 ${compact ? 'h-1.5' : 'h-2.5'}`}
+        className={`w-full overflow-hidden rounded-full bg-parchment ring-1 ring-slate-200/70 ring-inset ${compact ? 'h-1.5' : 'h-2.5'}`}
       >
         <div
-          className={`h-full rounded-full ${figures.state === 'completed' ? 'bg-emerald-500' : 'bg-brand-600'}`}
+          className={`h-full rounded-full ${figures.state === 'completed' ? 'bg-forest-700' : 'bg-brand-600'}`}
           style={{ width: `${figures.percent}%` }}
         />
       </div>

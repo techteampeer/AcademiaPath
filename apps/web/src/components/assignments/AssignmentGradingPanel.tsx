@@ -57,7 +57,7 @@ export function AssignmentGradingPanel({ courseId, assignmentId, canGrade, canRe
   return (
     <Card as="section" aria-labelledby="submissions-heading" className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="submissions-heading" className="text-lg font-semibold text-slate-900">
+        <h2 id="submissions-heading" className="text-lg font-semibold text-brand-600">
           {g.heading}
         </h2>
         <Button variant="secondary" size="sm" onClick={() => void load()}>

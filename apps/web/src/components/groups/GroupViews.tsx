@@ -184,7 +184,7 @@ function CreateGroupForm({ courseId, onCreated }: { courseId: string; onCreated:
   };
   return (
     <Card as="section" aria-labelledby="create-group-heading" className="space-y-3">
-      <h2 id="create-group-heading" className="font-semibold text-slate-900">
+      <h2 id="create-group-heading" className="font-semibold text-brand-600">
         {c.title}
       </h2>
       <form className="space-y-3" onSubmit={(event) => void submit(event)} data-create-group>
@@ -269,7 +269,7 @@ function GroupWorkspace({ groupId }: { groupId: string }) {
         <div className="min-w-0 space-y-6">
           {viewer.canRead ? (
             <Card as="section" aria-labelledby="group-discussions-heading" className="space-y-3">
-              <h2 id="group-discussions-heading" className="font-semibold text-slate-900">
+              <h2 id="group-discussions-heading" className="font-semibold text-brand-600">
                 {w.discussionsTitle}
               </h2>
               {topicsError ? <Alert tone="error">{topicsError}</Alert> : null}
@@ -291,7 +291,7 @@ function GroupWorkspace({ groupId }: { groupId: string }) {
         </div>
         <div className="min-w-0 space-y-6">
           <Card as="section" aria-labelledby="group-members-heading" className="space-y-3">
-            <h2 id="group-members-heading" className="font-semibold text-slate-900">
+            <h2 id="group-members-heading" className="font-semibold text-brand-600">
               {w.membersTitle} <span className="text-sm font-normal text-slate-500">({members.length})</span>
             </h2>
             {members.length === 0 ? (
@@ -307,7 +307,7 @@ function GroupWorkspace({ groupId }: { groupId: string }) {
           </Card>
           {viewer.canRead ? (
             <Card as="section" aria-labelledby="group-activity-heading" className="space-y-2">
-              <h2 id="group-activity-heading" className="font-semibold text-slate-900">
+              <h2 id="group-activity-heading" className="font-semibold text-brand-600">
                 {w.activityTitle}
               </h2>
               {recentTopics.length === 0 ? (
@@ -330,7 +330,7 @@ function GroupWorkspace({ groupId }: { groupId: string }) {
           ) : null}
           {membershipChanges.length ? (
             <Card as="section" aria-labelledby="group-changes-heading" className="space-y-2">
-              <h2 id="group-changes-heading" className="font-semibold text-slate-900">
+              <h2 id="group-changes-heading" className="font-semibold text-brand-600">
                 {w.changesTitle}
               </h2>
               <ul className="space-y-1 text-sm text-slate-700" data-membership-changes>
@@ -451,7 +451,7 @@ function ManageGroup({ detail, onChanged }: { detail: GroupDetail; onChanged: (n
   const [confirming, setConfirming] = useState(false);
   return (
     <Card as="section" aria-labelledby="manage-group-heading" className="space-y-3" data-manage-group>
-      <h2 id="manage-group-heading" className="font-semibold text-slate-900">
+      <h2 id="manage-group-heading" className="font-semibold text-brand-600">
         {w.manageTitle}
       </h2>
       {!group.archived ? (

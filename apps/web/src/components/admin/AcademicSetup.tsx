@@ -35,7 +35,7 @@ function StepCard({ step, title, description, children }: { step: number; title:
   const headingId = `setup-step-${step}`;
   return (
     <Card as="section" padding="lg" aria-labelledby={headingId}>
-      <h2 id={headingId} className="text-lg font-semibold text-slate-900">
+      <h2 id={headingId} className="text-lg font-semibold text-brand-600">
         {step}. {title}
       </h2>
       <p className="mt-1 text-sm text-slate-600">{description}</p>

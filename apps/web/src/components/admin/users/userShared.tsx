@@ -110,7 +110,7 @@ export function ActivationLinkPanel({ invitation }: { invitation: AccountInvitat
     }
   };
   return (
-    <section aria-labelledby="activation-link-heading" className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+    <section aria-labelledby="activation-link-heading" className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
       <h3 id="activation-link-heading" className="font-semibold text-amber-900">
         {t.users.linkTitle}
       </h3>

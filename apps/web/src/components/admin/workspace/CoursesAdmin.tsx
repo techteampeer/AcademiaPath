@@ -115,7 +115,7 @@ function CoursesContent() {
         {t.common.showing(filtered.length, data.courses.length)}
       </p>
       {filtered.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-600">{t.admin.noCourses}</p>
+        <p className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-600">{t.admin.noCourses}</p>
       ) : (
         <div className={tableClasses.wrapper}>
           <table className={tableClasses.table}>
@@ -202,7 +202,7 @@ function EnrollmentPanel({ course }: { course: Course }) {
 
   return (
     <Card as="section" aria-labelledby="enrollments-heading" className="space-y-4">
-      <h2 id="enrollments-heading" className="text-lg font-semibold text-slate-900">
+      <h2 id="enrollments-heading" className="text-lg font-semibold text-brand-600">
         {t.admin.enrollmentsFor(course.code)}
       </h2>
       {roster.status === 'loading' ? (

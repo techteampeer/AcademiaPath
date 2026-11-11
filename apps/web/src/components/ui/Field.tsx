@@ -2,7 +2,7 @@ import type { InputHTMLAttributes, SelectHTMLAttributes } from 'react';
 import { cn } from '@/lib/cn';
 
 const controlClasses =
-  'mt-1 block w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm disabled:bg-slate-100';
+  'mt-1 block w-full rounded-md border bg-white px-3 py-2 text-sm text-slate-900 shadow-panel placeholder:text-slate-500 focus:border-brand-600 disabled:bg-slate-100';
 
 type FieldProps = { id: string; label: string; error?: string; hint?: string };
 

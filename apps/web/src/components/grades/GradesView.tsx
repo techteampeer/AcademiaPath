@@ -73,7 +73,7 @@ function GradesContent({ courseId, user }: { courseId: string; user: CurrentUser
           ]}
         />
         <p className="mt-4 text-sm text-slate-500">{course.data.code}</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+        <h1 className="mt-1 text-[1.75rem] leading-tight font-semibold text-brand-600 sm:text-[2.1rem]">
           {abilities.viewGrades ? b.gradebook : b.myGrades}
         </h1>
         <p className="mt-1 text-sm text-slate-600">{b.scale}</p>
@@ -295,7 +295,7 @@ function StudentGradesList({ courseId }: { courseId: string }) {
             <li key={item.activityId} data-activity={item.title} data-work-status={item.workStatus}>
               <Card as="article" aria-labelledby={`grade-${item.activityId}`} className="space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h2 id={`grade-${item.activityId}`} className="font-semibold text-slate-900">
+                  <h2 id={`grade-${item.activityId}`} className="font-semibold text-brand-600">
                     <Link href={`/courses/${courseId}/activities/${item.activityId}`} className="text-brand-700 hover:underline">
                       {item.title}
                     </Link>

@@ -104,7 +104,7 @@ function ImportContent() {
 
       {report && summary ? (
         <Card as="section" aria-labelledby="import-report-heading" className="space-y-4">
-          <h2 id="import-report-heading" className="text-lg font-semibold text-slate-900" aria-live="polite">
+          <h2 id="import-report-heading" className="text-lg font-semibold text-brand-600" aria-live="polite">
             {t.users.previewSummary(summary.create, summary.unchanged, summary.errors)}
           </h2>
           {stale ? <Alert tone="info">{t.users.previewStale}</Alert> : null}

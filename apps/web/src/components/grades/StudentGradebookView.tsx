@@ -89,7 +89,7 @@ function Content({ courseId, userId, user }: { courseId: string; userId: string;
             { label: name },
           ]}
         />
-        <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{d.title(name)}</h1>
+        <h1 className="mt-4 text-[1.75rem] leading-tight font-semibold text-brand-600 sm:text-[2.1rem]">{d.title(name)}</h1>
         <p className="mt-1 text-sm break-all text-slate-600">{book.student.email}</p>
         <p className="mt-1 text-sm text-slate-600">{t.gradebook.policyStatus[book.policy.status]}</p>
       </div>

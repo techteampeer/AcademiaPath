@@ -118,7 +118,7 @@ function MyMessages() {
       </Card>
       {courses.length ? (
         <Card as="section" aria-labelledby="message-courses" className="space-y-2">
-          <h2 id="message-courses" className="font-semibold text-slate-900">
+          <h2 id="message-courses" className="font-semibold text-brand-600">
             {m.yourCourses}
           </h2>
           <ul className="flex flex-wrap gap-2">
@@ -176,7 +176,7 @@ function CourseMessages({ courseId }: { courseId: string }) {
         breadcrumbs={[{ label: t.nav.myCourses, href: '/courses' }, { label: data.course.title, href: `/courses/${courseId}` }, { label: m.course.title }]}
       />
       <Card as="section" aria-labelledby="course-conversation-heading" className="space-y-3" data-course-conversation={data.courseConversation?.id ?? 'none'}>
-        <h2 id="course-conversation-heading" className="font-semibold text-slate-900">
+        <h2 id="course-conversation-heading" className="font-semibold text-brand-600">
           {m.courseConversation}
         </h2>
         {data.courseConversation ? (
@@ -190,7 +190,7 @@ function CourseMessages({ courseId }: { courseId: string }) {
         )}
       </Card>
       <Card as="section" aria-labelledby="direct-heading" className="space-y-3">
-        <h2 id="direct-heading" className="font-semibold text-slate-900">
+        <h2 id="direct-heading" className="font-semibold text-brand-600">
           {m.course.directTitle}
         </h2>
         {data.directConversations.length === 0 ? (
@@ -204,7 +204,7 @@ function CourseMessages({ courseId }: { courseId: string }) {
         )}
       </Card>
       <Card as="section" aria-labelledby="contacts-heading" className="space-y-3">
-        <h2 id="contacts-heading" className="font-semibold text-slate-900">
+        <h2 id="contacts-heading" className="font-semibold text-brand-600">
           {data.role === 'student' ? m.course.contactsStudent : m.course.contactsStaff}
         </h2>
         {result?.tone === 'error' ? <Alert tone="error">{result.message}</Alert> : null}

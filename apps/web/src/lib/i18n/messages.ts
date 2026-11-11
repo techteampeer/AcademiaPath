@@ -137,6 +137,11 @@ const en = {
     title: 'Welcome to AcademiaPath',
     description: 'One place for universities to deliver courses, assess learning and support every student.',
     cta: 'Sign in to continue',
+    features: [
+      { title: 'Courses and progress', text: 'Structured course content, prerequisites and progress that every student can follow.' },
+      { title: 'Assessment and grading', text: 'Quizzes, assignments, a weighted gradebook and verifiable certificates.' },
+      { title: 'Academic community', text: 'Announcements, calendars, messages, forums and private study groups.' },
+    ],
   },
   dashboard: {
     title: 'Dashboard',
@@ -179,6 +184,21 @@ const en = {
     noReleasedGrades: 'No grades released yet',
     courseTotal: 'Course total',
     gradedItems: (n: number) => (n === 1 ? '1 released item' : `${n} released items`),
+    greeting: (part: 'morning' | 'afternoon' | 'evening', name: string) =>
+      `${part === 'morning' ? 'Good morning' : part === 'afternoon' ? 'Good afternoon' : 'Good evening'}, ${name}`,
+    subtitle: {
+      student: 'Continue your studies: your courses, progress, deadlines and university community in one place.',
+      instructor: 'Your teaching overview: courses, grading, student progress and communication with your classes.',
+      non_editing_instructor: 'Your grading overview: course content, submissions to grade and communication with your students.',
+      design_team: 'Your design overview: content awaiting review and the courses you help build.',
+      administrator: 'Your institutional overview: communications, courses and administration tools.',
+    },
+    community: 'Community',
+    communityIntro: 'Conversations, groups and recognitions across your courses.',
+    courseForums: 'Course forums',
+    recentActivity: 'Recent activity',
+    noActivity: 'No recent activity yet.',
+    allNotifications: 'All notifications',
   },
   admin: {
     title: 'Administration',
@@ -590,6 +610,11 @@ const es: Messages = {
     title: 'Bienvenido a AcademiaPath',
     description: 'Un solo lugar para que las universidades dicten cursos, evalúen el aprendizaje y apoyen a cada estudiante.',
     cta: 'Inicia sesión para continuar',
+    features: [
+      { title: 'Cursos y avance', text: 'Contenido estructurado, requisitos previos y un avance que cada estudiante puede seguir.' },
+      { title: 'Evaluación y calificación', text: 'Cuestionarios, tareas, un libro de calificaciones ponderado y certificados verificables.' },
+      { title: 'Comunidad académica', text: 'Anuncios, calendarios, mensajes, foros y grupos de estudio privados.' },
+    ],
   },
   dashboard: {
     title: 'Panel',
@@ -632,6 +657,21 @@ const es: Messages = {
     noReleasedGrades: 'Aún no hay calificaciones publicadas',
     courseTotal: 'Total del curso',
     gradedItems: (n: number) => (n === 1 ? '1 elemento publicado' : `${n} elementos publicados`),
+    greeting: (part: 'morning' | 'afternoon' | 'evening', name: string) =>
+      `${part === 'morning' ? 'Buenos días' : part === 'afternoon' ? 'Buenas tardes' : 'Buenas noches'}, ${name}`,
+    subtitle: {
+      student: 'Continúa tus estudios: tus cursos, avance, plazos y comunidad universitaria en un solo lugar.',
+      instructor: 'Tu resumen docente: cursos, calificación, avance del estudiantado y comunicación con tus clases.',
+      non_editing_instructor: 'Tu resumen de calificación: contenido del curso, entregas por calificar y comunicación con tus estudiantes.',
+      design_team: 'Tu resumen de diseño: contenido pendiente de revisión y los cursos que ayudas a construir.',
+      administrator: 'Tu resumen institucional: comunicaciones, cursos y herramientas de administración.',
+    },
+    community: 'Comunidad',
+    communityIntro: 'Conversaciones, grupos y reconocimientos de tus cursos.',
+    courseForums: 'Foros de cursos',
+    recentActivity: 'Actividad reciente',
+    noActivity: 'Aún no hay actividad reciente.',
+    allNotifications: 'Todas las notificaciones',
   },
   admin: {
     title: 'Administración',

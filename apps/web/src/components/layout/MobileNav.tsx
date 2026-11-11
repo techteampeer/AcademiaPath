@@ -37,7 +37,7 @@ export function MobileNav() {
         aria-expanded={open}
         aria-controls={PANEL_ID}
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-700 hover:bg-slate-100"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-md text-ivory hover:bg-white/10"
       >
         <span className="sr-only">{open ? t.common.closeMenu : t.common.openMenu}</span>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-6 w-6" aria-hidden="true">
@@ -50,7 +50,7 @@ export function MobileNav() {
       </button>
 
       {open ? (
-        <nav id={PANEL_ID} aria-label={t.nav.main} className="absolute inset-x-0 top-full max-h-[calc(100vh-4rem)] overflow-y-auto border-b border-slate-200 bg-white px-4 py-4 shadow-lg sm:px-6">
+        <nav id={PANEL_ID} aria-label={t.nav.main} className="on-dark absolute inset-x-0 top-full max-h-[calc(100vh-4rem)] overflow-y-auto border-b-2 border-gold-400/60 bg-forest-900 px-4 py-4 shadow-raised sm:px-6">
           <SessionSummary />
           <NavLinks idPrefix="mobile-nav" onNavigate={() => setOpen(false)} />
         </nav>

@@ -77,7 +77,7 @@ export function QuizQuestionsPanel({
 
   return (
     <Card as="section" aria-labelledby="questions-heading" className="space-y-4">
-      <h2 id="questions-heading" className="text-lg font-semibold text-slate-900">
+      <h2 id="questions-heading" className="text-lg font-semibold text-brand-600">
         {qb.heading}
       </h2>
       <p className="text-sm text-slate-600">{qb.staffOnly}</p>
@@ -433,7 +433,7 @@ export function QuizResultsPanel({ courseId, quizId, canRelease = false }: { cou
   return (
     <Card as="section" aria-labelledby="results-heading" className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="results-heading" className="text-lg font-semibold text-slate-900">
+        <h2 id="results-heading" className="text-lg font-semibold text-brand-600">
           {r.heading}
         </h2>
         <Button variant="secondary" size="sm" onClick={() => void load()}>

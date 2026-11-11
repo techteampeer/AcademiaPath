@@ -88,7 +88,7 @@ function Content({ certificateId }: { certificateId: string }) {
       </Card>
       {certificate.history ? (
         <Card as="section" aria-labelledby="history-heading" className="space-y-2">
-          <h2 id="history-heading" className="font-semibold text-slate-900">
+          <h2 id="history-heading" className="font-semibold text-brand-600">
             {c.history}
           </h2>
           <ol className="space-y-1 text-sm">

@@ -52,7 +52,7 @@ function Content() {
       ) : (
         <>
           <section aria-labelledby="my-certificates-heading" className="space-y-3">
-            <h2 id="my-certificates-heading" className="text-lg font-semibold text-slate-900">
+            <h2 id="my-certificates-heading" className="text-lg font-semibold text-brand-600">
               {c.title}
             </h2>
             {state.data.certificates.length === 0 ? (
@@ -88,7 +88,7 @@ function Content() {
             )}
           </section>
           <section aria-labelledby="my-courses-heading" className="space-y-3">
-            <h2 id="my-courses-heading" className="text-lg font-semibold text-slate-900">
+            <h2 id="my-courses-heading" className="text-lg font-semibold text-brand-600">
               {c.courses}
             </h2>
             {state.data.courses.length === 0 ? (

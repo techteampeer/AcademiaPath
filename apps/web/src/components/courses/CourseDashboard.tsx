@@ -49,7 +49,7 @@ function DashboardContent({ user }: { user: CurrentUser }) {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+        <h1 className="text-[1.75rem] leading-tight font-semibold text-brand-600 sm:text-[2.1rem]">
           {isAdministrator ? 'All courses' : 'My courses'}
         </h1>
         <p className="mt-2 text-slate-600">

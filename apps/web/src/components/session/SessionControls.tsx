@@ -31,7 +31,7 @@ export function SessionControls() {
   if (session.status === 'loading') return null;
   if (session.status === 'unauthenticated') {
     return (
-      <Link href="/login" className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
+      <Link href="/login" className={buttonClasses({ variant: 'inverse', size: 'sm' })}>
         {t.common.signIn}
       </Link>
     );
@@ -53,13 +53,18 @@ export function SessionControls() {
 
   return (
     <div className="flex items-center gap-3">
-      <div className="hidden text-right text-sm leading-tight md:block">
-        <p className="font-medium text-slate-900">
-          {user.givenName} {user.familyName}
-        </p>
-        <p className="text-xs text-slate-500">{roleSummary(t, user.systemRole, rolesHeld)}</p>
+      <div className="hidden items-center gap-2.5 md:flex">
+        <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ivory font-serif text-sm font-semibold text-brand-600 ring-1 ring-gold-400">
+          {`${user.givenName.charAt(0)}${user.familyName.charAt(0)}`.toUpperCase()}
+        </span>
+        <div className="text-right text-sm leading-tight">
+          <p className="font-medium text-ivory">
+            {user.givenName} {user.familyName}
+          </p>
+          <p className="text-xs text-gold-200">{roleSummary(t, user.systemRole, rolesHeld)}</p>
+        </div>
       </div>
-      <Button variant="secondary" size="sm" className="whitespace-nowrap" onClick={onSignOut} disabled={pending}>
+      <Button variant="inverse" size="sm" className="whitespace-nowrap" onClick={onSignOut} disabled={pending}>
         {pending ? t.common.signingOut : t.common.signOut}
       </Button>
       {failed ? (
@@ -78,9 +83,9 @@ export function SessionSummary() {
   const { t } = useLocale();
   if (session.status !== 'authenticated') return null;
   return (
-    <p className="mb-4 border-b border-slate-200 px-3 pb-3 text-sm text-slate-600">
+    <p className="mb-4 border-b border-gold-400/30 px-3 pb-3 text-sm text-ivory/80">
       {t.session.signedInAs}{' '}
-      <span className="font-medium text-slate-900">
+      <span className="font-medium text-ivory">
         {session.user.givenName} {session.user.familyName}
       </span>{' '}
       ({roleSummary(t, session.user.systemRole, rolesHeld)})

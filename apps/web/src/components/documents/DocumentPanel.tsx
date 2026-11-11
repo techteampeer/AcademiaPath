@@ -95,7 +95,7 @@ export function DocumentPanel({ courseId, activity, canRefresh, onChanged }: { c
       <Card as="section" aria-labelledby="document-file-heading" className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 id="document-file-heading" className="text-lg font-semibold text-slate-900">
+            <h2 id="document-file-heading" className="text-lg font-semibold text-brand-600">
               {p.heading}
             </h2>
             <p className="mt-1 text-sm break-all text-slate-600">
@@ -122,7 +122,7 @@ export function DocumentPanel({ courseId, activity, canRefresh, onChanged }: { c
       <Card as="section" aria-labelledby="summary-heading" className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 id="summary-heading" className="text-lg font-semibold text-slate-900">
+            <h2 id="summary-heading" className="text-lg font-semibold text-brand-600">
               {p.summary}
             </h2>
             <p className="mt-1">
@@ -151,7 +151,7 @@ export function DocumentPanel({ courseId, activity, canRefresh, onChanged }: { c
       </Card>
 
       <Card as="section" aria-labelledby="extracted-heading" className="space-y-3">
-        <h2 id="extracted-heading" className="text-lg font-semibold text-slate-900">
+        <h2 id="extracted-heading" className="text-lg font-semibold text-brand-600">
           {p.extractedText}
         </h2>
         {document.segments.length ? (
