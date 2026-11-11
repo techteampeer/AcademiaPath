@@ -16,8 +16,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
-import { loadConfig } from '../src/config.js';
+import { loadConfig, type AppConfig } from '../src/config.js';
 import { createDatabase, type Database } from '../src/db/client.js';
 import { signIn, type Actor } from './demo/api.js';
 import { DEMO_COMMUNICATIONS, seedCommunications } from './demo/communications.js';
@@ -65,6 +66,15 @@ export type SeedDemoOptions = {
   uploadFilesDir?: string | null;
 };
 
+/** How the dataset steps act as each persona: signed-in API clients over the private in-process API. */
+export type DemoActors = (app: FastifyInstance, origin: string, config: AppConfig) => Promise<{ actors: Record<Persona, Actor>; close: () => Promise<void> }>;
+
+export type SeedDatasetOptions = {
+  env: NodeJS.ProcessEnv;
+  uploadFilesDir?: string | null;
+  actors: DemoActors;
+};
+
 const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 
 function assertOutsideRepository(dir: string): string {
@@ -74,27 +84,47 @@ function assertOutsideRepository(dir: string): string {
   return resolve(dir);
 }
 
+/** Local development: every synthetic account shares DEV_SEED_PASSWORD and the seed signs in with it. */
 export async function seedDemo(db: Database, options: SeedDemoOptions): Promise<DemoReport> {
   const env = options.env ?? process.env;
   if (env.NODE_ENV === 'production') throw new Error('Refusing to seed demo data: NODE_ENV is production.');
+
+  // Accounts: the dev-seed role accounts plus two synthetic learners (password: DEV_SEED_PASSWORD).
+  await upsertSyntheticUsers(db, options.password, [...DEV_USERS, ...DEMO_LEARNERS]);
+  return seedDemoDataset(db, {
+    env,
+    uploadFilesDir: options.uploadFilesDir ?? null,
+    actors: async (app, origin) => {
+      const actors = {} as Record<Persona, Actor>;
+      for (const persona of Object.keys(ACCOUNTS) as Persona[]) actors[persona] = await signIn(app, origin, ACCOUNTS[persona], options.password);
+      return { actors, close: async () => {} };
+    },
+  });
+}
+
+/**
+ * The demonstration dataset (structure, content, review, student work, grades, announcements and calendar)
+ * for accounts that already exist. Idempotent; never checks NODE_ENV itself: callers decide where it may run
+ * (`seedDemo` for local development, `scripts/seed-cloud-demo.ts` for the approved cloud demo).
+ */
+export async function seedDemoDataset(db: Database, options: SeedDatasetOptions): Promise<DemoReport> {
   const counts: Record<string, Counter> = {};
   const tally = (kind: string, created: boolean) => {
     counts[kind] ??= { created: 0, existing: 0 };
     counts[kind][created ? 'created' : 'existing'] += 1;
   };
 
-  // Accounts: the dev-seed role accounts plus two synthetic learners (password: DEV_SEED_PASSWORD).
-  await upsertSyntheticUsers(db, options.password, [...DEV_USERS, ...DEMO_LEARNERS]);
-
   // A private in-process API instance; only its sign-in rate limit is raised so repeated runs can sign in.
-  const base = loadConfig(env);
+  const base = loadConfig(options.env);
   const config = { ...base, loginRateLimit: { max: 1000, windowMs: base.loginRateLimit.windowMs } };
   const app = buildApp({ config, database: db });
   await app.ready();
+  let closeActors = async () => {};
   try {
     const origin = config.allowedOrigins[0] ?? 'http://localhost:3000';
-    const actors = {} as Record<Persona, Actor>;
-    for (const persona of Object.keys(ACCOUNTS) as Persona[]) actors[persona] = await signIn(app, origin, ACCOUNTS[persona], options.password);
+    const opened = await options.actors(app, origin, config);
+    closeActors = opened.close;
+    const actors = opened.actors;
     const { admin, instructor, reviewer } = actors;
 
     // ---------------------------------------------------------------- Academic structure (administrator)
@@ -201,6 +231,7 @@ export async function seedDemo(db: Database, options: SeedDemoOptions): Promise<
       uploadFiles,
     };
   } finally {
+    await closeActors();
     await app.close();
   }
 }

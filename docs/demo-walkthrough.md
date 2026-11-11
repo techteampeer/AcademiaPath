@@ -67,6 +67,12 @@ Every account signs in with the `DEV_SEED_PASSWORD` you set in your local `.env`
 
 `ta@` shows course-specific roles: it grades in ITIL and Project Management but is a student in Introduction to AI.
 
+**Cloud demo (Cloud Run).** The same accounts, created by the one-off seed job `academiapath-seed-demo`:
+- Each of the five role accounts has its own random password, kept in the Secret Manager secret `academiapath-demo-credentials`. There is no shared `DEV_SEED_PASSWORD`.
+- `learner.a@` and `learner.b@` have no password and cannot sign in.
+- For retrieving the passwords and the release steps, see [`infra/README.md`](../infra/README.md), "Demo users and courses".
+- The files for the live upload step (step 14) are not on the cloud: generate them locally with `pnpm db:seed:demo`, which writes them to `~/.academiapath/demo-files`.
+
 ## 3. What the seed creates
 
 **Academic structure (year 2026).**
