@@ -146,6 +146,13 @@ Course forum (AP-027), in ITIL 4 Foundation, posted through the API:
 | "¿Cuál es la diferencia entre la cadena de valor y un flujo de valor?" | Question from `student@`, the instructor's answer and a peer response from `learner.a@` to that answer |
 | "Formato del examen de práctica (cerrado)" | Question from `learner.b@`, answers from `ta@` and the instructor; locked by the instructor |
 
+Student groups (AP-028), in ITIL 4 Foundation, created by the instructor through the API:
+
+| Group | Members | Private discussion |
+| --- | --- | --- |
+| Equipo Alfa | `student@`, `learner.a@` | "Plan del caso práctico (Equipo Alfa)" by `student@`, with a reply from `learner.a@` and one from the instructor |
+| Equipo Beta | `learner.b@` | "Borrador del Equipo Beta (privado)" by `learner.b@`, with a reply from `ta@`; Equipo Alfa cannot see it |
+
 ## 4. Demo script
 
 Course paths below are relative to http://localhost:3000. The seed prints each course's ID, and the **My courses** and **Dashboard** pages link to every course.
@@ -263,10 +270,19 @@ New messages appear within a few seconds while a conversation is open. This is n
 
 **27. Other roles.** As `ta@`, reply in a topic: non-editing instructors take part but get no moderation buttons. As `admin@`, **Administration → Course forums** lists each published course's forum as counts only, with **Open forum** to moderate it; administrators cannot post. As `reviewer@`, the forum is not available: the design team has no access to student discussions.
 
+### Student groups (AP-028)
+**28. Student workspace.** As `student@`, open **My groups**:
+- **Equipo Alfa** shows its members and an unread indicator.
+- Open its workspace: the private discussion "Plan del caso práctico" has replies from Demo Learner A and the instructor.
+- Reply, or start a new group discussion. Group discussions never appear in the course **Forum**.
+- **Equipo Beta**'s workspace and discussion are "not available" to this account, even by direct URL.
 
-- **Bilingual UI.** The header's EN/ES switch translates the whole interface (AP-015). Course material stays in the language it was written in: English (ITIL, Project Management) and Spanish (Introduction to AI).
-- **Course lifecycle (optional extra step).** As `admin@`, **Courses & enrollments → Manage** on a course shows its status, sections and roster. Unpublishing ITIL 4 Foundation hides it from students at once without deleting anything; publishing it again restores the same view. Do this only on a rehearsal database.
-- **No malware scanning.** No malware scanner is connected, so uploads are recorded as `not_scanned`. Only use the synthetic demo files.
-- **Mock AI only.** Mock summaries and tutor answers quote approved course text. They are not AI-generated and must be presented as mock functionality.
-- **Announcement scheduling without a scheduler.** A scheduled announcement becomes visible as soon as the server clock reaches its publication time; no background job runs. Re-seeding a fresh database regenerates the relative dates.
-- **Wall-clock dates.** Due dates and quiz time limits use real time. The assignment due date (4 Dec 2026, 23:59 Lima time) keeps submissions open for the November demo.
+**29. Instructor manages groups.** As `instructor@`, open ITIL 4 Foundation → **Groups**:
+- Create a group, open it, add students with **Add students**, and remove one; **Membership changes** records each step.
+- Open a group discussion to reply or moderate it (pin, lock, hide).
+- **Archive group** keeps the workspace as read-only history; **Restore group** reopens it.
+
+**30. Other roles.**
+- `ta@` (non-editing instructor) sees every group and takes part in its discussions, but has no management controls.
+- As `admin@`, **Administration → Student groups** shows counts per course, with **Manage groups**. Administrators manage groups but cannot read their discussions.
+- `reviewer@` (design team) has no access to groups.

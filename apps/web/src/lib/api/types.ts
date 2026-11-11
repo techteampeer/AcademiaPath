@@ -181,3 +181,12 @@ export type ForumPostPage = Schemas['ForumPostPage'];
 export type ForumTopicAction = Schemas['ForumTopicModeration']['action'];
 export type ForumPostAction = Schemas['ForumPostModeration']['action'];
 export type AdminForumCourseList = Schemas['AdminForumCourseList'];
+
+export type GroupSummary = Schemas['GroupSummary'];
+export type CourseGroupList = Schemas['CourseGroupList'];
+export type MyGroupList = Schemas['MyGroupList'];
+export type GroupDetail = Schemas['GroupDetail'];
+export type GroupInput = Schemas['GroupInput'];
+export type GroupUpdate = Schemas['GroupUpdate'];
+export type GroupMemberAddResult = Schemas['GroupMemberAddResult'];
+export type AdminGroupOverview = Schemas['AdminGroupOverview'];

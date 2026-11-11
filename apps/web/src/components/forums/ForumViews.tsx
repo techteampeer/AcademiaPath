@@ -164,7 +164,7 @@ function CourseForum({ courseId }: { courseId: string }) {
   );
 }
 
-function TopicRow({ courseId, topic }: { courseId: string; topic: ForumTopicSummary }) {
+export function TopicRow({ courseId, topic }: { courseId: string; topic: ForumTopicSummary }) {
   const { t, locale } = useLocale();
   const f = t.forums.forum;
   return (
@@ -186,8 +186,11 @@ function TopicRow({ courseId, topic }: { courseId: string; topic: ForumTopicSumm
   );
 }
 
-/** One idempotency key per topic: a retried submission never creates a second topic. */
-function NewTopicForm({ courseId, canAnnounce }: { courseId: string; canAnnounce: boolean }) {
+/**
+ * One idempotency key per topic: a retried submission never creates a second topic. With `groupId`, the topic
+ * goes to that group's private workspace (AP-028).
+ */
+export function NewTopicForm({ courseId, canAnnounce, groupId, heading }: { courseId: string; canAnnounce: boolean; groupId?: string; heading?: string }) {
   const { t } = useLocale();
   const f = t.forums.forum;
   const router = useRouter();
@@ -202,13 +205,14 @@ function NewTopicForm({ courseId, canAnnounce }: { courseId: string; canAnnounce
     if (!title.trim()) return setError(f.emptyTitle);
     if (!body.trim()) return setError(f.emptyBody);
     setError(null);
-    const topic = await run((csrf) => api.createForumTopic(courseId, { title, body, clientRequestId: key.current, announce }, csrf));
+    const input = { title, body, clientRequestId: key.current, announce: groupId ? false : announce };
+    const topic = await run((csrf) => (groupId ? api.createGroupTopic(groupId, input, csrf) : api.createForumTopic(courseId, input, csrf)));
     if (topic) router.push(`/courses/${courseId}/forum/${topic.id}`);
   };
   return (
     <Card as="section" aria-labelledby="new-topic-heading" className="space-y-3">
       <h2 id="new-topic-heading" className="font-semibold text-slate-900">
-        {f.newTopic}
+        {heading ?? f.newTopic}
       </h2>
       <form className="space-y-3" onSubmit={(event) => void submit(event)} data-new-topic>
         <div>
@@ -226,7 +230,7 @@ function NewTopicForm({ courseId, canAnnounce }: { courseId: string; canAnnounce
             {f.bodyHint(BODY_MAX)}
           </p>
         </div>
-        {canAnnounce ? (
+        {canAnnounce && !groupId ? (
           <div className="flex items-start gap-2">
             <input id="topic-announce" type="checkbox" className="mt-1" checked={announce} onChange={(event) => setAnnounce(event.target.checked)} aria-describedby="topic-announce-hint" />
             <div>
@@ -287,6 +291,15 @@ function TopicPage({ courseId, topicId }: { courseId: string; topicId: string })
   useEffect(() => {
     void reloadPosts();
   }, [reloadPosts]);
+  // Opening a topic clears its unread notification (best effort: the page works without it).
+  const { getCsrfToken } = useSession();
+  const loaded = state.status === 'ready';
+  useEffect(() => {
+    if (!loaded) return;
+    void getCsrfToken()
+      .then((csrf) => api.markForumTopicRead(topicId, csrf))
+      .catch(() => undefined);
+  }, [loaded, topicId, getCsrfToken]);
 
   if (state.status === 'loading') return <Loading label={p.loading} />;
   if (state.status === 'not-found' || state.status === 'forbidden') return <EmptyState titleAs="h1" title={p.notFoundTitle} description={p.notFound} action={<Link href={`/courses/${courseId}/forum`} className="text-sm text-brand-700 underline">{p.back}</Link>} />;
@@ -324,10 +337,21 @@ function TopicPage({ courseId, topicId }: { courseId: string; topicId: string })
         breadcrumbs={[
           { label: t.nav.myCourses, href: '/courses' },
           { label: topic.course.title, href: `/courses/${courseId}` },
-          { label: f.title, href: `/courses/${courseId}/forum` },
+          ...(topic.group
+            ? [
+                { label: t.groups.list.courseTitle, href: `/courses/${courseId}/groups` },
+                { label: topic.group.name, href: `/groups/${topic.group.id}` },
+              ]
+            : [{ label: f.title, href: `/courses/${courseId}/forum` }]),
           { label: topic.title },
         ]}
       />
+      {topic.group ? (
+        <p className="text-sm text-slate-600" data-topic-group={topic.group.id}>
+          <Badge tone="brand">{t.forums.topic.groupBadge(topic.group.name)}</Badge>
+        </p>
+      ) : null}
+      {topic.group?.archived ? <Alert tone="info">{t.groups.workspace.archivedNotice}</Alert> : null}
       {topic.hidden ? <Alert tone="info">{p.hiddenNotice}</Alert> : null}
       {topic.locked ? <Alert tone="info">{p.lockedNotice}</Alert> : null}
       <Card as="article" aria-labelledby="topic-opening" className="space-y-3">

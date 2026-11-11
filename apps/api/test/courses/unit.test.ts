@@ -32,7 +32,7 @@ describe('course role permissions', () => {
     assert.deepEqual(granted('student'), ['assignment.submit', 'certificates.own', 'course.view', 'forum.participate', 'grades.viewOwn', 'messages.course', 'messages.direct', 'progress.own', 'quiz.attempt', 'tutor.use']);
     // AP-023: non-editing instructors read and export the gradebook but neither release grades nor configure weights.
     // AP-024: non-editing instructors keep grading (documented) and only read certificates.
-    assert.deepEqual(granted('non_editing_instructor'), [...staff, 'quiz.viewResults', ...grader, 'certificates.view', 'announcements.viewAll', 'calendar.viewAll', 'tutor.use', 'progress.viewAll', 'messages.direct', 'messages.course', 'forum.participate'].sort());
+    assert.deepEqual(granted('non_editing_instructor'), [...staff, 'quiz.viewResults', ...grader, 'certificates.view', 'announcements.viewAll', 'calendar.viewAll', 'tutor.use', 'progress.viewAll', 'messages.direct', 'messages.course', 'forum.participate', 'groups.view'].sort());
     assert.deepEqual(
       granted('instructor'),
       [
@@ -56,6 +56,8 @@ describe('course role permissions', () => {
         'messages.moderate',
         'forum.participate',
         'forum.moderate',
+        'groups.view',
+        'groups.manage',
       ].sort(),
     );
     // AP-026: only instructors moderate; the design team has no messaging at all.
@@ -65,6 +67,12 @@ describe('course role permissions', () => {
     for (const permission of ['forum.participate', 'forum.moderate'] as const) assert.equal(hasCoursePermission('design_team', permission), false);
     assert.equal(hasCoursePermission('non_editing_instructor', 'forum.moderate'), false);
     assert.equal(hasCoursePermission('student', 'forum.moderate'), false);
+    // AP-028: only instructors manage groups; students reach groups only through membership; no design-team access.
+    assert.equal(hasCoursePermission('non_editing_instructor', 'groups.manage'), false);
+    for (const permission of ['groups.view', 'groups.manage'] as const) {
+      assert.equal(hasCoursePermission('student', permission), false);
+      assert.equal(hasCoursePermission('design_team', permission), false);
+    }
     assert.equal(hasCoursePermission('non_editing_instructor', 'grades.release'), false);
     assert.equal(hasCoursePermission('non_editing_instructor', 'grades.configure'), false);
     assert.equal(hasCoursePermission('non_editing_instructor', 'certificates.manage'), false);

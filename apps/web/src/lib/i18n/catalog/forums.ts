@@ -39,6 +39,7 @@ const en = {
   },
   topic: {
     back: 'Back to the forum',
+    groupBadge: (name: string) => `Private to the group ${name}`,
     loading: 'Loading the topic…',
     notFoundTitle: 'Topic not available',
     notFound: 'This topic does not exist, was hidden by a moderator, or you do not have access to it.',
@@ -128,6 +129,7 @@ const es: ForumMessages = {
   },
   topic: {
     back: 'Volver al foro',
+    groupBadge: (name: string) => `Privado del grupo ${name}`,
     loading: 'Cargando el tema…',
     notFoundTitle: 'Tema no disponible',
     notFound: 'Este tema no existe, fue ocultado por un moderador o no tienes acceso a él.',

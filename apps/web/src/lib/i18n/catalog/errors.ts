@@ -128,6 +128,12 @@ const en = {
     EDIT_NOT_ALLOWED: 'This post can no longer be edited (it is hidden or already has replies).',
     EDIT_WINDOW_CLOSED: 'The time to edit this post has passed.',
     REPLY_NESTING_LIMIT: 'Replies to replies are one level deep: answer the original reply instead.',
+    IDEMPOTENCY_KEY_REUSED: 'This request was already used for another topic. Reload the page and try again.',
+    GROUPS_NOT_AVAILABLE: "Student groups are for the course's students, teaching staff and administrators.",
+    GROUP_DISCUSSIONS_NOT_AVAILABLE: "A group's discussions are for its members and the course's teaching staff.",
+    GROUP_ARCHIVED: 'This group is archived: it is read-only.',
+    GROUP_NAME_TAKEN: 'Another active group of this course already has this name.',
+    MEMBER_NOT_ELIGIBLE: "Only active students of the group's course can be added.",
   } as Record<string, string>,
 };
 
@@ -259,6 +265,12 @@ const es: ErrorMessages = {
     EDIT_NOT_ALLOWED: 'Esta publicación ya no se puede editar (está oculta o ya tiene respuestas).',
     EDIT_WINDOW_CLOSED: 'Ya pasó el tiempo para editar esta publicación.',
     REPLY_NESTING_LIMIT: 'Las respuestas a respuestas tienen un solo nivel: contesta la respuesta original.',
+    IDEMPOTENCY_KEY_REUSED: 'Esta solicitud ya se usó para otro tema. Recarga la página e inténtalo de nuevo.',
+    GROUPS_NOT_AVAILABLE: 'Los grupos de estudiantes son para los estudiantes, docentes y administradores del curso.',
+    GROUP_DISCUSSIONS_NOT_AVAILABLE: 'Los debates de un grupo son para sus miembros y los docentes del curso.',
+    GROUP_ARCHIVED: 'Este grupo está archivado: es de solo lectura.',
+    GROUP_NAME_TAKEN: 'Otro grupo activo de este curso ya tiene este nombre.',
+    MEMBER_NOT_ELIGIBLE: 'Solo se pueden agregar estudiantes activos del curso del grupo.',
   },
 };
 

@@ -99,6 +99,13 @@ import type {
   AdminCourseConversationList,
   LockResult,
   AdminForumCourseList,
+  AdminGroupOverview,
+  CourseGroupList,
+  GroupDetail,
+  GroupInput,
+  GroupMemberAddResult,
+  GroupUpdate,
+  MyGroupList,
   ForumPost,
   ForumPostAction,
   ForumPostPage,
@@ -407,6 +414,25 @@ export const api = {
   moderateForumPost: (postId: string, action: ForumPostAction, csrfToken: string) =>
     apiRequest<ForumPost>('POST', `/forum/posts/${encodeURIComponent(postId)}/moderation`, { body: { action }, csrfToken }),
   adminForumCourses: () => apiRequest<AdminForumCourseList>('GET', '/admin/forums/courses'),
+  markForumTopicRead: (topicId: string, csrfToken: string) => apiRequest<void>('PUT', `/forum/topics/${encodeURIComponent(topicId)}/read`, { csrfToken }),
+
+  // Student groups (AP-028): membership, access and every group rule are decided by the API.
+  courseGroups: (courseId: string) => apiRequest<CourseGroupList>('GET', `${course(courseId)}/groups`),
+  myGroups: () => apiRequest<MyGroupList>('GET', '/me/groups'),
+  createGroup: (courseId: string, body: GroupInput, csrfToken: string) => apiRequest<GroupDetail>('POST', `${course(courseId)}/groups`, { body, csrfToken }),
+  getGroup: (groupId: string) => apiRequest<GroupDetail>('GET', `/groups/${encodeURIComponent(groupId)}`),
+  updateGroup: (groupId: string, body: GroupUpdate, csrfToken: string) => apiRequest<GroupDetail>('PATCH', `/groups/${encodeURIComponent(groupId)}`, { body, csrfToken }),
+  addGroupMembers: (groupId: string, userIds: string[], csrfToken: string) =>
+    apiRequest<GroupMemberAddResult>('POST', `/groups/${encodeURIComponent(groupId)}/members`, { body: { userIds }, csrfToken }),
+  removeGroupMember: (groupId: string, userId: string, csrfToken: string) =>
+    apiRequest<{ removed: boolean }>('DELETE', `/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`, { csrfToken }),
+  setGroupArchived: (groupId: string, archived: boolean, csrfToken: string) =>
+    apiRequest<GroupDetail>('POST', `/groups/${encodeURIComponent(groupId)}/${archived ? 'archive' : 'restore'}`, { csrfToken }),
+  groupTopics: (groupId: string, filter: { cursor?: string | null; q?: string | null } = {}) =>
+    apiRequest<ForumTopicPage>('GET', `/groups/${encodeURIComponent(groupId)}/topics?${rangeParams({ limit: '20', cursor: filter.cursor, q: filter.q })}`),
+  createGroupTopic: (groupId: string, body: ForumTopicInput, csrfToken: string) =>
+    apiRequest<ForumTopic>('POST', `/groups/${encodeURIComponent(groupId)}/topics`, { body, csrfToken }),
+  adminGroups: () => apiRequest<AdminGroupOverview>('GET', '/admin/groups'),
 
   // Advanced gradebook (AP-023): every calculation and permission check happens in the API.
   getGradingPolicy: (courseId: string) => apiRequest<GradingPolicy>('GET', `${course(courseId)}/grading-policy`),

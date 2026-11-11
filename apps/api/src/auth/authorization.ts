@@ -70,7 +70,14 @@ export type CoursePermission =
    */
   | 'forum.participate'
   /** Pin, lock, hide and restore forum topics and replies (instructors only; administrators via the override). */
-  | 'forum.moderate';
+  | 'forum.moderate'
+  /**
+   * AP-028 student groups: see every group of the course, its members and (with `forum.participate`) its private
+   * discussions (instructors and non-editing instructors). Students see only the groups they belong to.
+   */
+  | 'groups.view'
+  /** Create, edit, archive and restore groups and change their members (instructors; administrators via the override). */
+  | 'groups.manage';
 
 /**
  * Course-level permissions per role. Default deny: a permission not listed here is not granted.
@@ -112,6 +119,8 @@ export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermi
     'messages.moderate',
     'forum.participate',
     'forum.moderate',
+    'groups.view',
+    'groups.manage',
   ]),
   // Non-editing instructors grade submissions (rubric scores and feedback; AP-009, documented in the API
   // contract) and read the gradebook and certificates, but never change content, release grades, change the
@@ -131,6 +140,8 @@ export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermi
     'messages.course',
     // AP-027: they take part in the course forum (topics and replies) but never pin, lock, hide or restore.
     'forum.participate',
+    // AP-028: they see the course's groups and take part in their discussions, but never change groups or members.
+    'groups.view',
   ]),
   student: new Set([
     'course.view',

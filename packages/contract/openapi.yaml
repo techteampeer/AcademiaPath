@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.20.0
+  version: 0.21.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -233,6 +233,19 @@ info:
     notify the topic's and the answered reply's authors, and announced instructor topics notify the course,
     as one in-app notification per person and topic, never with the text. Moderation is audited without
     text.
+
+    Student groups (0.21.0): instructors of a course (and administrators, as institutional control) create,
+    rename, archive and restore groups and add or remove the course's active students; non-editing instructors
+    see every group and take part in its discussions but never change groups; students see only the groups they
+    currently belong to. A student may belong to several groups. Memberships are never deleted: removing a
+    student closes the membership (history), and access is re-checked on every request, so it ends immediately
+    (as it does when the enrollment is revoked or the account deactivated). A group's private workspace holds
+    forum topics scoped to the group (`group`), visible only to its current members and the course's teaching
+    staff: never in the course-wide forum, its search or counts, and never to administrators, the design team
+    or program managers. Group topics follow every forum rule (ordering, editing, hiding, locking, rate limits);
+    an archived group is read-only history (moderation still works). New group topics notify the group's other
+    current members, and group notifications show only while the reader may still read the group. Every group
+    management change is audited without discussion text.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -269,6 +282,8 @@ tags:
     description: In-app notification center
   - name: Forums
     description: Course discussion forums (topics, threaded replies and moderation)
+  - name: Groups
+    description: Student groups and their private collaborative workspaces
   - name: Tutor
     description: Course-grounded tutor (local mock provider) and usage
   - name: Documents
@@ -5394,6 +5409,383 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /api/v1/courses/{id}/groups:
+    get:
+      operationId: listCourseGroups
+      summary: Groups of a course the caller may see
+      description: |
+        Instructors, non-editing instructors and administrators see every group (archived ones last); students see
+        only the groups they currently belong to (published course). `403 GROUPS_NOT_AVAILABLE` when the caller can
+        see the course but has no access to its groups (design team).
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseGroupList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createCourseGroup
+      summary: Create a group (instructors of the course, administrators)
+      description: Names are unique among the course's active groups, ignoring case (`409 GROUP_NAME_TAKEN`). Audited.
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupInput"
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/me/groups:
+    get:
+      operationId: listMyGroups
+      summary: The groups the caller currently belongs to
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyGroupList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/groups/{groupId}:
+    get:
+      operationId: getGroup
+      summary: A group's workspace overview
+      description: |
+        Members, recent discussions (only for callers who can read them), membership changes (teaching staff and
+        administrators) and students who can be added (managers). "Not found" for anyone who may not see the group.
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateGroup
+      summary: Rename a group or change its description (managers)
+      description: "`409 GROUP_ARCHIVED` for an archived group; `409 GROUP_NAME_TAKEN`. Audited."
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupUpdate"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/groups/{groupId}/members:
+    post:
+      operationId: addGroupMembers
+      summary: Add students to a group (managers)
+      description: |
+        Every id must be an active student of the group's course (`422 MEMBER_NOT_ELIGIBLE`, without saying which).
+        Students already in the group are left as they are (idempotent). Membership changes of one group are
+        serialized. Each addition is audited.
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupMemberInput"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupMemberAddResult"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/groups/{groupId}/members/{userId}:
+    delete:
+      operationId: removeGroupMember
+      summary: Remove a student from a group (managers)
+      description: |
+        Closes the membership (kept as history); the student's access to the group's discussions and their
+        notifications ends immediately. Idempotent (`removed: false` when they were not a member). Audited.
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupMemberRemoveResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/groups/{groupId}/archive:
+    post:
+      operationId: archiveGroup
+      summary: Archive a group (managers)
+      description: |
+        The group, its members and discussions are kept as read-only history: no new topics, replies, edits or
+        membership changes (moderation still works). Idempotent; audited.
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/groups/{groupId}/restore:
+    post:
+      operationId: restoreGroup
+      summary: Restore an archived group (managers)
+      description: "`409 GROUP_NAME_TAKEN` when an active group of the course now has its name. Idempotent; audited."
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/groups/{groupId}/topics:
+    get:
+      operationId: listGroupTopics
+      summary: A group's discussion topics
+      description: |
+        The group's current members and the course's teaching staff (published course). `403
+        GROUP_DISCUSSIONS_NOT_AVAILABLE` for administrators (they manage groups but never read their discussions).
+        Same ordering, pagination, search and hidden rules as the course forum.
+      tags: [Groups, Forums]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 500
+        - name: q
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopicPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createGroupTopic
+      summary: Start a topic in a group's workspace
+      description: |
+        Current members and teaching staff; `409 GROUP_ARCHIVED` in an archived group. The group's other current
+        members are notified (`announce` is ignored). Same retry and rate-limit rules as course topics.
+      tags: [Groups, Forums]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForumTopicInput"
+      responses:
+        "200":
+          description: The topic of an earlier attempt with the same clientRequestId.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopic"
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopic"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/forum/topics/{topicId}/read:
+    put:
+      operationId: markForumTopicRead
+      summary: Mark the caller's notification about a topic as read
+      description: Clears the topic's unread indicator for the caller (course forum and group topics alike).
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/TopicId"
+      responses:
+        "204":
+          description: Done (no content).
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/admin/groups:
+    get:
+      operationId: listGroupOverviewAdmin
+      summary: Group organization per published course (administrators; counts only)
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminGroupOverview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 components:
   parameters:
     Limit:
@@ -5532,6 +5924,13 @@ components:
       schema:
         type: string
         format: uuid
+    GroupId:
+      name: groupId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     CertificateId:
       name: certificateId
       in: path
@@ -5613,7 +6012,7 @@ components:
             detail: Invalid email or password.
             code: INVALID_CREDENTIALS
     Forbidden:
-      description: "`code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks), `FEEDBACK_NOT_AVAILABLE` (correctness review not enabled or not yet released) `MESSAGING_NOT_AVAILABLE` (messaging is for the students and teaching staff of a published course) or `FORUM_NOT_AVAILABLE` (the course forum is for the students and teaching staff of a published course)."
+      description: "`code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks), `FEEDBACK_NOT_AVAILABLE` (correctness review not enabled or not yet released) `MESSAGING_NOT_AVAILABLE` (messaging is for the students and teaching staff of a published course) `FORUM_NOT_AVAILABLE` (the course forum is for the students and teaching staff of a published course), `GROUPS_NOT_AVAILABLE` (student groups are for the course's students, teaching staff and administrators) or `GROUP_DISCUSSIONS_NOT_AVAILABLE` (a group's discussions are for its members and the course's teaching staff)."
       content:
         application/problem+json:
           schema:
@@ -5698,7 +6097,7 @@ components:
         announcement or calendar rule: `ANNOUNCEMENT_ARCHIVED`, `ANNOUNCEMENT_NOT_SCHEDULED`, `EVENT_CANCELLED`,
         `EVENT_WAS_PUBLISHED`; or a messaging rule: `CONVERSATION_LOCKED`, `RECIPIENT_UNAVAILABLE`; or a forum
         rule: `TOPIC_LOCKED`, `TOPIC_HIDDEN`, `POST_HIDDEN`, `EDIT_NOT_ALLOWED` (hidden, or already answered),
-        `EDIT_WINDOW_CLOSED`.
+        `EDIT_WINDOW_CLOSED`, `IDEMPOTENCY_KEY_REUSED`; or a group rule: `GROUP_ARCHIVED`, `GROUP_NAME_TAKEN`.
       content:
         application/problem+json:
           schema:
@@ -5731,7 +6130,8 @@ components:
         `CERTIFICATE_POLICY_INVALID` or `CERTIFICATE_NOT_ELIGIBLE`; or an announcement or calendar rule:
         `PUBLISH_AT_INVALID`, `EVENT_TIME_INVALID`, `INVALID_TIME_ZONE` or `RANGE_INVALID`; or
         `RECIPIENT_NOT_ALLOWED` (a direct conversation that is not between a student and the course's teaching
-        staff); or `REPLY_NESTING_LIMIT` (a forum reply to a reply to a reply).
+        staff); or `REPLY_NESTING_LIMIT` (a forum reply to a reply to a reply); or `MEMBER_NOT_ELIGIBLE` (only
+        active students of the group's course can join it).
       content:
         application/problem+json:
           schema:
@@ -10244,7 +10644,7 @@ components:
           description: |
             Display values the recipient may see: `senderName`, `courseCode`, `title` (announcements),
             `activityTitle` (grades), `courseTitle` (certificates), `topicTitle`, `authorName` and `postId`
-            (forums). Never message or post text, or grade values.
+            (forums), `groupName` (group discussions). Never message or post text, or grade values.
         link:
           type: string
           description: Application path of the destination (which checks access again).
@@ -10297,7 +10697,7 @@ components:
           format: date-time
     ForumTopicSummary:
       type: object
-      required: [id, title, excerpt, author, mine, pinned, locked, hidden, replyCount, lastReply, lastActivityAt, createdAt, editedAt]
+      required: [id, title, group, excerpt, author, mine, pinned, locked, hidden, replyCount, lastReply, lastActivityAt, createdAt, editedAt]
       additionalProperties: false
       properties:
         id:
@@ -10305,6 +10705,8 @@ components:
           format: uuid
         title:
           type: string
+        group:
+          $ref: "#/components/schemas/ForumGroupRef"
         excerpt:
           type: string
           description: The start of the topic's text (plain text).
@@ -10351,7 +10753,7 @@ components:
           type: [string, "null"]
     ForumTopic:
       type: object
-      required: [id, title, excerpt, author, mine, pinned, locked, hidden, replyCount, lastReply, lastActivityAt, createdAt, editedAt, course, body, canReply, canEdit, canModerate, editableUntil]
+      required: [id, title, group, excerpt, author, mine, pinned, locked, hidden, replyCount, lastReply, lastActivityAt, createdAt, editedAt, course, body, canReply, canEdit, canModerate, editableUntil]
       additionalProperties: false
       properties:
         id:
@@ -10359,6 +10761,8 @@ components:
           format: uuid
         title:
           type: string
+        group:
+          $ref: "#/components/schemas/ForumGroupRef"
         excerpt:
           type: string
         author:
@@ -10604,3 +11008,269 @@ components:
               lastActivityAt:
                 type: [string, "null"]
                 format: date-time
+    ForumGroupRef:
+      type: [object, "null"]
+      required: [id, name, archived]
+      additionalProperties: false
+      description: The student group whose private workspace holds the topic; null for a course-wide topic.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        archived:
+          type: boolean
+    GroupPersonRef:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    GroupSummary:
+      type: object
+      required: [id, course, name, description, archived, isMember, memberCount, topicCount, lastActivityAt, unreadCount, createdAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        course:
+          $ref: "#/components/schemas/CourseRef"
+        name:
+          type: string
+        description:
+          type: [string, "null"]
+        archived:
+          type: boolean
+        isMember:
+          type: boolean
+        memberCount:
+          type: integer
+          minimum: 0
+          description: Current members (open membership, active student enrollment, active account).
+        topicCount:
+          type: integer
+          minimum: 0
+          description: Discussions the caller may see (hidden topics only for moderators).
+        lastActivityAt:
+          type: [string, "null"]
+          format: date-time
+        unreadCount:
+          type: integer
+          minimum: 0
+          description: The caller's unread notifications about this group's discussions.
+        createdAt:
+          type: string
+          format: date-time
+    CourseGroupList:
+      type: object
+      required: [course, viewer, items]
+      additionalProperties: false
+      properties:
+        course:
+          $ref: "#/components/schemas/CourseRef"
+        viewer:
+          type: object
+          required: [role, canManage, canViewAll]
+          additionalProperties: false
+          properties:
+            role:
+              type: [string, "null"]
+              enum: [design_team, instructor, non_editing_instructor, student, null]
+            canManage:
+              type: boolean
+            canViewAll:
+              type: boolean
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupSummary"
+    MyGroupList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupSummary"
+    GroupDetail:
+      type: object
+      required: [group, viewer, members, recentTopics, membershipChanges, candidates]
+      additionalProperties: false
+      properties:
+        group:
+          $ref: "#/components/schemas/GroupSummary"
+        viewer:
+          type: object
+          required: [role, isMember, canManage, canRead, canPost, canModerate]
+          additionalProperties: false
+          properties:
+            role:
+              type: [string, "null"]
+              enum: [design_team, instructor, non_editing_instructor, student, null]
+            isMember:
+              type: boolean
+            canManage:
+              type: boolean
+            canRead:
+              type: boolean
+              description: Can read the group's discussions (members and teaching staff; never administrators by that role).
+            canPost:
+              type: boolean
+            canModerate:
+              type: boolean
+        members:
+          type: array
+          items:
+            type: object
+            required: [id, name, addedAt]
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              addedAt:
+                type: string
+                format: date-time
+        recentTopics:
+          type: array
+          description: Latest discussion activity; empty for callers who cannot read the group's discussions.
+          items:
+            type: object
+            required: [id, title, replyCount, lastActivityAt, pinned, locked]
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+                format: uuid
+              title:
+                type: string
+              replyCount:
+                type: integer
+                minimum: 0
+              lastActivityAt:
+                type: string
+                format: date-time
+              pinned:
+                type: boolean
+              locked:
+                type: boolean
+        membershipChanges:
+          type: array
+          description: Teaching staff and administrators only (empty for students).
+          items:
+            type: object
+            required: [kind, person, actor, at]
+            additionalProperties: false
+            properties:
+              kind:
+                type: string
+                enum: [group_created, member_added, member_removed, group_archived]
+              person:
+                oneOf:
+                  - $ref: "#/components/schemas/GroupPersonRef"
+                  - type: "null"
+              actor:
+                oneOf:
+                  - $ref: "#/components/schemas/GroupPersonRef"
+                  - type: "null"
+              at:
+                type: string
+                format: date-time
+        candidates:
+          type: array
+          description: Active students of the course who can be added (managers of an active group only).
+          items:
+            $ref: "#/components/schemas/GroupPersonRef"
+    GroupInput:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: \S
+        description:
+          type: [string, "null"]
+          maxLength: 1000
+    GroupUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: \S
+        description:
+          type: [string, "null"]
+          maxLength: 1000
+    GroupMemberInput:
+      type: object
+      required: [userIds]
+      additionalProperties: false
+      properties:
+        userIds:
+          type: array
+          minItems: 1
+          maxItems: 50
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+    GroupMemberAddResult:
+      type: object
+      required: [added, alreadyMembers]
+      additionalProperties: false
+      properties:
+        added:
+          type: integer
+          minimum: 0
+        alreadyMembers:
+          type: integer
+          minimum: 0
+    GroupMemberRemoveResult:
+      type: object
+      required: [removed]
+      additionalProperties: false
+      properties:
+        removed:
+          type: boolean
+    AdminGroupOverview:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [course, activeGroups, archivedGroups, memberships, studentsWithoutGroup]
+            additionalProperties: false
+            properties:
+              course:
+                $ref: "#/components/schemas/CourseRef"
+              activeGroups:
+                type: integer
+                minimum: 0
+              archivedGroups:
+                type: integer
+                minimum: 0
+              memberships:
+                type: integer
+                minimum: 0
+                description: Open memberships in active groups.
+              studentsWithoutGroup:
+                type: integer
+                minimum: 0

@@ -225,6 +225,20 @@
       "when": 1794378900411,
       "tag": "0031_forum_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794393117098,
+      "tag": "0032_student_groups",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794393139848,
+      "tag": "0033_student_group_integrity",
+      "breakpoints": true
     }
   ]
 }

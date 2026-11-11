@@ -13,6 +13,10 @@
  *   restore topics; hide and restore replies. Every change is audited without any text. Hidden topics and
  *   replies (and replies to a hidden reply) are visible only to moderators: they are left out of lists,
  *   counts, previews, search and notifications, and a direct request for one is "not found".
+ * - AP-028 group topics (`group_id`): a topic of a student group's private workspace. It exists only for the
+ *   group's current members and the course's teaching staff (re-checked on every request, under a share lock
+ *   for writes); it never appears in the course-wide forum, its search, counts or the administrators' overview.
+ *   An archived group's discussions are read-only (moderation still works). Hidden and locked behave as above.
  */
 import { and, asc, count, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
@@ -20,7 +24,8 @@ import { recordAudit } from '../audit.js';
 import { getAuth } from '../auth/hooks.js';
 import type { SafeUser } from '../auth/types.js';
 import type { Database } from '../db/client.js';
-import { courses, enrollments, forumPosts, forumTopics, notifications, users } from '../db/schema/index.js';
+import { courses, enrollments, forumPosts, forumTopics, notifications, studentGroupMembers as studentGroupMembersTable, studentGroups, users } from '../db/schema/index.js';
+import { forumGroupAccess, groupContext, type GroupRecord } from '../groups/access.js';
 import { FORUM_ROLES, forumRole, forumViewer, visiblePost, type ForumViewer } from '../forums/access.js';
 import { ApiProblem, sendError } from '../http/errors.js';
 import { decodeCursor, encodeCursor } from '../http/pagination.js';
@@ -43,6 +48,7 @@ import {
   topicUpdateSchema,
 } from './forum-schemas.js';
 import { courseParamsSchema } from './grading-schemas.js';
+import { groupParamsSchema } from './group-schemas.js';
 
 type TopicRecord = typeof forumTopics.$inferSelect;
 type PostRecord = typeof forumPosts.$inferSelect;
@@ -50,6 +56,7 @@ type Reader = Pick<Database, 'select' | 'selectDistinctOn'>;
 type Writer = Reader & Pick<Database, 'insert' | 'update' | 'execute'>;
 type PostRow = { post: PostRecord; authorName: string; authorRole: string | null; childCount: number };
 type TopicAction = 'pin' | 'unpin' | 'lock' | 'unlock' | 'hide' | 'restore';
+type TopicQuery = { limit: number; cursor?: string; q?: string };
 
 const EXCERPT_LENGTH = 160;
 const fullName = sql<string>`${users.givenName} || ' ' || ${users.familyName}`;
@@ -58,6 +65,9 @@ const postNotFound = () => new ApiProblem(404, 'NOT_FOUND', 'Reply not found.');
 const forbidden = (detail: string) => new ApiProblem(403, 'FORBIDDEN', detail);
 const notPosting = () => forbidden('Administrators moderate course forums but do not post in them.');
 const notModerator = () => forbidden('Only instructors of this course and administrators can moderate its forum.');
+const groupNotFound = () => new ApiProblem(404, 'NOT_FOUND', 'Group not found.');
+const groupArchived = () => new ApiProblem(409, 'GROUP_ARCHIVED', 'This group is archived: its discussions are read-only.');
+const reusedRequest = () => new ApiProblem(409, 'IDEMPOTENCY_KEY_REUSED', 'This client request id was already used for another topic.');
 /** One notification per person and topic: later replies refresh it instead of adding another. */
 const topicKey = (topicId: string) => `forum:${topicId}`;
 const likePattern = (value: string) => `%${value.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -107,15 +117,39 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
     const viewer = await forumViewer(reader, user, topic.courseId);
     if (typeof viewer === 'string') throw topicNotFound();
     if (topic.hiddenAt && !viewer.canModerate) throw topicNotFound();
-    return { topic, viewer };
+    let group: GroupRecord | null = null;
+    if (topic.groupId) {
+      // AP-028: lock order topic → group → membership (membership changes lock the group first), so a write
+      // here and a concurrent removal or archive are serialized without deadlocks.
+      const groupQuery = reader.select().from(studentGroups).where(eq(studentGroups.id, topic.groupId));
+      const [found] = lock ? await groupQuery.for('share') : await groupQuery;
+      if (!found || !(await forumGroupAccess(reader, viewer, topic.groupId, Boolean(lock)))) throw topicNotFound();
+      group = found;
+    }
+    return { topic, viewer, group };
+  }
+
+  /** A group's discussions and the caller's forum standing in them (AP-028). */
+  async function groupForum(reader: Reader, user: SafeUser, groupId: string, lock = false) {
+    const query = reader.select().from(studentGroups).where(eq(studentGroups.id, groupId));
+    const [group] = lock ? await query.for('share') : await query;
+    if (!group) throw groupNotFound();
+    const ctx = await groupContext(reader, user, group, lock);
+    if (!ctx) throw groupNotFound();
+    const viewer = ctx.canRead ? await forumViewer(reader, user, group.courseId) : null;
+    if (!viewer || typeof viewer === 'string') {
+      throw new ApiProblem(403, 'GROUP_DISCUSSIONS_NOT_AVAILABLE', "A group's discussions are for its members and the course's teaching staff, in a published course.");
+    }
+    return { group, ctx, viewer };
   }
 
   /** Whether the caller may edit one of their posts now, and the problem to report when not. */
-  function editCheck(post: { authorUserId: string; createdAt: Date; hidden: boolean; hasReplies: boolean }, topic: TopicRecord, viewer: ForumViewer) {
+  function editCheck(post: { authorUserId: string; createdAt: Date; hidden: boolean; hasReplies: boolean }, topic: TopicRecord, viewer: ForumViewer, group: GroupRecord | null) {
     const minutes = config.forumEditWindowMinutes;
     const until = new Date(post.createdAt.getTime() + minutes * 60_000);
     let problem: ApiProblem | null = null;
     if (post.authorUserId !== viewer.userId || !viewer.canPost) problem = forbidden('Only its author can edit a post.');
+    else if (group?.archivedAt) problem = groupArchived();
     else if (post.hidden || topic.hiddenAt) problem = new ApiProblem(409, 'EDIT_NOT_ALLOWED', 'A hidden post cannot be edited.');
     else if (topic.lockedAt) problem = new ApiProblem(409, 'TOPIC_LOCKED', 'This topic is locked; its posts can no longer be edited.');
     else if (post.hasReplies) problem = new ApiProblem(409, 'EDIT_NOT_ALLOWED', 'A post that already has replies can no longer be edited.');
@@ -149,12 +183,18 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
       .where(and(inArray(forumPosts.topicId, ids), visible))
       .orderBy(forumPosts.topicId, desc(forumPosts.postNumber));
     const lastBy = new Map(lasts.map((l) => [l.topicId, l]));
+    const groupIds = [...new Set(topics.map((t) => t.groupId).filter((id): id is string => id !== null))];
+    const groupRows = groupIds.length
+      ? await reader.select({ id: studentGroups.id, name: studentGroups.name, archivedAt: studentGroups.archivedAt }).from(studentGroups).where(inArray(studentGroups.id, groupIds))
+      : [];
+    const groupBy = new Map(groupRows.map((g) => [g.id, { id: g.id, name: g.name, archived: g.archivedAt !== null }]));
     return topics.map((topic) => {
       const author = authorBy.get(topic.authorUserId);
       const last = lastBy.get(topic.id);
       return {
         id: topic.id,
         title: topic.title,
+        group: topic.groupId ? groupBy.get(topic.groupId) ?? null : null,
         excerpt: excerpt(topic.body),
         author: { id: topic.authorUserId, name: author?.name ?? '', role: forumRole(author?.role) },
         mine: topic.authorUserId === viewer.userId,
@@ -170,14 +210,14 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
     });
   }
 
-  async function topicView(reader: Reader, viewer: ForumViewer, topic: TopicRecord) {
+  async function topicView(reader: Reader, viewer: ForumViewer, topic: TopicRecord, group: GroupRecord | null) {
     const [summary] = await topicSummaries(reader, viewer, [topic]);
-    const edit = editCheck({ authorUserId: topic.authorUserId, createdAt: topic.createdAt, hidden: false, hasReplies: topic.lastPostNumber > 0 }, topic, viewer);
+    const edit = editCheck({ authorUserId: topic.authorUserId, createdAt: topic.createdAt, hidden: false, hasReplies: topic.lastPostNumber > 0 }, topic, viewer, group);
     return {
       ...summary!,
       course: { id: viewer.course.id, title: viewer.course.title, code: viewer.course.code },
       body: topic.body,
-      canReply: viewer.canPost && !topic.hiddenAt && (!topic.lockedAt || viewer.canModerate),
+      canReply: viewer.canPost && !topic.hiddenAt && !group?.archivedAt && (!topic.lockedAt || viewer.canModerate),
       canEdit: edit.canEdit,
       canModerate: viewer.canModerate,
       editableUntil: edit.until,
@@ -197,9 +237,9 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
       .leftJoin(enrollments, and(eq(enrollments.userId, forumPosts.authorUserId), eq(enrollments.courseId, forumPosts.courseId)));
   }
 
-  function postView(row: PostRow, topic: TopicRecord, viewer: ForumViewer) {
+  function postView(row: PostRow, topic: TopicRecord, viewer: ForumViewer, group: GroupRecord | null) {
     const { post } = row;
-    const edit = editCheck({ authorUserId: post.authorUserId, createdAt: post.createdAt, hidden: post.hiddenAt !== null, hasReplies: row.childCount > 0 }, topic, viewer);
+    const edit = editCheck({ authorUserId: post.authorUserId, createdAt: post.createdAt, hidden: post.hiddenAt !== null, hasReplies: row.childCount > 0 }, topic, viewer, group);
     return {
       id: post.id,
       number: post.postNumber,
@@ -220,13 +260,13 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
     const [found] = await tx.select({ topicId: forumPosts.topicId }).from(forumPosts).where(eq(forumPosts.id, postId));
     if (!found) throw postNotFound();
     // Topic before reply: the same lock order as posting a reply.
-    const { topic, viewer } = await topicContext(tx, user, found.topicId, 'update');
+    const { topic, viewer, group } = await topicContext(tx, user, found.topicId, 'update');
     const [row] = await postRows(tx).where(eq(forumPosts.id, postId)).for('update', { of: forumPosts });
     if (!row) throw postNotFound();
     const [parent] = row.post.parentPostId ? await tx.select().from(forumPosts).where(eq(forumPosts.id, row.post.parentPostId)) : [];
     const visible = row.post.hiddenAt === null && !parent?.hiddenAt;
     if (!visible && !viewer.canModerate) throw postNotFound();
-    return { topic, viewer, row };
+    return { topic, viewer, row, group };
   }
 
   /** Counted in PostgreSQL across topics and replies, so the limit holds across API instances. */
@@ -244,14 +284,31 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
     return row && row.n >= max ? Math.max(1, row.retry ?? 60) : null;
   }
 
-  /** Of these people, those who can currently read the course forum (active account and enrollment). */
-  async function forumParticipants(tx: Writer, courseId: string, userIds: string[]) {
+  /**
+   * Of these people, those who can currently read the course forum (active account and enrollment) and, for a
+   * group topic, the group's discussions (teaching staff, or a current member).
+   */
+  async function forumParticipants(tx: Writer, courseId: string, userIds: string[], groupId: string | null = null) {
     if (!userIds.length) return [];
     const rows = await tx
       .select({ id: users.id })
       .from(enrollments)
       .innerJoin(users, eq(users.id, enrollments.userId))
-      .where(and(eq(enrollments.courseId, courseId), eq(enrollments.status, 'active'), eq(users.isActive, true), inArray(enrollments.role, [...FORUM_ROLES]), inArray(users.id, userIds)));
+      .where(
+        and(
+          eq(enrollments.courseId, courseId),
+          eq(enrollments.status, 'active'),
+          eq(users.isActive, true),
+          inArray(enrollments.role, [...FORUM_ROLES]),
+          inArray(users.id, userIds),
+          groupId
+            ? or(
+                inArray(enrollments.role, ['instructor', 'non_editing_instructor']),
+                sql`EXISTS (SELECT 1 FROM ${studentGroupMembersTable} gm WHERE gm.group_id = ${groupId} AND gm.user_id = ${users.id} AND gm.removed_at IS NULL)`,
+              )
+            : undefined,
+        ),
+      );
     return rows.map((row) => row.id);
   }
 
@@ -274,47 +331,52 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
 
   // ---- Topics ----
 
-  app.get<{ Params: { id: string }; Querystring: { limit: number; cursor?: string; q?: string } }>(
+  /**
+   * One page of a forum's topics: the course-wide topics (`groupId` null) or one group's topics. Pinned first,
+   * then latest activity; `q` searches titles, texts and the replies the viewer may see.
+   */
+  async function listTopics(viewer: ForumViewer, groupId: string | null, query: TopicQuery) {
+    const { limit } = query;
+    const cursor = decodeTopicCursor(query.cursor);
+    const q = query.q?.trim();
+    const pattern = q ? likePattern(q) : null;
+    const rank = sql<number>`(CASE WHEN ${forumTopics.pinnedAt} IS NULL THEN 0 ELSE 1 END)`;
+    const replyVisible = viewer.canModerate ? sql`` : sql`AND sp.hidden_at IS NULL AND spp.hidden_at IS NULL`;
+    const rows = await db
+      .select({ topic: forumTopics, rank, activity: sql<string>`${forumTopics.lastActivityAt}::text` })
+      .from(forumTopics)
+      .where(
+        and(
+          eq(forumTopics.courseId, viewer.course.id),
+          groupId ? eq(forumTopics.groupId, groupId) : isNull(forumTopics.groupId),
+          viewer.canModerate ? undefined : isNull(forumTopics.hiddenAt),
+          pattern
+            ? or(
+                sql`lower(${forumTopics.title}) LIKE ${pattern}`,
+                sql`lower(${forumTopics.body}) LIKE ${pattern}`,
+                sql`EXISTS (SELECT 1 FROM ${forumPosts} sp LEFT JOIN ${forumPosts} spp ON spp.id = sp.parent_post_id
+                    WHERE sp.topic_id = ${forumTopics.id} AND lower(sp.body) LIKE ${pattern} ${replyVisible})`,
+              )
+            : undefined,
+          cursor ? sql`(${rank}, ${forumTopics.lastActivityAt}, ${forumTopics.id}) < (${cursor.rank}, ${cursor.activity}::timestamptz, ${cursor.id}::uuid)` : undefined,
+        ),
+      )
+      .orderBy(desc(rank), desc(forumTopics.lastActivityAt), desc(forumTopics.id))
+      .limit(limit + 1);
+    const page = rows.slice(0, limit);
+    const last = page.at(-1);
+    return {
+      course: { id: viewer.course.id, title: viewer.course.title, code: viewer.course.code },
+      viewer: { role: viewer.role, canPost: viewer.canPost, canModerate: viewer.canModerate },
+      items: await topicSummaries(db, viewer, page.map((row) => row.topic)),
+      nextCursor: rows.length > limit && last ? encodeCursor(`${last.rank}|${last.activity}`, last.topic.id) : null,
+    };
+  }
+
+  app.get<{ Params: { id: string }; Querystring: TopicQuery }>(
     '/courses/:id/forum/topics',
     { ...authenticated, schema: { params: courseParamsSchema, querystring: topicListQuerySchema, response: { 200: topicPageSchema } } },
-    async (request) => {
-      const { user } = getAuth(request);
-      const viewer = await courseViewer(db, user, request.params.id);
-      const { limit } = request.query;
-      const cursor = decodeTopicCursor(request.query.cursor);
-      const q = request.query.q?.trim();
-      const pattern = q ? likePattern(q) : null;
-      const rank = sql<number>`(CASE WHEN ${forumTopics.pinnedAt} IS NULL THEN 0 ELSE 1 END)`;
-      const replyVisible = viewer.canModerate ? sql`` : sql`AND sp.hidden_at IS NULL AND spp.hidden_at IS NULL`;
-      const rows = await db
-        .select({ topic: forumTopics, rank, activity: sql<string>`${forumTopics.lastActivityAt}::text` })
-        .from(forumTopics)
-        .where(
-          and(
-            eq(forumTopics.courseId, viewer.course.id),
-            viewer.canModerate ? undefined : isNull(forumTopics.hiddenAt),
-            pattern
-              ? or(
-                  sql`lower(${forumTopics.title}) LIKE ${pattern}`,
-                  sql`lower(${forumTopics.body}) LIKE ${pattern}`,
-                  sql`EXISTS (SELECT 1 FROM ${forumPosts} sp LEFT JOIN ${forumPosts} spp ON spp.id = sp.parent_post_id
-                      WHERE sp.topic_id = ${forumTopics.id} AND lower(sp.body) LIKE ${pattern} ${replyVisible})`,
-                )
-              : undefined,
-            cursor ? sql`(${rank}, ${forumTopics.lastActivityAt}, ${forumTopics.id}) < (${cursor.rank}, ${cursor.activity}::timestamptz, ${cursor.id}::uuid)` : undefined,
-          ),
-        )
-        .orderBy(desc(rank), desc(forumTopics.lastActivityAt), desc(forumTopics.id))
-        .limit(limit + 1);
-      const page = rows.slice(0, limit);
-      const last = page.at(-1);
-      return {
-        course: { id: viewer.course.id, title: viewer.course.title, code: viewer.course.code },
-        viewer: { role: viewer.role, canPost: viewer.canPost, canModerate: viewer.canModerate },
-        items: await topicSummaries(db, viewer, page.map((row) => row.topic)),
-        nextCursor: rows.length > limit && last ? encodeCursor(`${last.rank}|${last.activity}`, last.topic.id) : null,
-      };
-    },
+    async (request) => listTopics(await courseViewer(db, getAuth(request).user, request.params.id), null, request.query),
   );
 
   app.post<{ Params: { id: string }; Body: { title: string; body: string; clientRequestId: string; announce: boolean } }>(
@@ -333,6 +395,7 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
           .from(forumTopics)
           .where(and(eq(forumTopics.courseId, viewer.course.id), eq(forumTopics.authorUserId, user.id), eq(forumTopics.clientRequestId, input.clientRequestId)));
         if (existing) {
+          if (existing.groupId) throw reusedRequest();
           // A retry of a topic that was hidden since: like any hidden topic, it does not exist for participants.
           if (existing.hiddenAt && !viewer.canModerate) throw topicNotFound();
           return { kind: 'existing' as const, topic: existing, viewer };
@@ -363,7 +426,68 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
         reply.header('retry-after', String(outcome.retryAfter));
         return sendError(reply, 429, 'RATE_LIMITED', 'Too many forum posts. Try again in a moment.');
       }
-      return reply.code(outcome.kind === 'created' ? 201 : 200).send(await topicView(db, outcome.viewer, outcome.topic));
+      return reply.code(outcome.kind === 'created' ? 201 : 200).send(await topicView(db, outcome.viewer, outcome.topic, null));
+    },
+  );
+
+  // ---- Group discussions (AP-028): the same topics, scoped to one group ----
+
+  app.get<{ Params: { groupId: string }; Querystring: TopicQuery }>(
+    '/groups/:groupId/topics',
+    { ...authenticated, schema: { params: groupParamsSchema, querystring: topicListQuerySchema, response: { 200: topicPageSchema } } },
+    async (request) => {
+      const { group, ctx, viewer } = await groupForum(db, getAuth(request).user, request.params.groupId);
+      const page = await listTopics(viewer, group.id, request.query);
+      return { ...page, viewer: { ...page.viewer, canPost: ctx.canPost } };
+    },
+  );
+
+  /** Members and teaching staff start group topics; the group's other current members are notified. */
+  app.post<{ Params: { groupId: string }; Body: { title: string; body: string; clientRequestId: string; announce: boolean } }>(
+    '/groups/:groupId/topics',
+    { ...authenticatedWrite, schema: { params: groupParamsSchema, body: topicInputSchema, response: { 200: topicSchema, 201: topicSchema } } },
+    async (request, reply) => {
+      const { user } = getAuth(request);
+      const input = request.body;
+      const outcome = await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`forum-author:${user.id}`}, 0))`);
+        const { group, ctx, viewer } = await groupForum(tx, user, request.params.groupId, true);
+        if (!viewer.canPost) throw notPosting();
+        const [existing] = await tx
+          .select()
+          .from(forumTopics)
+          .where(and(eq(forumTopics.courseId, group.courseId), eq(forumTopics.authorUserId, user.id), eq(forumTopics.clientRequestId, input.clientRequestId)));
+        if (existing) {
+          if (existing.groupId !== group.id) throw reusedRequest();
+          if (existing.hiddenAt && !viewer.canModerate) throw topicNotFound();
+          return { kind: 'existing' as const, topic: existing, viewer, group };
+        }
+        if (!ctx.canPost) throw groupArchived();
+        const retryAfter = await rateLimited(tx, user.id);
+        if (retryAfter) return { kind: 'limited' as const, retryAfter };
+        const [topic] = await tx
+          .insert(forumTopics)
+          .values({ courseId: group.courseId, groupId: group.id, authorUserId: user.id, title: input.title.trim(), body: input.body.trim(), clientRequestId: input.clientRequestId })
+          .returning();
+        if (!topic) throw new Error('Topic was not recorded');
+        const members = await tx
+          .select({ id: studentGroupMembersTable.userId })
+          .from(studentGroupMembersTable)
+          .innerJoin(enrollments, and(eq(enrollments.courseId, studentGroupMembersTable.courseId), eq(enrollments.userId, studentGroupMembersTable.userId)))
+          .innerJoin(users, eq(users.id, studentGroupMembersTable.userId))
+          .where(and(eq(studentGroupMembersTable.groupId, group.id), isNull(studentGroupMembersTable.removedAt), eq(enrollments.status, 'active'), eq(enrollments.role, 'student'), eq(users.isActive, true)));
+        await notifyUsers(
+          tx,
+          members.map((m) => m.id).filter((id) => id !== user.id),
+          { type: 'forum_topic', courseId: group.courseId, entityId: topic.id, dedupeKey: topicKey(topic.id), data: { topicTitle: topic.title, authorName: nameOf(user), courseCode: viewer.course.code, groupName: group.name }, at: app.now() },
+        );
+        return { kind: 'created' as const, topic, viewer, group };
+      });
+      if (outcome.kind === 'limited') {
+        reply.header('retry-after', String(outcome.retryAfter));
+        return sendError(reply, 429, 'RATE_LIMITED', 'Too many forum posts. Try again in a moment.');
+      }
+      return reply.code(outcome.kind === 'created' ? 201 : 200).send(await topicView(db, outcome.viewer, outcome.topic, outcome.group));
     },
   );
 
@@ -371,8 +495,23 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
     '/forum/topics/:topicId',
     { ...authenticated, schema: { params: topicParamsSchema, response: { 200: topicSchema } } },
     async (request) => {
-      const { topic, viewer } = await topicContext(db, getAuth(request).user, request.params.topicId);
-      return topicView(db, viewer, topic);
+      const { topic, viewer, group } = await topicContext(db, getAuth(request).user, request.params.topicId);
+      return topicView(db, viewer, topic, group);
+    },
+  );
+
+  /** Marks the caller's notification about this topic as read (opening a topic clears its unread indicator). */
+  app.put<{ Params: { topicId: string } }>(
+    '/forum/topics/:topicId/read',
+    { ...authenticatedWrite, schema: { params: topicParamsSchema } },
+    async (request, reply) => {
+      const { user } = getAuth(request);
+      const { topic } = await topicContext(db, user, request.params.topicId);
+      await db
+        .update(notifications)
+        .set({ readAt: app.now() })
+        .where(and(eq(notifications.userId, user.id), eq(notifications.dedupeKey, topicKey(topic.id)), isNull(notifications.readAt)));
+      return reply.code(204).send();
     },
   );
 
@@ -382,14 +521,14 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const { user } = getAuth(request);
       return db.transaction(async (tx) => {
-        const { topic, viewer } = await topicContext(tx, user, request.params.topicId, 'update');
-        const check = editCheck({ authorUserId: topic.authorUserId, createdAt: topic.createdAt, hidden: false, hasReplies: topic.lastPostNumber > 0 }, topic, viewer);
+        const { topic, viewer, group } = await topicContext(tx, user, request.params.topicId, 'update');
+        const check = editCheck({ authorUserId: topic.authorUserId, createdAt: topic.createdAt, hidden: false, hasReplies: topic.lastPostNumber > 0 }, topic, viewer, group);
         if (check.problem) throw check.problem;
         const title = request.body.title?.trim() ?? topic.title;
         const body = request.body.body?.trim() ?? topic.body;
-        if (title === topic.title && body === topic.body) return topicView(tx, viewer, topic);
+        if (title === topic.title && body === topic.body) return topicView(tx, viewer, topic, group);
         const [updated] = await tx.update(forumTopics).set({ title, body, editedAt: editTime(topic.editedAt), updatedAt: sql`now()` }).where(eq(forumTopics.id, topic.id)).returning();
-        return topicView(tx, viewer, updated!);
+        return topicView(tx, viewer, updated!, group);
       });
     },
   );
@@ -402,13 +541,13 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
       const { user } = getAuth(request);
       const { action } = request.body;
       return db.transaction(async (tx) => {
-        const { topic, viewer } = await topicContext(tx, user, request.params.topicId, 'update');
+        const { topic, viewer, group } = await topicContext(tx, user, request.params.topicId, 'update');
         if (!viewer.canModerate) throw notModerator();
         const now = app.now();
         const field = { pin: 'pinned', unpin: 'pinned', lock: 'locked', unlock: 'locked', hide: 'hidden', restore: 'hidden' }[action] as 'pinned' | 'locked' | 'hidden';
         const on = action === 'pin' || action === 'lock' || action === 'hide';
         const current = { pinned: topic.pinnedAt, locked: topic.lockedAt, hidden: topic.hiddenAt }[field] !== null;
-        if (current === on) return topicView(tx, viewer, topic);
+        if (current === on) return topicView(tx, viewer, topic, group);
         const set = {
           pinned: on ? { pinnedAt: now, pinnedByUserId: user.id } : { pinnedAt: null, pinnedByUserId: null },
           locked: on ? { lockedAt: now, lockedByUserId: user.id } : { lockedAt: null, lockedByUserId: null },
@@ -423,9 +562,9 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
           entityId: topic.id,
           // Never the title or text.
           before: { [field]: current },
-          after: { [field]: on, courseId: topic.courseId, authorUserId: topic.authorUserId, byAdministrator: viewer.role === null },
+          after: { [field]: on, courseId: topic.courseId, groupId: topic.groupId, authorUserId: topic.authorUserId, byAdministrator: viewer.role === null },
         });
-        return topicView(tx, viewer, updated!);
+        return topicView(tx, viewer, updated!, group);
       });
     },
   );
@@ -436,7 +575,7 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
     '/forum/topics/:topicId/posts',
     { ...authenticated, schema: { params: topicParamsSchema, querystring: postListQuerySchema, response: { 200: postPageSchema } } },
     async (request) => {
-      const { topic, viewer } = await topicContext(db, getAuth(request).user, request.params.topicId);
+      const { topic, viewer, group } = await topicContext(db, getAuth(request).user, request.params.topicId);
       const { after, limit } = request.query;
       const visible = viewer.canModerate ? undefined : visiblePost();
       // A page holds replies to the topic in order, each with all the replies to it.
@@ -453,8 +592,8 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
       const [total] = await db.select({ n: count() }).from(forumPosts).where(and(eq(forumPosts.topicId, topic.id), visible));
       return {
         items: page.map((row) => ({
-          ...postView(row, topic, viewer),
-          replies: children.filter((child) => child.post.parentPostId === row.post.id).map((child) => postView(child, topic, viewer)),
+          ...postView(row, topic, viewer, group),
+          replies: children.filter((child) => child.post.parentPostId === row.post.id).map((child) => postView(child, topic, viewer, group)),
         })),
         nextCursor: top.length > limit ? page.at(-1)!.post.postNumber : null,
         total: total?.n ?? 0,
@@ -472,7 +611,7 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`forum-author:${user.id}`}, 0))`);
         // The topic row stays locked until commit: replies are numbered in commit order, and a concurrent
         // lock or hide cannot interleave.
-        const { topic, viewer } = await topicContext(tx, user, request.params.topicId, 'update');
+        const { topic, viewer, group } = await topicContext(tx, user, request.params.topicId, 'update');
         if (!viewer.canPost) throw notPosting();
         const [existing] = await postRows(tx).where(
           and(eq(forumPosts.topicId, topic.id), eq(forumPosts.authorUserId, user.id), eq(forumPosts.clientRequestId, input.clientRequestId)),
@@ -481,8 +620,9 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
           // A retry of a reply that was hidden since (or answers a hidden reply) is "not found" for participants.
           const [parentOfExisting] = existing.post.parentPostId ? await tx.select({ hiddenAt: forumPosts.hiddenAt }).from(forumPosts).where(eq(forumPosts.id, existing.post.parentPostId)) : [];
           if (!viewer.canModerate && (existing.post.hiddenAt || parentOfExisting?.hiddenAt)) throw postNotFound();
-          return { kind: 'existing' as const, row: existing, topic, viewer };
+          return { kind: 'existing' as const, row: existing, topic, viewer, group };
         }
+        if (group?.archivedAt) throw groupArchived();
         if (topic.hiddenAt) throw new ApiProblem(409, 'TOPIC_HIDDEN', 'This topic is hidden; restore it before replying.');
         if (topic.lockedAt && !viewer.canModerate) throw new ApiProblem(409, 'TOPIC_LOCKED', 'This topic is locked; no new replies can be posted.');
         let parent: PostRecord | undefined;
@@ -516,22 +656,22 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
         if (!post) throw new Error('Reply was not recorded');
         // The topic's author and the answered reply's author hear about it, while they can still read the forum.
         const recipients = [...new Set([topic.authorUserId, parent?.authorUserId].filter((id): id is string => Boolean(id) && id !== user.id))];
-        await notifyUsers(tx, await forumParticipants(tx, topic.courseId, recipients), {
+        await notifyUsers(tx, await forumParticipants(tx, topic.courseId, recipients, topic.groupId), {
           type: 'forum_reply',
           courseId: topic.courseId,
           entityId: topic.id,
           dedupeKey: topicKey(topic.id),
-          data: { topicTitle: topic.title, authorName: nameOf(user), courseCode: viewer.course.code, postId: post.id },
+          data: { topicTitle: topic.title, authorName: nameOf(user), courseCode: viewer.course.code, postId: post.id, ...(group ? { groupName: group.name } : {}) },
           at: app.now(),
         });
         const row: PostRow = { post, authorName: nameOf(user), authorRole: viewer.role, childCount: 0 };
-        return { kind: 'created' as const, row, topic: { ...topic, lastPostNumber: counter!.number }, viewer };
+        return { kind: 'created' as const, row, topic: { ...topic, lastPostNumber: counter!.number }, viewer, group };
       });
       if (outcome.kind === 'limited') {
         reply.header('retry-after', String(outcome.retryAfter));
         return sendError(reply, 429, 'RATE_LIMITED', 'Too many forum posts. Try again in a moment.');
       }
-      return reply.code(outcome.kind === 'created' ? 201 : 200).send(postView(outcome.row, outcome.topic, outcome.viewer));
+      return reply.code(outcome.kind === 'created' ? 201 : 200).send(postView(outcome.row, outcome.topic, outcome.viewer, outcome.group));
     },
   );
 
@@ -541,13 +681,13 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const { user } = getAuth(request);
       return db.transaction(async (tx) => {
-        const { topic, viewer, row } = await postContext(tx, user, request.params.postId);
-        const check = editCheck({ authorUserId: row.post.authorUserId, createdAt: row.post.createdAt, hidden: row.post.hiddenAt !== null, hasReplies: row.childCount > 0 }, topic, viewer);
+        const { topic, viewer, row, group } = await postContext(tx, user, request.params.postId);
+        const check = editCheck({ authorUserId: row.post.authorUserId, createdAt: row.post.createdAt, hidden: row.post.hiddenAt !== null, hasReplies: row.childCount > 0 }, topic, viewer, group);
         if (check.problem) throw check.problem;
         const body = request.body.body.trim();
-        if (body === row.post.body) return postView(row, topic, viewer);
+        if (body === row.post.body) return postView(row, topic, viewer, group);
         const [post] = await tx.update(forumPosts).set({ body, editedAt: editTime(row.post.editedAt) }).where(eq(forumPosts.id, row.post.id)).returning();
-        return postView({ ...row, post: post! }, topic, viewer);
+        return postView({ ...row, post: post! }, topic, viewer, group);
       });
     },
   );
@@ -559,9 +699,9 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
       const { user } = getAuth(request);
       const hide = request.body.action === 'hide';
       return db.transaction(async (tx) => {
-        const { topic, viewer, row } = await postContext(tx, user, request.params.postId);
+        const { topic, viewer, row, group } = await postContext(tx, user, request.params.postId);
         if (!viewer.canModerate) throw notModerator();
-        if ((row.post.hiddenAt !== null) === hide) return postView(row, topic, viewer);
+        if ((row.post.hiddenAt !== null) === hide) return postView(row, topic, viewer, group);
         const now = app.now();
         const [post] = await tx
           .update(forumPosts)
@@ -588,14 +728,17 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
           entityId: row.post.id,
           // Never the text itself.
           before: { hidden: !hide },
-          after: { hidden: hide, courseId: topic.courseId, topicId: topic.id, authorUserId: row.post.authorUserId, length: row.post.body.length, byAdministrator: viewer.role === null },
+          after: { hidden: hide, courseId: topic.courseId, topicId: topic.id, groupId: topic.groupId, authorUserId: row.post.authorUserId, length: row.post.body.length, byAdministrator: viewer.role === null },
         });
-        return postView({ ...row, post: post! }, topic, viewer);
+        return postView({ ...row, post: post! }, topic, viewer, group);
       });
     },
   );
 
-  /** Administrators: each published course's forum activity and moderation state, as counts only. */
+  /**
+   * Administrators: each published course's course-wide forum activity and moderation state, as counts only.
+   * Group discussions (AP-028) are private to their groups and are not counted here.
+   */
   app.get(
     '/admin/forums/courses',
     { preValidation: [app.requireAuth, app.requireAdministrator], schema: { response: { 200: adminForumCourseListSchema } } },
@@ -603,12 +746,12 @@ export const forumRoutes: FastifyPluginAsync = async (app) => {
       const rows = await db
         .select({
           course: { id: courses.id, title: courses.title, code: courses.code },
-          topicCount: sql<number>`(SELECT count(*) FROM ${forumTopics} t WHERE t.course_id = ${OUTER_COURSE_ID})::int`,
-          lockedTopicCount: sql<number>`(SELECT count(*) FROM ${forumTopics} t WHERE t.course_id = ${OUTER_COURSE_ID} AND t.locked_at IS NOT NULL)::int`,
-          hiddenTopicCount: sql<number>`(SELECT count(*) FROM ${forumTopics} t WHERE t.course_id = ${OUTER_COURSE_ID} AND t.hidden_at IS NOT NULL)::int`,
-          replyCount: sql<number>`(SELECT count(*) FROM ${forumPosts} p WHERE p.course_id = ${OUTER_COURSE_ID})::int`,
-          hiddenReplyCount: sql<number>`(SELECT count(*) FROM ${forumPosts} p WHERE p.course_id = ${OUTER_COURSE_ID} AND p.hidden_at IS NOT NULL)::int`,
-          lastActivityAt: sql<Date | null>`(SELECT max(t.last_activity_at) FROM ${forumTopics} t WHERE t.course_id = ${OUTER_COURSE_ID})`.mapWith(forumTopics.lastActivityAt),
+          topicCount: sql<number>`(SELECT count(*) FROM ${forumTopics} t WHERE t.course_id = ${OUTER_COURSE_ID} AND t.group_id IS NULL)::int`,
+          lockedTopicCount: sql<number>`(SELECT count(*) FROM ${forumTopics} t WHERE t.course_id = ${OUTER_COURSE_ID} AND t.group_id IS NULL AND t.locked_at IS NOT NULL)::int`,
+          hiddenTopicCount: sql<number>`(SELECT count(*) FROM ${forumTopics} t WHERE t.course_id = ${OUTER_COURSE_ID} AND t.group_id IS NULL AND t.hidden_at IS NOT NULL)::int`,
+          replyCount: sql<number>`(SELECT count(*) FROM ${forumPosts} p JOIN ${forumTopics} pt ON pt.id = p.topic_id WHERE p.course_id = ${OUTER_COURSE_ID} AND pt.group_id IS NULL)::int`,
+          hiddenReplyCount: sql<number>`(SELECT count(*) FROM ${forumPosts} p JOIN ${forumTopics} pt ON pt.id = p.topic_id WHERE p.course_id = ${OUTER_COURSE_ID} AND pt.group_id IS NULL AND p.hidden_at IS NOT NULL)::int`,
+          lastActivityAt: sql<Date | null>`(SELECT max(t.last_activity_at) FROM ${forumTopics} t WHERE t.course_id = ${OUTER_COURSE_ID} AND t.group_id IS NULL)`.mapWith(forumTopics.lastActivityAt),
         })
         .from(courses)
         .where(eq(courses.status, 'published'))

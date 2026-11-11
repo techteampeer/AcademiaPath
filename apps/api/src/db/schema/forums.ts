@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { check, foreignKey, index, integer, pgTable, text, timestamp, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { primaryId } from './columns.js';
 import { courses } from './courses.js';
+import { studentGroups } from './groups.js';
 import { users } from './users.js';
 
 /**
@@ -20,6 +21,11 @@ export const forumTopics = pgTable(
     authorUserId: uuid('author_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    /**
+     * AP-028: a topic of a student group's private workspace (null: a course-wide topic). Only the group's
+     * current members and the course's teaching staff can see it.
+     */
+    groupId: uuid('group_id'),
     title: text('title').notNull(),
     body: text('body').notNull(),
     /** Chosen by the client per new topic: a retried create returns the first topic instead of a duplicate. */
@@ -44,6 +50,9 @@ export const forumTopics = pgTable(
     // Lets replies reference their topic together with its course (both must match).
     unique('forum_topics_id_course_unique').on(t.id, t.courseId),
     uniqueIndex('forum_topics_client_request_unique').on(t.courseId, t.authorUserId, t.clientRequestId),
+    // A group topic's group belongs to the topic's course.
+    foreignKey({ name: 'forum_topics_group_fk', columns: [t.groupId, t.courseId], foreignColumns: [studentGroups.id, studentGroups.courseId] }).onDelete('restrict'),
+    index('forum_topics_group_activity_idx').on(t.groupId, t.lastActivityAt),
     index('forum_topics_course_activity_idx').on(t.courseId, t.lastActivityAt),
     index('forum_topics_author_created_idx').on(t.authorUserId, t.createdAt),
     check('forum_topics_title_check', sql`char_length(${t.title}) BETWEEN 1 AND 200 AND ${t.title} ~ '\\S'`),

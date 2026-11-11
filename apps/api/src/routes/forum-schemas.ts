@@ -29,9 +29,18 @@ const viewerSchema = {
   properties: { role: forumRole, canPost: { type: 'boolean' }, canModerate: { type: 'boolean' } },
 } as const;
 
+const groupRef = {
+  type: ['object', 'null'],
+  required: ['id', 'name', 'archived'],
+  additionalProperties: false,
+  properties: { id: uuid, name: { type: 'string' }, archived: { type: 'boolean' } },
+  description: 'AP-028: the student group whose private workspace holds the topic; null for a course-wide topic.',
+} as const;
+
 const topicSummaryProperties = {
   id: uuid,
   title: { type: 'string' },
+  group: groupRef,
   excerpt: { type: 'string' },
   author: person,
   mine: { type: 'boolean' },

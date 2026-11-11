@@ -2977,6 +2977,222 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{id}/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Groups of a course the caller may see
+         * @description Instructors, non-editing instructors and administrators see every group (archived ones last); students see
+         *     only the groups they currently belong to (published course). `403 GROUPS_NOT_AVAILABLE` when the caller can
+         *     see the course but has no access to its groups (design team).
+         */
+        get: operations["listCourseGroups"];
+        put?: never;
+        /**
+         * Create a group (instructors of the course, administrators)
+         * @description Names are unique among the course's active groups, ignoring case (`409 GROUP_NAME_TAKEN`). Audited.
+         */
+        post: operations["createCourseGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The groups the caller currently belongs to */
+        get: operations["listMyGroups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{groupId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A group's workspace overview
+         * @description Members, recent discussions (only for callers who can read them), membership changes (teaching staff and
+         *     administrators) and students who can be added (managers). "Not found" for anyone who may not see the group.
+         */
+        get: operations["getGroup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Rename a group or change its description (managers)
+         * @description `409 GROUP_ARCHIVED` for an archived group; `409 GROUP_NAME_TAKEN`. Audited.
+         */
+        patch: operations["updateGroup"];
+        trace?: never;
+    };
+    "/api/v1/groups/{groupId}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add students to a group (managers)
+         * @description Every id must be an active student of the group's course (`422 MEMBER_NOT_ELIGIBLE`, without saying which).
+         *     Students already in the group are left as they are (idempotent). Membership changes of one group are
+         *     serialized. Each addition is audited.
+         */
+        post: operations["addGroupMembers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{groupId}/members/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a student from a group (managers)
+         * @description Closes the membership (kept as history); the student's access to the group's discussions and their
+         *     notifications ends immediately. Idempotent (`removed: false` when they were not a member). Audited.
+         */
+        delete: operations["removeGroupMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{groupId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive a group (managers)
+         * @description The group, its members and discussions are kept as read-only history: no new topics, replies, edits or
+         *     membership changes (moderation still works). Idempotent; audited.
+         */
+        post: operations["archiveGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{groupId}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore an archived group (managers)
+         * @description `409 GROUP_NAME_TAKEN` when an active group of the course now has its name. Idempotent; audited.
+         */
+        post: operations["restoreGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{groupId}/topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A group's discussion topics
+         * @description The group's current members and the course's teaching staff (published course). `403
+         *     GROUP_DISCUSSIONS_NOT_AVAILABLE` for administrators (they manage groups but never read their discussions).
+         *     Same ordering, pagination, search and hidden rules as the course forum.
+         */
+        get: operations["listGroupTopics"];
+        put?: never;
+        /**
+         * Start a topic in a group's workspace
+         * @description Current members and teaching staff; `409 GROUP_ARCHIVED` in an archived group. The group's other current
+         *     members are notified (`announce` is ignored). Same retry and rate-limit rules as course topics.
+         */
+        post: operations["createGroupTopic"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/forum/topics/{topicId}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Mark the caller's notification about a topic as read
+         * @description Clears the topic's unread indicator for the caller (course forum and group topics alike).
+         */
+        put: operations["markForumTopicRead"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Group organization per published course (administrators; counts only) */
+        get: operations["listGroupOverviewAdmin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5120,7 +5336,7 @@ export interface components {
             /**
              * @description Display values the recipient may see: `senderName`, `courseCode`, `title` (announcements),
              *     `activityTitle` (grades), `courseTitle` (certificates), `topicTitle`, `authorName` and `postId`
-             *     (forums). Never message or post text, or grade values.
+             *     (forums), `groupName` (group discussions). Never message or post text, or grade values.
              */
             data: {
                 [key: string]: string;
@@ -5156,6 +5372,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             title: string;
+            group: components["schemas"]["ForumGroupRef"];
             /** @description The start of the topic's text (plain text). */
             excerpt: string;
             author: components["schemas"]["PersonRef"];
@@ -5184,6 +5401,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             title: string;
+            group: components["schemas"]["ForumGroupRef"];
             excerpt: string;
             author: components["schemas"]["PersonRef"];
             mine: boolean;
@@ -5311,6 +5529,120 @@ export interface components {
                 lastActivityAt: string | null;
             }[];
         };
+        /** @description The student group whose private workspace holds the topic; null for a course-wide topic. */
+        ForumGroupRef: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            archived: boolean;
+        } | null;
+        GroupPersonRef: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        GroupSummary: {
+            /** Format: uuid */
+            id: string;
+            course: components["schemas"]["CourseRef"];
+            name: string;
+            description: string | null;
+            archived: boolean;
+            isMember: boolean;
+            /** @description Current members (open membership, active student enrollment, active account). */
+            memberCount: number;
+            /** @description Discussions the caller may see (hidden topics only for moderators). */
+            topicCount: number;
+            /** Format: date-time */
+            lastActivityAt: string | null;
+            /** @description The caller's unread notifications about this group's discussions. */
+            unreadCount: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CourseGroupList: {
+            course: components["schemas"]["CourseRef"];
+            viewer: {
+                /** @enum {string|null} */
+                role: "design_team" | "instructor" | "non_editing_instructor" | "student" | null;
+                canManage: boolean;
+                canViewAll: boolean;
+            };
+            items: components["schemas"]["GroupSummary"][];
+        };
+        MyGroupList: {
+            items: components["schemas"]["GroupSummary"][];
+        };
+        GroupDetail: {
+            group: components["schemas"]["GroupSummary"];
+            viewer: {
+                /** @enum {string|null} */
+                role: "design_team" | "instructor" | "non_editing_instructor" | "student" | null;
+                isMember: boolean;
+                canManage: boolean;
+                /** @description Can read the group's discussions (members and teaching staff; never administrators by that role). */
+                canRead: boolean;
+                canPost: boolean;
+                canModerate: boolean;
+            };
+            members: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                /** Format: date-time */
+                addedAt: string;
+            }[];
+            /** @description Latest discussion activity; empty for callers who cannot read the group's discussions. */
+            recentTopics: {
+                /** Format: uuid */
+                id: string;
+                title: string;
+                replyCount: number;
+                /** Format: date-time */
+                lastActivityAt: string;
+                pinned: boolean;
+                locked: boolean;
+            }[];
+            /** @description Teaching staff and administrators only (empty for students). */
+            membershipChanges: {
+                /** @enum {string} */
+                kind: "group_created" | "member_added" | "member_removed" | "group_archived";
+                person: components["schemas"]["GroupPersonRef"] | null;
+                actor: components["schemas"]["GroupPersonRef"] | null;
+                /** Format: date-time */
+                at: string;
+            }[];
+            /** @description Active students of the course who can be added (managers of an active group only). */
+            candidates: components["schemas"]["GroupPersonRef"][];
+        };
+        GroupInput: {
+            name: string;
+            description?: string | null;
+        };
+        GroupUpdate: {
+            name?: string;
+            description?: string | null;
+        };
+        GroupMemberInput: {
+            userIds: string[];
+        };
+        GroupMemberAddResult: {
+            added: number;
+            alreadyMembers: number;
+        };
+        GroupMemberRemoveResult: {
+            removed: boolean;
+        };
+        AdminGroupOverview: {
+            items: {
+                course: components["schemas"]["CourseRef"];
+                activeGroups: number;
+                archivedGroups: number;
+                /** @description Open memberships in active groups. */
+                memberships: number;
+                studentsWithoutGroup: number;
+            }[];
+        };
     };
     responses: {
         /**
@@ -5374,7 +5706,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
-        /** @description `code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks), `FEEDBACK_NOT_AVAILABLE` (correctness review not enabled or not yet released) `MESSAGING_NOT_AVAILABLE` (messaging is for the students and teaching staff of a published course) or `FORUM_NOT_AVAILABLE` (the course forum is for the students and teaching staff of a published course). */
+        /** @description `code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks), `FEEDBACK_NOT_AVAILABLE` (correctness review not enabled or not yet released) `MESSAGING_NOT_AVAILABLE` (messaging is for the students and teaching staff of a published course) `FORUM_NOT_AVAILABLE` (the course forum is for the students and teaching staff of a published course), `GROUPS_NOT_AVAILABLE` (student groups are for the course's students, teaching staff and administrators) or `GROUP_DISCUSSIONS_NOT_AVAILABLE` (a group's discussions are for its members and the course's teaching staff). */
         Forbidden: {
             headers: {
                 [name: string]: unknown;
@@ -5487,7 +5819,7 @@ export interface components {
          *     announcement or calendar rule: `ANNOUNCEMENT_ARCHIVED`, `ANNOUNCEMENT_NOT_SCHEDULED`, `EVENT_CANCELLED`,
          *     `EVENT_WAS_PUBLISHED`; or a messaging rule: `CONVERSATION_LOCKED`, `RECIPIENT_UNAVAILABLE`; or a forum
          *     rule: `TOPIC_LOCKED`, `TOPIC_HIDDEN`, `POST_HIDDEN`, `EDIT_NOT_ALLOWED` (hidden, or already answered),
-         *     `EDIT_WINDOW_CLOSED`.
+         *     `EDIT_WINDOW_CLOSED`, `IDEMPOTENCY_KEY_REUSED`; or a group rule: `GROUP_ARCHIVED`, `GROUP_NAME_TAKEN`.
          */
         Conflict: {
             headers: {
@@ -5527,7 +5859,8 @@ export interface components {
          *     `CERTIFICATE_POLICY_INVALID` or `CERTIFICATE_NOT_ELIGIBLE`; or an announcement or calendar rule:
          *     `PUBLISH_AT_INVALID`, `EVENT_TIME_INVALID`, `INVALID_TIME_ZONE` or `RANGE_INVALID`; or
          *     `RECIPIENT_NOT_ALLOWED` (a direct conversation that is not between a student and the course's teaching
-         *     staff); or `REPLY_NESTING_LIMIT` (a forum reply to a reply to a reply).
+         *     staff); or `REPLY_NESTING_LIMIT` (a forum reply to a reply to a reply); or `MEMBER_NOT_ELIGIBLE` (only
+         *     active students of the group's course can join it).
          */
         UnprocessableContent: {
             headers: {
@@ -5569,6 +5902,7 @@ export interface components {
         NotificationId: string;
         TopicId: string;
         PostId: string;
+        GroupId: string;
         CertificateId: string;
         UserId: string;
         EnrollmentId: string;
@@ -10068,6 +10402,363 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminForumCourseList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listCourseGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseGroupList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createCourseGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupDetail"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMyGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyGroupList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupDetail"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    addGroupMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupMemberInput"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupMemberAddResult"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    removeGroupMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["GroupId"];
+                userId: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupMemberRemoveResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    archiveGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    restoreGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listGroupTopics: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+                q?: string;
+            };
+            header?: never;
+            path: {
+                groupId: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumTopicPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createGroupTopic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForumTopicInput"];
+            };
+        };
+        responses: {
+            /** @description The topic of an earlier attempt with the same clientRequestId. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumTopic"];
+                };
+            };
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumTopic"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    markForumTopicRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topicId: components["parameters"]["TopicId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Done (no content). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listGroupOverviewAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminGroupOverview"];
                 };
             };
             401: components["responses"]["Unauthorized"];

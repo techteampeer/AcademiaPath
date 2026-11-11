@@ -68,8 +68,10 @@ const en = {
       announcement: (d: Record<string, string>) => `New announcement${d.courseCode ? ` in ${d.courseCode}` : ''}: ${d.title ?? ''}`,
       grade_released: (d: Record<string, string>) => `A grade was released${d.courseCode ? ` in ${d.courseCode}` : ''}: ${d.activityTitle ?? ''}`,
       certificate_issued: (d: Record<string, string>) => `Your certificate for ${d.courseTitle ?? 'a course'} was issued.`,
-      forum_reply: (d: Record<string, string>) => `${d.authorName ?? 'Someone'} replied in the forum topic “${d.topicTitle ?? ''}”${d.courseCode ? ` (${d.courseCode})` : ''}.`,
-      forum_topic: (d: Record<string, string>) => `New forum topic${d.courseCode ? ` in ${d.courseCode}` : ''}: ${d.topicTitle ?? ''}`,
+      forum_reply: (d: Record<string, string>) =>
+        `${d.authorName ?? 'Someone'} replied in the ${d.groupName ? `group ${d.groupName} topic` : 'forum topic'} “${d.topicTitle ?? ''}”${d.courseCode ? ` (${d.courseCode})` : ''}.`,
+      forum_topic: (d: Record<string, string>) =>
+        d.groupName ? `New topic in your group ${d.groupName}${d.courseCode ? ` (${d.courseCode})` : ''}: ${d.topicTitle ?? ''}` : `New forum topic${d.courseCode ? ` in ${d.courseCode}` : ''}: ${d.topicTitle ?? ''}`,
     },
   },
   admin: {
@@ -162,8 +164,10 @@ const es: MessagingMessages = {
       announcement: (d: Record<string, string>) => `Nuevo anuncio${d.courseCode ? ` en ${d.courseCode}` : ''}: ${d.title ?? ''}`,
       grade_released: (d: Record<string, string>) => `Se publicó una nota${d.courseCode ? ` en ${d.courseCode}` : ''}: ${d.activityTitle ?? ''}`,
       certificate_issued: (d: Record<string, string>) => `Se emitió tu certificado de ${d.courseTitle ?? 'un curso'}.`,
-      forum_reply: (d: Record<string, string>) => `${d.authorName ?? 'Alguien'} respondió en el tema del foro «${d.topicTitle ?? ''}»${d.courseCode ? ` (${d.courseCode})` : ''}.`,
-      forum_topic: (d: Record<string, string>) => `Nuevo tema en el foro${d.courseCode ? ` de ${d.courseCode}` : ''}: ${d.topicTitle ?? ''}`,
+      forum_reply: (d: Record<string, string>) =>
+        `${d.authorName ?? 'Alguien'} respondió en el tema ${d.groupName ? `del grupo ${d.groupName}` : 'del foro'} «${d.topicTitle ?? ''}»${d.courseCode ? ` (${d.courseCode})` : ''}.`,
+      forum_topic: (d: Record<string, string>) =>
+        d.groupName ? `Nuevo tema en tu grupo ${d.groupName}${d.courseCode ? ` (${d.courseCode})` : ''}: ${d.topicTitle ?? ''}` : `Nuevo tema en el foro${d.courseCode ? ` de ${d.courseCode}` : ''}: ${d.topicTitle ?? ''}`,
     },
   },
   admin: {
