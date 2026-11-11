@@ -46,5 +46,5 @@ export async function createTestDatabase() {
     await drop();
     throw error;
   }
-  return { ...database, drop };
+  return { ...database, drop, url: url.toString() };
 }

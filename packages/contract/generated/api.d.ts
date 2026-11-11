@@ -1947,6 +1947,352 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{id}/announcements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A course's announcements
+         * @description Course access required (students: an active enrollment in a published course). Readers get published,
+         *     visible announcements; instructors, non-editing instructors and administrators get every status and may
+         *     filter by `status`. Pinned first, then newest (publication or creation time). Paginated.
+         */
+        get: operations["listCourseAnnouncements"];
+        put?: never;
+        /**
+         * Create a course announcement (draft)
+         * @description Requires `announcements.manage` (instructor) or the administrator role; never non-editing instructors, the
+         *     design team or program managers. Plain text title and body. Created as a draft. Audited as
+         *     `announcement.created`.
+         */
+        post: operations["createCourseAnnouncement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/announcements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Institution-wide announcements
+         * @description Any signed-in user gets the published, visible ones; administrators get every status and may filter.
+         */
+        get: operations["listInstitutionAnnouncements"];
+        put?: never;
+        /**
+         * Create an institution-wide announcement (draft)
+         * @description Administrators only. Audited as `announcement.created`.
+         */
+        post: operations["createInstitutionAnnouncement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/announcements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user's announcement feed
+         * @description Published, visible announcements: institution-wide ones and those of every course where the caller has an
+         *     active enrollment (students: published courses only). Each says whether the caller has read it. Pinned
+         *     first, then newest. Paginated.
+         */
+        get: operations["getMyAnnouncements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/announcements/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How many feed announcements the caller has not read
+         * @description Counts exactly the announcements of the feed (never drafts, scheduled, archived or other courses').
+         */
+        get: operations["getMyUnreadAnnouncementCount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/announcements/{announcementId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One announcement
+         * @description Readers get it only while it is published and visible; staff of the course (or administrators for
+         *     institution-wide ones) get every status. Anything else is `404`.
+         */
+        get: operations["getAnnouncement"];
+        /**
+         * Edit an announcement or pin it
+         * @description Requires `announcements.manage` for the course (administrators for institution-wide ones). Any of title,
+         *     body and `pinned`. Archived announcements cannot change (`409 ANNOUNCEMENT_ARCHIVED`). Audited as
+         *     `announcement.updated`.
+         */
+        put: operations["updateAnnouncement"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/announcements/{announcementId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish now, or schedule publication
+         * @description Same permission as editing. Without `publishAt` it is published at the current server time (publishing a
+         *     visible announcement again changes nothing). With `publishAt` (strictly in the future, at most a year
+         *     ahead; otherwise `422 PUBLISH_AT_INVALID`) it is scheduled and becomes visible when the server clock
+         *     reaches it. Audited as `announcement.published` or `announcement.scheduled`.
+         */
+        post: operations["publishAnnouncement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/announcements/{announcementId}/unschedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a scheduled announcement back to draft
+         * @description Only while it is still scheduled (`409 ANNOUNCEMENT_NOT_SCHEDULED` otherwise). Audited.
+         */
+        post: operations["unscheduleAnnouncement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/announcements/{announcementId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive an announcement
+         * @description Hides it from readers and unpins it; it is kept, never deleted. Repeating changes nothing. Audited.
+         */
+        post: operations["archiveAnnouncement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/announcements/{announcementId}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Mark an announcement as read
+         * @description For announcements the caller can currently read (published and visible). Persists across sessions;
+         *     repeated requests change nothing.
+         */
+        put: operations["markAnnouncementRead"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A course's calendar
+         * @description Course access required. Readers get published and cancelled events; staff also hidden ones. Includes due
+         *     dates of approved assignments the caller can open (in the institution's time zone).
+         */
+        get: operations["getCourseCalendar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/calendar/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a course calendar event
+         * @description Requires `calendar.manage` (instructor) or the administrator role. Timed events send `startsAt`/`endsAt`
+         *     with explicit offsets; all-day events send `startDate`/`endDate` (inclusive). `timeZone` defaults to the
+         *     institution's. The end must follow the start (`422 EVENT_TIME_INVALID`); unknown zones are
+         *     `422 INVALID_TIME_ZONE`. Audited as `calendar_event.created`.
+         */
+        post: operations["createCourseEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user's calendar
+         * @description Published and cancelled events of the institution and of every course where the caller has an active
+         *     enrollment (students: published courses), plus assignment due dates they can open. `courseId` narrows it
+         *     to one of those courses; any other course is `404`.
+         */
+        get: operations["getMyCalendar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Institution-wide calendar events
+         * @description Signed-in users get published and cancelled events; administrators also hidden ones.
+         */
+        get: operations["listInstitutionEvents"];
+        put?: never;
+        /**
+         * Create an institution-wide calendar event
+         * @description Administrators only. Same time rules as course events. Audited.
+         */
+        post: operations["createInstitutionEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/events/{eventId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One calendar event
+         * @description Hidden events only for staff who manage or read every event of the course (administrators for
+         *     institution-wide ones); anything else is `404`.
+         */
+        get: operations["getCalendarEvent"];
+        /**
+         * Edit, publish or hide an event
+         * @description Requires `calendar.manage` for the course (administrators for institution-wide events). Replaces the
+         *     event's fields; cancelled events cannot change (`409 EVENT_CANCELLED`). Audited.
+         */
+        put: operations["updateCalendarEvent"];
+        post?: never;
+        /**
+         * Delete an event that was never published
+         * @description Same permission as editing. An event that was ever published can only be cancelled
+         *     (`409 EVENT_WAS_PUBLISHED`; the database refuses it too). The deletion is audited with the event's data.
+         */
+        delete: operations["deleteCalendarEvent"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/events/{eventId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an event
+         * @description The event is kept and shown to readers as cancelled. Repeating changes nothing. Audited.
+         */
+        post: operations["cancelCalendarEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{id}/progress": {
         parameters: {
             query?: never;
@@ -2235,7 +2581,7 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE" | "QUIZ_POOL_TOO_SMALL" | "QUIZ_POOL_POINTS_MIXED" | "QUIZ_SOURCE_INVALID" | "FEEDBACK_NOT_AVAILABLE" | "GRADE_CATEGORY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_INVALID" | "GRADE_WEIGHTS_INVALID" | "GRADE_RELEASE_DUPLICATE" | "GRADING_POLICY_CONFLICT" | "CERTIFICATE_POLICY_INVALID" | "CERTIFICATE_POLICY_CONFLICT" | "CERTIFICATE_NOT_ELIGIBLE" | "CERTIFICATE_ALREADY_REVOKED" | "CERTIFICATE_REVOKED" | "CERTIFICATE_NOT_FOUND";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE" | "QUIZ_POOL_TOO_SMALL" | "QUIZ_POOL_POINTS_MIXED" | "QUIZ_SOURCE_INVALID" | "FEEDBACK_NOT_AVAILABLE" | "GRADE_CATEGORY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_INVALID" | "GRADE_WEIGHTS_INVALID" | "GRADE_RELEASE_DUPLICATE" | "GRADING_POLICY_CONFLICT" | "CERTIFICATE_POLICY_INVALID" | "CERTIFICATE_POLICY_CONFLICT" | "CERTIFICATE_NOT_ELIGIBLE" | "CERTIFICATE_ALREADY_REVOKED" | "CERTIFICATE_REVOKED" | "CERTIFICATE_NOT_FOUND" | "ANNOUNCEMENT_ARCHIVED" | "ANNOUNCEMENT_NOT_SCHEDULED" | "PUBLISH_AT_INVALID" | "EVENT_TIME_INVALID" | "INVALID_TIME_ZONE" | "RANGE_INVALID" | "EVENT_CANCELLED" | "EVENT_WAS_PUBLISHED";
         };
         /**
          * @description What a link points to. Every kind is only a link opened in a new tab; nothing is embedded, fetched or executed.
@@ -3495,6 +3841,133 @@ export interface components {
             /** Format: date-time */
             revokedAt: string | null;
         };
+        CourseRefOrNull: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            code: string;
+        } | null;
+        AnnouncementInput: {
+            title: string;
+            /** @description Plain text; never interpreted as HTML. */
+            body: string;
+            pinned?: boolean;
+        };
+        AnnouncementUpdate: {
+            title?: string;
+            body?: string;
+            pinned?: boolean;
+        };
+        AnnouncementPublish: {
+            /**
+             * Format: date-time
+             * @description A future instant with an explicit offset to schedule; omit or null to publish now.
+             */
+            publishAt?: string | null;
+        };
+        Announcement: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            scope: "course" | "institution";
+            course: components["schemas"]["CourseRefOrNull"];
+            title: string;
+            body: string;
+            /** @enum {string} */
+            status: "draft" | "scheduled" | "published" | "archived";
+            pinned: boolean;
+            /** Format: date-time */
+            publishAt: string | null;
+            /** Format: date-time */
+            archivedAt: string | null;
+            /** @description Whether the caller has marked it read. */
+            read: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        AnnouncementPage: {
+            items: components["schemas"]["Announcement"][];
+            nextCursor: string | null;
+        };
+        UnreadCount: {
+            unreadCount: number;
+        };
+        /** @description Timed events send startsAt/endsAt (instants with explicit offsets); all-day events send startDate/endDate (inclusive dates). */
+        CalendarEventInput: {
+            title: string;
+            description?: string | null;
+            allDay: boolean;
+            /** Format: date-time */
+            startsAt?: string;
+            /** Format: date-time */
+            endsAt?: string;
+            /** Format: date */
+            startDate?: string;
+            /** Format: date */
+            endDate?: string;
+            /** @description IANA time zone (default the institution's, America/Lima). */
+            timeZone?: string;
+            /** @enum {string} */
+            status: "hidden" | "published";
+        };
+        CalendarEvent: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            scope: "course" | "institution";
+            course: components["schemas"]["CourseRefOrNull"];
+            title: string;
+            description: string | null;
+            allDay: boolean;
+            /**
+             * Format: date-time
+             * @description UTC instant (all-day events, midnight of startDate in timeZone).
+             */
+            startsAt: string;
+            /**
+             * Format: date-time
+             * @description UTC instant, exclusive (all-day events, midnight after endDate in timeZone).
+             */
+            endsAt: string;
+            startDate: string | null;
+            endDate: string | null;
+            timeZone: string;
+            /** @enum {string} */
+            status: "hidden" | "published" | "cancelled";
+            /** Format: date-time */
+            publishedAt: string | null;
+            /** Format: date-time */
+            cancelledAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CalendarEventList: {
+            items: components["schemas"]["CalendarEvent"][];
+        };
+        CalendarDueDate: {
+            /** Format: uuid */
+            activityId: string;
+            course: components["schemas"]["CourseRefOrNull"];
+            title: string;
+            /** Format: date-time */
+            dueAt: string;
+            /** Format: date-time */
+            lateUntil: string | null;
+        };
+        Calendar: {
+            /** @description The institution's time zone (used for due dates). */
+            timeZone: string;
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            events: components["schemas"]["CalendarEvent"][];
+            dueDates: components["schemas"]["CalendarDueDate"][];
+        };
         /**
          * @description The course grade under the course's grading policy (see "Advanced gradebook" above). `points`: the
          *     unweighted sum; `weighted`: the published categories. Pending work is never counted as zero.
@@ -4245,7 +4718,9 @@ export interface components {
          *     `SECTION_ORDER_STALE`; or `PROGRAM_MANAGER_EXISTS` (the user already manages the program); or a
          *     learning-resource rule: `RESOURCE_FOLDER_NOT_EMPTY`, `RESOURCE_ORDER_STALE`; or
          *     `GRADING_POLICY_CONFLICT` (the grading policy changed since it was loaded); or a certificate rule:
-         *     `CERTIFICATE_POLICY_CONFLICT`, `CERTIFICATE_ALREADY_REVOKED`, `CERTIFICATE_REVOKED`.
+         *     `CERTIFICATE_POLICY_CONFLICT`, `CERTIFICATE_ALREADY_REVOKED`, `CERTIFICATE_REVOKED`; or an
+         *     announcement or calendar rule: `ANNOUNCEMENT_ARCHIVED`, `ANNOUNCEMENT_NOT_SCHEDULED`, `EVENT_CANCELLED`,
+         *     `EVENT_WAS_PUBLISHED`.
          */
         Conflict: {
             headers: {
@@ -4282,7 +4757,8 @@ export interface components {
          *     `QUIZ_POOL_TOO_SMALL`, `QUIZ_POOL_POINTS_MIXED` or `QUIZ_SOURCE_INVALID`; or a gradebook rule:
          *     `GRADE_CATEGORY_DUPLICATE`, `GRADE_CATEGORY_ACTIVITY_DUPLICATE`, `GRADE_CATEGORY_ACTIVITY_INVALID`,
          *     `GRADE_WEIGHTS_INVALID` or `GRADE_RELEASE_DUPLICATE`; or a certificate rule:
-         *     `CERTIFICATE_POLICY_INVALID` or `CERTIFICATE_NOT_ELIGIBLE`.
+         *     `CERTIFICATE_POLICY_INVALID` or `CERTIFICATE_NOT_ELIGIBLE`; or an announcement or calendar rule:
+         *     `PUBLISH_AT_INVALID`, `EVENT_TIME_INVALID`, `INVALID_TIME_ZONE` or `RANGE_INVALID`.
          */
         UnprocessableContent: {
             headers: {
@@ -4317,6 +4793,8 @@ export interface components {
         TemplateId: string;
         AttemptId: string;
         SubmissionId: string;
+        AnnouncementId: string;
+        EventId: string;
         CertificateId: string;
         UserId: string;
         EnrollmentId: string;
@@ -7213,6 +7691,585 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    listCourseAnnouncements: {
+        parameters: {
+            query?: {
+                /** @description Staff only (others always get published, visible announcements). */
+                status?: "all" | "draft" | "scheduled" | "published" | "archived";
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from the previous page's `nextCursor`. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnouncementPage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createCourseAnnouncement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnouncementInput"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Announcement"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listInstitutionAnnouncements: {
+        parameters: {
+            query?: {
+                /** @description Staff only (others always get published, visible announcements). */
+                status?: "all" | "draft" | "scheduled" | "published" | "archived";
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from the previous page's `nextCursor`. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnouncementPage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createInstitutionAnnouncement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnouncementInput"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Announcement"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getMyAnnouncements: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from the previous page's `nextCursor`. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnouncementPage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getMyUnreadAnnouncementCount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnreadCount"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getAnnouncement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                announcementId: components["parameters"]["AnnouncementId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Announcement"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateAnnouncement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                announcementId: components["parameters"]["AnnouncementId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnouncementUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Announcement"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    publishAnnouncement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                announcementId: components["parameters"]["AnnouncementId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnouncementPublish"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Announcement"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    unscheduleAnnouncement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                announcementId: components["parameters"]["AnnouncementId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Announcement"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    archiveAnnouncement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                announcementId: components["parameters"]["AnnouncementId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Announcement"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    markAnnouncementRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                announcementId: components["parameters"]["AnnouncementId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Done (no content). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getCourseCalendar: {
+        parameters: {
+            query?: {
+                /** @description Range start (an instant with offset; default now). */
+                from?: string;
+                /** @description Range end (default 120 days after the start; at most 400 days). */
+                to?: string;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Calendar"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    createCourseEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarEventInput"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEvent"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    getMyCalendar: {
+        parameters: {
+            query?: {
+                /** @description Range start (an instant with offset; default now). */
+                from?: string;
+                /** @description Range end (default 120 days after the start; at most 400 days). */
+                to?: string;
+                courseId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Calendar"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    listInstitutionEvents: {
+        parameters: {
+            query?: {
+                /** @description Range start (an instant with offset; default now). */
+                from?: string;
+                /** @description Range end (default 120 days after the start; at most 400 days). */
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEventList"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    createInstitutionEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarEventInput"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEvent"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    getCalendarEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventId: components["parameters"]["EventId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEvent"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateCalendarEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventId: components["parameters"]["EventId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarEventInput"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEvent"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    deleteCalendarEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventId: components["parameters"]["EventId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Done (no content). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    cancelCalendarEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventId: components["parameters"]["EventId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEvent"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     getMyCourseProgress: {

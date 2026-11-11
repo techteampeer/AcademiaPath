@@ -1,10 +1,17 @@
 /**
- * DEVELOPMENT ONLY: drives the real AcademiaPath API in-process (Fastify inject) as real, signed-in
- * users. Every request goes through the normal authentication, CSRF, Origin, authorization, validation
- * and audit code paths; there are no demo-only routes.
+ * Drives the real AcademiaPath API in-process (Fastify inject) as real, signed-in users. Every request
+ * goes through the normal authentication, CSRF, Origin, authorization, validation and audit code paths;
+ * there are no demo-only routes. Used by the local demo seed (password sign-in) and the cloud demo seed
+ * (server-side sessions for a trusted one-off job, revoked when it finishes).
  */
 import { randomUUID } from 'node:crypto';
+import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import { createSession, revokeSession } from '../../src/auth/sessions.js';
+import { deriveCsrfToken } from '../../src/auth/tokens.js';
+import type { AppConfig } from '../../src/config.js';
+import type { Database } from '../../src/db/client.js';
+import { auditLog, users } from '../../src/db/schema/index.js';
 
 type Method = 'GET' | 'POST' | 'PUT';
 
@@ -33,7 +40,40 @@ export async function signIn(app: FastifyInstance, origin: string, email: string
   if (login.statusCode !== 200) throw new DemoApiError(login.statusCode, undefined, `Sign-in failed for ${email} (status ${login.statusCode}). Check DEV_SEED_PASSWORD.`);
   const { csrfToken } = login.json() as { csrfToken: string };
   const cookies = Object.fromEntries(login.cookies.map((cookie) => [cookie.name, cookie.value]));
+  return actorFor(app, origin, email, cookies, csrfToken);
+}
 
+/**
+ * A session for a trusted seeding job, created server-side with the same session code as sign-in (no
+ * password is used or needed). It is audited, lasts at most 30 minutes and `close()` revokes it.
+ */
+export async function sessionActor(
+  app: FastifyInstance,
+  db: Database,
+  config: Pick<AppConfig, 'session'>,
+  origin: string,
+  email: string,
+): Promise<{ actor: Actor; close: () => Promise<void> }> {
+  const [user] = await db
+    .select({ id: users.id, isActive: users.isActive })
+    .from(users)
+    .where(sql`lower(${users.email}) = lower(${email})`)
+    .limit(1);
+  if (!user) throw new Error(`Demo account ${email} does not exist.`);
+  if (!user.isActive) throw new Error(`Demo account ${email} is deactivated; reactivate it before seeding.`);
+  const session = await createSession(db, user.id, 30 * 60);
+  await db.insert(auditLog).values({
+    actorUserId: user.id,
+    action: 'auth.seed_session',
+    entityType: 'user',
+    entityId: user.id,
+    metadata: { sessionId: session.sessionId, source: 'demo_seed' },
+  });
+  const actor = actorFor(app, origin, email, { [config.session.cookieName]: session.token }, deriveCsrfToken(session.token));
+  return { actor, close: () => revokeSession(db, session.sessionId) };
+}
+
+function actorFor(app: FastifyInstance, origin: string, email: string, cookies: Record<string, string>, csrfToken: string): Actor {
   const send = async (method: Method, path: string, payload?: object | Buffer, contentType?: string) => {
     const res = await app.inject({
       method,

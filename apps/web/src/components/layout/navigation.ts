@@ -41,6 +41,8 @@ export function buildNavigation(
       items: [
         { href: '/dashboard', label: t.nav.dashboard },
         { href: '/courses', label: t.nav.myCourses, exact: true },
+        { href: '/announcements', label: t.nav.announcements },
+        { href: '/calendar', label: t.nav.calendar },
         { href: '/certificates', label: t.nav.myCertificates },
         ...(managesPrograms && !isAdmin ? [{ href: '/academic', label: t.nav.academicManagement }] : []),
       ],
@@ -58,6 +60,7 @@ export function buildNavigation(
         { href: '/admin/courses', label: t.nav.coursesEnrollments },
         { href: '/admin/setup', label: t.nav.courseSetup },
         { href: '/admin/certificates', label: t.nav.certificates },
+        { href: '/admin/communications', label: t.nav.institutionCommunications },
       ],
     });
   }
@@ -66,6 +69,8 @@ export function buildNavigation(
     const role = roleByCourse.get(courseId) ?? null;
     const base = `/courses/${courseId}`;
     const items: NavItem[] = [{ href: base, label: t.nav.courseContent, exact: true, activeFor: [`${base}/activities`, `${base}/attempts`] }];
+    // Announcements and calendar: every course role (students see published items only) and administrators.
+    items.push({ href: `${base}/announcements`, label: t.nav.announcements }, { href: `${base}/calendar`, label: t.nav.calendar });
     if (role === 'instructor' || role === 'non_editing_instructor' || (isAdmin && role === null)) items.push({ href: `${base}/grades`, label: t.nav.gradebook });
     if (role === 'student') items.push({ href: `${base}/grades`, label: t.nav.myGrades });
     if (role === 'student' || role === 'instructor' || role === 'non_editing_instructor') items.push({ href: `${base}/tutor`, label: t.nav.tutor });

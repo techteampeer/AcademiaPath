@@ -42,6 +42,14 @@ export type CoursePermission =
   | 'certificates.manage'
   /** See one's own certificate eligibility and certificates (students only; role-only check). */
   | 'certificates.own'
+  /** See every announcement of the course, including drafts, scheduled and archived ones (read-only). */
+  | 'announcements.viewAll'
+  /** Create, edit, publish, schedule, pin and archive course announcements (administrators via the override). */
+  | 'announcements.manage'
+  /** See every calendar event of the course, including hidden and cancelled ones (read-only). */
+  | 'calendar.viewAll'
+  /** Create, edit, publish, hide, cancel and delete course calendar events (administrators via the override). */
+  | 'calendar.manage'
   /** Use the course tutor (role-only check: students, instructors, non-editing instructors). */
   | 'tutor.use'
   /** Read and update one's own learning progress (students only; role-only check). */
@@ -78,13 +86,27 @@ export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermi
     'grades.configure',
     'certificates.view',
     'certificates.manage',
+    'announcements.viewAll',
+    'announcements.manage',
+    'calendar.viewAll',
+    'calendar.manage',
     'tutor.use',
     'progress.viewAll',
   ]),
   // Non-editing instructors grade submissions (rubric scores and feedback; AP-009, documented in the API
   // contract) and read the gradebook and certificates, but never change content, release grades, change the
   // grading or certificate policy, or issue or revoke certificates (AP-023, AP-024).
-  non_editing_instructor: new Set([...STAFF_READ, 'quiz.viewResults', ...GRADER, 'certificates.view', 'tutor.use', 'progress.viewAll']),
+  // AP-025: they read every announcement and event of their courses but never publish or edit them.
+  non_editing_instructor: new Set([
+    ...STAFF_READ,
+    'quiz.viewResults',
+    ...GRADER,
+    'certificates.view',
+    'announcements.viewAll',
+    'calendar.viewAll',
+    'tutor.use',
+    'progress.viewAll',
+  ]),
   student: new Set(['course.view', 'quiz.attempt', 'assignment.submit', 'grades.viewOwn', 'tutor.use', 'progress.own', 'certificates.own']),
 };
 

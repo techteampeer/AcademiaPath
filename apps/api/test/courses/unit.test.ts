@@ -31,15 +31,36 @@ describe('course role permissions', () => {
     assert.deepEqual(granted('student'), ['assignment.submit', 'certificates.own', 'course.view', 'grades.viewOwn', 'progress.own', 'quiz.attempt', 'tutor.use']);
     // AP-023: non-editing instructors read and export the gradebook but neither release grades nor configure weights.
     // AP-024: non-editing instructors keep grading (documented) and only read certificates.
-    assert.deepEqual(granted('non_editing_instructor'), [...staff, 'quiz.viewResults', ...grader, 'certificates.view', 'tutor.use', 'progress.viewAll'].sort());
+    assert.deepEqual(granted('non_editing_instructor'), [...staff, 'quiz.viewResults', ...grader, 'certificates.view', 'announcements.viewAll', 'calendar.viewAll', 'tutor.use', 'progress.viewAll'].sort());
     assert.deepEqual(
       granted('instructor'),
-      [...staff, 'content.edit', 'content.submit', 'quiz.viewResults', ...grader, 'grades.release', 'grades.configure', 'certificates.view', 'certificates.manage', 'tutor.use', 'progress.viewAll'].sort(),
+      [
+        ...staff,
+        'content.edit',
+        'content.submit',
+        'quiz.viewResults',
+        ...grader,
+        'grades.release',
+        'grades.configure',
+        'certificates.view',
+        'certificates.manage',
+        'announcements.viewAll',
+        'announcements.manage',
+        'calendar.viewAll',
+        'calendar.manage',
+        'tutor.use',
+        'progress.viewAll',
+      ].sort(),
     );
     assert.equal(hasCoursePermission('non_editing_instructor', 'grades.release'), false);
     assert.equal(hasCoursePermission('non_editing_instructor', 'grades.configure'), false);
     assert.equal(hasCoursePermission('non_editing_instructor', 'certificates.manage'), false);
     assert.equal(hasCoursePermission('design_team', 'certificates.view'), false, 'the design team never sees student certificates');
+    // AP-025: only instructors write announcements and events; non-editing instructors and the design team never do.
+    for (const permission of ['announcements.manage', 'calendar.manage'] as const) {
+      assert.equal(hasCoursePermission('non_editing_instructor', permission), false);
+      assert.equal(hasCoursePermission('design_team', permission), false);
+    }
     assert.deepEqual(granted('design_team'), [...staff, 'content.edit', 'content.submit', 'content.review'].sort());
     assert.equal(hasCoursePermission('design_team', 'quiz.attempt'), false, 'staff never take quizzes');
     assert.equal(hasCoursePermission('design_team', 'progress.viewAll'), false, 'the design team never reads student progress');

@@ -10,6 +10,17 @@ export const PASSWORD_HASH_OPTIONS = {
   parallelism: 1,
 } as const;
 
+/** Length limits of a password chosen by a person (activation) or set by the demo seed. */
+export const PASSWORD_MIN_LENGTH = 12;
+export const PASSWORD_MAX_LENGTH = 256;
+
+/** Minimal checks beyond the 12-character minimum: not built from the email name, not one repeated character. */
+export function isWeakPassword(password: string, email: string): boolean {
+  const lowered = password.toLowerCase();
+  const localPart = email.split('@')[0] ?? '';
+  return (localPart.length >= 3 && lowered.includes(localPart)) || new Set(password).size < 5;
+}
+
 export function hashPassword(password: string): Promise<string> {
   return hash(password, PASSWORD_HASH_OPTIONS);
 }

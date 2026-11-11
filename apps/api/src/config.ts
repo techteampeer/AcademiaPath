@@ -36,6 +36,13 @@ export type AppConfig = {
     /** Hard limit for validating and extracting one document (the worker is terminated after it). */
     extractionTimeoutMs: number;
   };
+  /**
+   * The institution (AP-025). `timeZone` is the IANA zone used for calendar dates that have none of their
+   * own (assignment due dates, all-day defaults); the Peru-based institution defaults to America/Lima.
+   */
+  institution: {
+    timeZone: string;
+  };
   /** Administrator-managed accounts. */
   accounts: {
     /**
@@ -136,6 +143,23 @@ function parseTrustProxy(raw: string | undefined): false | string {
 }
 
 /** Builds the application configuration from environment variables. Fails fast on invalid values. */
+/** A valid IANA time zone (default America/Lima); invalid values fail at startup instead of at render time. */
+export const DEFAULT_TIME_ZONE = 'America/Lima';
+export function isValidTimeZone(value: string): boolean {
+  if (!/^[A-Za-z][A-Za-z0-9_+\-/]{0,63}$/.test(value)) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function parseTimeZone(value: string | undefined): string {
+  const zone = value?.trim() || DEFAULT_TIME_ZONE;
+  if (!isValidTimeZone(zone)) throw new Error(`INSTITUTION_TIME_ZONE is not a valid IANA time zone: ${zone}`);
+  return zone;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const isProduction = env.NODE_ENV === 'production';
 
@@ -166,6 +190,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       storageDir: parseStorageDir(env.DOCUMENT_STORAGE_DIR, isProduction),
       maxUploadBytes: readPositiveInt(env, 'DOCUMENT_MAX_UPLOAD_MB', 10, 100) * 1024 * 1024,
       extractionTimeoutMs: readPositiveInt(env, 'DOCUMENT_EXTRACTION_TIMEOUT_SECONDS', 20, 300) * 1000,
+    },
+    institution: {
+      timeZone: parseTimeZone(env.INSTITUTION_TIME_ZONE),
     },
     accounts: {
       invitationDelivery: parseInvitationDelivery(env.ACCOUNT_INVITATION_DELIVERY, isProduction),

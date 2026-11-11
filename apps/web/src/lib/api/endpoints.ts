@@ -79,6 +79,16 @@ import type {
   MyCourseCertificates,
   MyCertificates,
   CertificateVerification,
+  Announcement,
+  AnnouncementInput,
+  AnnouncementPage,
+  AnnouncementStatus,
+  AnnouncementUpdate,
+  UnreadCount,
+  Calendar,
+  CalendarEvent,
+  CalendarEventInput,
+  CalendarEventList,
   StudentProgressPage,
   StudentQuizAttempt,
   StudentQuizAttemptSummary,
@@ -135,6 +145,9 @@ export async function loadAll<T>(fetchPage: (page: PageRequest) => Promise<{ ite
   }
   return items;
 }
+/** Query string from the defined values only. */
+const rangeParams = (values: Record<string, string | null | undefined>) =>
+  new URLSearchParams(Object.entries(values).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1] !== '')).toString();
 const activity = (courseId: string, activityId: string) => `${course(courseId)}/activities/${encodeURIComponent(activityId)}`;
 const attempt = (courseId: string, attemptId: string) => `${course(courseId)}/attempts/${encodeURIComponent(attemptId)}`;
 const sectionActivities = (courseId: string, sectionId: string) =>
@@ -291,6 +304,40 @@ export const api = {
     const disposition = response.headers.get('content-disposition') ?? '';
     return { blob: await response.blob(), fileName: /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'certificate.pdf' };
   },
+
+  // Announcements and academic calendar (AP-025): visibility, scheduling and read state are decided by the API.
+  listCourseAnnouncements: (courseId: string, filter: { status?: 'all' | AnnouncementStatus; cursor?: string | null } = {}) =>
+    apiRequest<AnnouncementPage>('GET', `${course(courseId)}/announcements?${rangeParams({ limit: '50', status: filter.status, cursor: filter.cursor })}`),
+  listInstitutionAnnouncements: (filter: { status?: 'all' | AnnouncementStatus; cursor?: string | null } = {}) =>
+    apiRequest<AnnouncementPage>('GET', `/announcements?${rangeParams({ limit: '50', status: filter.status, cursor: filter.cursor })}`),
+  myAnnouncements: (page: { limit?: number; cursor?: string | null } = {}) =>
+    apiRequest<AnnouncementPage>('GET', `/me/announcements?${rangeParams({ limit: String(page.limit ?? 20), cursor: page.cursor })}`),
+  myUnreadCount: () => apiRequest<UnreadCount>('GET', '/me/announcements/unread-count'),
+  getAnnouncement: (announcementId: string) => apiRequest<Announcement>('GET', `/announcements/${encodeURIComponent(announcementId)}`),
+  markAnnouncementRead: (announcementId: string, csrfToken: string) =>
+    apiRequest<void>('PUT', `/announcements/${encodeURIComponent(announcementId)}/read`, { csrfToken }),
+  createCourseAnnouncement: (courseId: string, body: AnnouncementInput, csrfToken: string) =>
+    apiRequest<Announcement>('POST', `${course(courseId)}/announcements`, { body, csrfToken }),
+  createInstitutionAnnouncement: (body: AnnouncementInput, csrfToken: string) => apiRequest<Announcement>('POST', '/announcements', { body, csrfToken }),
+  updateAnnouncement: (announcementId: string, body: AnnouncementUpdate, csrfToken: string) =>
+    apiRequest<Announcement>('PUT', `/announcements/${encodeURIComponent(announcementId)}`, { body, csrfToken }),
+  publishAnnouncement: (announcementId: string, publishAt: string | null, csrfToken: string) =>
+    apiRequest<Announcement>('POST', `/announcements/${encodeURIComponent(announcementId)}/publish`, { body: publishAt ? { publishAt } : {}, csrfToken }),
+  unscheduleAnnouncement: (announcementId: string, csrfToken: string) =>
+    apiRequest<Announcement>('POST', `/announcements/${encodeURIComponent(announcementId)}/unschedule`, { csrfToken }),
+  archiveAnnouncement: (announcementId: string, csrfToken: string) =>
+    apiRequest<Announcement>('POST', `/announcements/${encodeURIComponent(announcementId)}/archive`, { csrfToken }),
+  courseCalendar: (courseId: string, range: { from: string; to: string }) =>
+    apiRequest<Calendar>('GET', `${course(courseId)}/calendar?${rangeParams(range)}`),
+  myCalendar: (range: { from: string; to: string; courseId?: string | null }) => apiRequest<Calendar>('GET', `/me/calendar?${rangeParams(range)}`),
+  institutionEvents: (range: { from: string; to: string }) => apiRequest<CalendarEventList>('GET', `/calendar/events?${rangeParams(range)}`),
+  createCourseEvent: (courseId: string, body: CalendarEventInput, csrfToken: string) =>
+    apiRequest<CalendarEvent>('POST', `${course(courseId)}/calendar/events`, { body, csrfToken }),
+  createInstitutionEvent: (body: CalendarEventInput, csrfToken: string) => apiRequest<CalendarEvent>('POST', '/calendar/events', { body, csrfToken }),
+  updateEvent: (eventId: string, body: CalendarEventInput, csrfToken: string) =>
+    apiRequest<CalendarEvent>('PUT', `/calendar/events/${encodeURIComponent(eventId)}`, { body, csrfToken }),
+  cancelEvent: (eventId: string, csrfToken: string) => apiRequest<CalendarEvent>('POST', `/calendar/events/${encodeURIComponent(eventId)}/cancel`, { csrfToken }),
+  deleteEvent: (eventId: string, csrfToken: string) => apiRequest<void>('DELETE', `/calendar/events/${encodeURIComponent(eventId)}`, { csrfToken }),
 
   // Advanced gradebook (AP-023): every calculation and permission check happens in the API.
   getGradingPolicy: (courseId: string) => apiRequest<GradingPolicy>('GET', `${course(courseId)}/grading-policy`),

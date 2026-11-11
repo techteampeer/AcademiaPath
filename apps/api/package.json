@@ -13,7 +13,8 @@
     "db:check": "drizzle-kit check",
     "db:migrate": "drizzle-kit migrate",
     "db:seed:dev": "tsx --env-file-if-exists=../../.env scripts/seed-dev-users.ts",
-    "db:seed:demo": "tsx --env-file-if-exists=../../.env scripts/seed-demo.ts"
+    "db:seed:demo": "tsx --env-file-if-exists=../../.env scripts/seed-demo.ts",
+    "db:seed:cloud-demo": "tsx scripts/seed-cloud-demo.ts"
   },
   "dependencies": {
     "@fastify/cookie": "11.1.3",

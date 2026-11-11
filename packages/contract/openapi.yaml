@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.17.0
+  version: 0.18.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -181,6 +181,23 @@ info:
     only be revoked, with a reason. The PDF is generated locally from that snapshot. Anyone can verify a
     certificate with its opaque 43-character token at `/verify/{token}` (application-relative); verification
     shows only the status, recipient name, course, period, issuer, issue date and certificate number.
+
+    Announcements and academic calendar (0.18.0): announcements are plain text (never HTML) for one course or
+    the whole institution. Instructors (and administrators) write course announcements; only administrators
+    write institution-wide ones; non-editing instructors read every announcement and event of their courses
+    but never write; the design team and program-management grants give no writing rights. An announcement
+    is a `draft`, `published` (with a `publishAt` instant: in the future it is `scheduled`), or `archived`.
+    Readers see only published announcements whose `publishAt` the server clock has reached (no background
+    job): drafts, scheduled and archived announcements never appear in lists, counts or by id. Students see
+    institution-wide announcements and those of courses where their enrollment is active (published courses
+    only); losing the enrollment removes access immediately. Pinned announcements come first, then the
+    newest. Read marks persist per user and repeated marks are no-ops. Calendar events (course or
+    institution-wide) store UTC instants plus the IANA time zone they are shown in; timed events are sent as
+    instants with an explicit offset, all-day events as dates (end inclusive) in a time zone, defaulting to
+    the institution's (`INSTITUTION_TIME_ZONE`, America/Lima). The end must follow the start. Events are
+    `hidden`, `published` or `cancelled`; students see published and cancelled ones. A published event can
+    only be cancelled, never deleted. Calendars also list due dates of approved assignments the reader can
+    open; quizzes have no due date. Every write is audited.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -207,6 +224,10 @@ tags:
     description: Gradebook, grade release and students' released grades
   - name: Certificates
     description: Course completion certificates, eligibility, issuance, revocation and public verification
+  - name: Announcements
+    description: Course and institution-wide announcements, scheduling and read tracking
+  - name: Calendar
+    description: Academic calendar events and assignment due dates
   - name: Tutor
     description: Course-grounded tutor (local mock provider) and usage
   - name: Documents
@@ -3559,6 +3580,648 @@ paths:
           $ref: "#/components/responses/NotFound"
         "429":
           description: Too many verification requests.
+  /api/v1/courses/{id}/announcements:
+    get:
+      operationId: listCourseAnnouncements
+      summary: A course's announcements
+      description: |
+        Course access required (students: an active enrollment in a published course). Readers get published,
+        visible announcements; instructors, non-editing instructors and administrators get every status and may
+        filter by `status`. Pinned first, then newest (publication or creation time). Paginated.
+      tags: [Announcements]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, draft, scheduled, published, archived]
+          description: Staff only (others always get published, visible announcements).
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnnouncementPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createCourseAnnouncement
+      summary: Create a course announcement (draft)
+      description: |
+        Requires `announcements.manage` (instructor) or the administrator role; never non-editing instructors, the
+        design team or program managers. Plain text title and body. Created as a draft. Audited as
+        `announcement.created`.
+      tags: [Announcements]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnouncementInput"
+      responses:
+        "201":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Announcement"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/announcements:
+    get:
+      operationId: listInstitutionAnnouncements
+      summary: Institution-wide announcements
+      description: |
+        Any signed-in user gets the published, visible ones; administrators get every status and may filter.
+      tags: [Announcements]
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, draft, scheduled, published, archived]
+          description: Staff only (others always get published, visible announcements).
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnnouncementPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createInstitutionAnnouncement
+      summary: Create an institution-wide announcement (draft)
+      description: |
+        Administrators only. Audited as `announcement.created`.
+      tags: [Announcements]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnouncementInput"
+      responses:
+        "201":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Announcement"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/me/announcements:
+    get:
+      operationId: getMyAnnouncements
+      summary: The signed-in user's announcement feed
+      description: |
+        Published, visible announcements: institution-wide ones and those of every course where the caller has an
+        active enrollment (students: published courses only). Each says whether the caller has read it. Pinned
+        first, then newest. Paginated.
+      tags: [Announcements]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnnouncementPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/me/announcements/unread-count:
+    get:
+      operationId: getMyUnreadAnnouncementCount
+      summary: How many feed announcements the caller has not read
+      description: |
+        Counts exactly the announcements of the feed (never drafts, scheduled, archived or other courses').
+      tags: [Announcements]
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnreadCount"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/announcements/{announcementId}:
+    get:
+      operationId: getAnnouncement
+      summary: One announcement
+      description: |
+        Readers get it only while it is published and visible; staff of the course (or administrators for
+        institution-wide ones) get every status. Anything else is `404`.
+      tags: [Announcements]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/AnnouncementId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Announcement"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateAnnouncement
+      summary: Edit an announcement or pin it
+      description: |
+        Requires `announcements.manage` for the course (administrators for institution-wide ones). Any of title,
+        body and `pinned`. Archived announcements cannot change (`409 ANNOUNCEMENT_ARCHIVED`). Audited as
+        `announcement.updated`.
+      tags: [Announcements]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/AnnouncementId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnouncementUpdate"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Announcement"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/announcements/{announcementId}/publish:
+    post:
+      operationId: publishAnnouncement
+      summary: Publish now, or schedule publication
+      description: |
+        Same permission as editing. Without `publishAt` it is published at the current server time (publishing a
+        visible announcement again changes nothing). With `publishAt` (strictly in the future, at most a year
+        ahead; otherwise `422 PUBLISH_AT_INVALID`) it is scheduled and becomes visible when the server clock
+        reaches it. Audited as `announcement.published` or `announcement.scheduled`.
+      tags: [Announcements]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/AnnouncementId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnouncementPublish"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Announcement"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/announcements/{announcementId}/unschedule:
+    post:
+      operationId: unscheduleAnnouncement
+      summary: Move a scheduled announcement back to draft
+      description: |
+        Only while it is still scheduled (`409 ANNOUNCEMENT_NOT_SCHEDULED` otherwise). Audited.
+      tags: [Announcements]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/AnnouncementId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Announcement"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/announcements/{announcementId}/archive:
+    post:
+      operationId: archiveAnnouncement
+      summary: Archive an announcement
+      description: |
+        Hides it from readers and unpins it; it is kept, never deleted. Repeating changes nothing. Audited.
+      tags: [Announcements]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/AnnouncementId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Announcement"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/announcements/{announcementId}/read:
+    put:
+      operationId: markAnnouncementRead
+      summary: Mark an announcement as read
+      description: |
+        For announcements the caller can currently read (published and visible). Persists across sessions;
+        repeated requests change nothing.
+      tags: [Announcements]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/AnnouncementId"
+      responses:
+        "204":
+          description: Done (no content).
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/calendar:
+    get:
+      operationId: getCourseCalendar
+      summary: A course's calendar
+      description: |
+        Course access required. Readers get published and cancelled events; staff also hidden ones. Includes due
+        dates of approved assignments the caller can open (in the institution's time zone).
+      tags: [Calendar]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Range start (an instant with offset; default now).
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Range end (default 120 days after the start; at most 400 days).
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Calendar"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/calendar/events:
+    post:
+      operationId: createCourseEvent
+      summary: Create a course calendar event
+      description: |
+        Requires `calendar.manage` (instructor) or the administrator role. Timed events send `startsAt`/`endsAt`
+        with explicit offsets; all-day events send `startDate`/`endDate` (inclusive). `timeZone` defaults to the
+        institution's. The end must follow the start (`422 EVENT_TIME_INVALID`); unknown zones are
+        `422 INVALID_TIME_ZONE`. Audited as `calendar_event.created`.
+      tags: [Calendar]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalendarEventInput"
+      responses:
+        "201":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarEvent"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/me/calendar:
+    get:
+      operationId: getMyCalendar
+      summary: The signed-in user's calendar
+      description: |
+        Published and cancelled events of the institution and of every course where the caller has an active
+        enrollment (students: published courses), plus assignment due dates they can open. `courseId` narrows it
+        to one of those courses; any other course is `404`.
+      tags: [Calendar]
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Range start (an instant with offset; default now).
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Range end (default 120 days after the start; at most 400 days).
+        - name: courseId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Calendar"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/calendar/events:
+    get:
+      operationId: listInstitutionEvents
+      summary: Institution-wide calendar events
+      description: |
+        Signed-in users get published and cancelled events; administrators also hidden ones.
+      tags: [Calendar]
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Range start (an instant with offset; default now).
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Range end (default 120 days after the start; at most 400 days).
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarEventList"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+    post:
+      operationId: createInstitutionEvent
+      summary: Create an institution-wide calendar event
+      description: |
+        Administrators only. Same time rules as course events. Audited.
+      tags: [Calendar]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalendarEventInput"
+      responses:
+        "201":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarEvent"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/calendar/events/{eventId}:
+    get:
+      operationId: getCalendarEvent
+      summary: One calendar event
+      description: |
+        Hidden events only for staff who manage or read every event of the course (administrators for
+        institution-wide ones); anything else is `404`.
+      tags: [Calendar]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/EventId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarEvent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateCalendarEvent
+      summary: Edit, publish or hide an event
+      description: |
+        Requires `calendar.manage` for the course (administrators for institution-wide events). Replaces the
+        event's fields; cancelled events cannot change (`409 EVENT_CANCELLED`). Audited.
+      tags: [Calendar]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/EventId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalendarEventInput"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarEvent"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+    delete:
+      operationId: deleteCalendarEvent
+      summary: Delete an event that was never published
+      description: |
+        Same permission as editing. An event that was ever published can only be cancelled
+        (`409 EVENT_WAS_PUBLISHED`; the database refuses it too). The deletion is audited with the event's data.
+      tags: [Calendar]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/EventId"
+      responses:
+        "204":
+          description: Done (no content).
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/calendar/events/{eventId}/cancel:
+    post:
+      operationId: cancelCalendarEvent
+      summary: Cancel an event
+      description: |
+        The event is kept and shown to readers as cancelled. Repeating changes nothing. Audited.
+      tags: [Calendar]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/EventId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarEvent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/courses/{id}/progress:
     get:
       operationId: getMyCourseProgress
@@ -3982,6 +4645,20 @@ components:
       schema:
         type: string
         format: uuid
+    AnnouncementId:
+      name: announcementId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    EventId:
+      name: eventId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     CertificateId:
       name: certificateId
       in: path
@@ -4144,7 +4821,9 @@ components:
         `SECTION_ORDER_STALE`; or `PROGRAM_MANAGER_EXISTS` (the user already manages the program); or a
         learning-resource rule: `RESOURCE_FOLDER_NOT_EMPTY`, `RESOURCE_ORDER_STALE`; or
         `GRADING_POLICY_CONFLICT` (the grading policy changed since it was loaded); or a certificate rule:
-        `CERTIFICATE_POLICY_CONFLICT`, `CERTIFICATE_ALREADY_REVOKED`, `CERTIFICATE_REVOKED`.
+        `CERTIFICATE_POLICY_CONFLICT`, `CERTIFICATE_ALREADY_REVOKED`, `CERTIFICATE_REVOKED`; or an
+        announcement or calendar rule: `ANNOUNCEMENT_ARCHIVED`, `ANNOUNCEMENT_NOT_SCHEDULED`, `EVENT_CANCELLED`,
+        `EVENT_WAS_PUBLISHED`.
       content:
         application/problem+json:
           schema:
@@ -4174,7 +4853,8 @@ components:
         `QUIZ_POOL_TOO_SMALL`, `QUIZ_POOL_POINTS_MIXED` or `QUIZ_SOURCE_INVALID`; or a gradebook rule:
         `GRADE_CATEGORY_DUPLICATE`, `GRADE_CATEGORY_ACTIVITY_DUPLICATE`, `GRADE_CATEGORY_ACTIVITY_INVALID`,
         `GRADE_WEIGHTS_INVALID` or `GRADE_RELEASE_DUPLICATE`; or a certificate rule:
-        `CERTIFICATE_POLICY_INVALID` or `CERTIFICATE_NOT_ELIGIBLE`.
+        `CERTIFICATE_POLICY_INVALID` or `CERTIFICATE_NOT_ELIGIBLE`; or an announcement or calendar rule:
+        `PUBLISH_AT_INVALID`, `EVENT_TIME_INVALID`, `INVALID_TIME_ZONE` or `RANGE_INVALID`.
       content:
         application/problem+json:
           schema:
@@ -4419,6 +5099,14 @@ components:
             - CERTIFICATE_ALREADY_REVOKED
             - CERTIFICATE_REVOKED
             - CERTIFICATE_NOT_FOUND
+            - ANNOUNCEMENT_ARCHIVED
+            - ANNOUNCEMENT_NOT_SCHEDULED
+            - PUBLISH_AT_INVALID
+            - EVENT_TIME_INVALID
+            - INVALID_TIME_ZONE
+            - RANGE_INVALID
+            - EVENT_CANCELLED
+            - EVENT_WAS_PUBLISHED
     ResourceKind:
       type: string
       description: What a link points to. Every kind is only a link opened in a new tab; nothing is embedded, fetched or executed.
@@ -6977,6 +7665,250 @@ components:
         revokedAt:
           type: [string, "null"]
           format: date-time
+    CourseRefOrNull:
+      type: [object, "null"]
+      required: [id, title, code]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        code:
+          type: string
+    AnnouncementInput:
+      type: object
+      required: [title, body]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: "\\S"
+        body:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          pattern: "\\S"
+          description: Plain text; never interpreted as HTML.
+        pinned:
+          type: boolean
+    AnnouncementUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: "\\S"
+        body:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          pattern: "\\S"
+        pinned:
+          type: boolean
+    AnnouncementPublish:
+      type: object
+      additionalProperties: false
+      properties:
+        publishAt:
+          type: [string, "null"]
+          format: date-time
+          description: A future instant with an explicit offset to schedule; omit or null to publish now.
+    Announcement:
+      type: object
+      required: [id, scope, course, title, body, status, pinned, publishAt, archivedAt, read, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        scope:
+          type: string
+          enum: [course, institution]
+        course:
+          $ref: "#/components/schemas/CourseRefOrNull"
+        title:
+          type: string
+        body:
+          type: string
+        status:
+          type: string
+          enum: [draft, scheduled, published, archived]
+        pinned:
+          type: boolean
+        publishAt:
+          type: [string, "null"]
+          format: date-time
+        archivedAt:
+          type: [string, "null"]
+          format: date-time
+        read:
+          type: boolean
+          description: Whether the caller has marked it read.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    AnnouncementPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Announcement"
+        nextCursor:
+          type: [string, "null"]
+    UnreadCount:
+      type: object
+      required: [unreadCount]
+      additionalProperties: false
+      properties:
+        unreadCount:
+          type: integer
+          minimum: 0
+    CalendarEventInput:
+      type: object
+      description: Timed events send startsAt/endsAt (instants with explicit offsets); all-day events send startDate/endDate (inclusive dates).
+      required: [title, allDay, status]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: "\\S"
+        description:
+          type: [string, "null"]
+          maxLength: 5000
+        allDay:
+          type: boolean
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        timeZone:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: IANA time zone (default the institution's, America/Lima).
+        status:
+          type: string
+          enum: [hidden, published]
+    CalendarEvent:
+      type: object
+      required: [id, scope, course, title, description, allDay, startsAt, endsAt, startDate, endDate, timeZone, status, publishedAt, cancelledAt, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        scope:
+          type: string
+          enum: [course, institution]
+        course:
+          $ref: "#/components/schemas/CourseRefOrNull"
+        title:
+          type: string
+        description:
+          type: [string, "null"]
+        allDay:
+          type: boolean
+        startsAt:
+          type: string
+          format: date-time
+          description: UTC instant (all-day events, midnight of startDate in timeZone).
+        endsAt:
+          type: string
+          format: date-time
+          description: UTC instant, exclusive (all-day events, midnight after endDate in timeZone).
+        startDate:
+          type: [string, "null"]
+        endDate:
+          type: [string, "null"]
+        timeZone:
+          type: string
+        status:
+          type: string
+          enum: [hidden, published, cancelled]
+        publishedAt:
+          type: [string, "null"]
+          format: date-time
+        cancelledAt:
+          type: [string, "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CalendarEventList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CalendarEvent"
+    CalendarDueDate:
+      type: object
+      required: [activityId, course, title, dueAt, lateUntil]
+      additionalProperties: false
+      properties:
+        activityId:
+          type: string
+          format: uuid
+        course:
+          $ref: "#/components/schemas/CourseRefOrNull"
+        title:
+          type: string
+        dueAt:
+          type: string
+          format: date-time
+        lateUntil:
+          type: [string, "null"]
+          format: date-time
+    Calendar:
+      type: object
+      required: [timeZone, from, to, events, dueDates]
+      additionalProperties: false
+      properties:
+        timeZone:
+          type: string
+          description: The institution's time zone (used for due dates).
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/CalendarEvent"
+        dueDates:
+          type: array
+          items:
+            $ref: "#/components/schemas/CalendarDueDate"
     CourseGrade:
       type: object
       description: |

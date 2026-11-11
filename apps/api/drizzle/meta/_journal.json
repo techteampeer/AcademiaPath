@@ -183,6 +183,20 @@
       "when": 1794330114994,
       "tag": "0025_certificate_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794332216649,
+      "tag": "0026_announcements_calendar",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1794332232911,
+      "tag": "0027_communications_integrity",
+      "breakpoints": true
     }
   ]
 }

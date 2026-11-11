@@ -45,6 +45,12 @@ export const gradeSourceEnum = pgEnum('grade_source', ['quiz', 'assignment']);
 export const gradingPolicyStatusEnum = pgEnum('grading_policy_status', ['draft', 'published']);
 /** A course completion certificate (AP-024): issued, or revoked by authorized staff (never deleted). */
 export const certificateStatusEnum = pgEnum('certificate_status', ['issued', 'revoked']);
+/** Who an announcement or calendar event is for (AP-025): one course, or the whole institution. */
+export const communicationScopeEnum = pgEnum('communication_scope', ['course', 'institution']);
+/** Announcement lifecycle: a draft, published (visible once `publish_at` is reached), or archived. */
+export const announcementStatusEnum = pgEnum('announcement_status', ['draft', 'published', 'archived']);
+/** Calendar event visibility: hidden from students, published, or cancelled (kept, shown as cancelled). */
+export const calendarEventStatusEnum = pgEnum('calendar_event_status', ['hidden', 'published', 'cancelled']);
 
 /** Tutor usage accounting: request kind and grounding outcome (never the question text). */
 export const tutorRequestKindEnum = pgEnum('tutor_request_kind', ['message', 'practice']);

@@ -40,6 +40,10 @@ export function contentAbilities(user: CurrentUser, viewerRole: CourseRole | nul
     trackProgress: role === 'student',
     /** Students' progress overview (read-only): instructors, non-editing instructors and administrators. */
     viewProgress: admin || role === 'instructor' || role === 'non_editing_instructor',
+    /** Every course announcement and calendar event, including drafts and hidden ones (AP-025). */
+    viewAllCommunications: admin || role === 'instructor' || role === 'non_editing_instructor',
+    /** Create, publish, schedule, archive announcements and manage events: instructors and administrators. */
+    manageCommunications: admin || role === 'instructor',
   };
 }
 
