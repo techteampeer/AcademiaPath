@@ -25,14 +25,14 @@ export function EmptyState({ title, description, action, icon, titleAs: Title = 
   return (
     <div
       className={cn(
-        'flex flex-col items-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center',
+        'flex flex-col items-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center',
         className,
       )}
     >
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-500 ring-1 ring-slate-200">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-gold-600 ring-1 ring-gold-300">
         {icon ?? <DefaultIcon />}
       </div>
-      <Title className="mt-4 text-base font-semibold text-slate-900">{title}</Title>
+      <Title className="mt-4 font-serif text-lg font-semibold text-brand-600">{title}</Title>
       {description ? <p className="mt-1 max-w-md text-sm text-slate-600">{description}</p> : null}
       {action ? <div className="mt-6">{action}</div> : null}
     </div>

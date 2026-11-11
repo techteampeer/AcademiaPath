@@ -48,7 +48,7 @@ export function LanguageSwitcher({ className }: { className?: string }) {
     <div
       role="group"
       aria-label={t.common.language}
-      className={cn('inline-flex shrink-0 items-center divide-x divide-slate-300 overflow-hidden rounded-lg border border-slate-300 bg-white', className)}
+      className={cn('inline-flex shrink-0 items-center divide-x divide-gold-400/40 overflow-hidden rounded-md border border-gold-400/50', className)}
     >
       {LOCALES.map((option) => {
         const selected = locale === option;
@@ -62,8 +62,8 @@ export function LanguageSwitcher({ className }: { className?: string }) {
               if (!selected) setLocale(option);
             }}
             className={cn(
-              'min-h-9 min-w-10 px-2.5 text-xs font-semibold tracking-wide uppercase focus-visible:relative focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-600',
-              selected ? 'bg-brand-600 text-white' : 'text-slate-700 hover:bg-slate-100',
+              'min-h-9 min-w-10 px-2.5 text-xs font-semibold tracking-wide uppercase focus-visible:relative focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-gold-300',
+              selected ? 'bg-ivory text-brand-600' : 'text-ivory/90 hover:bg-white/10',
             )}
           >
             <span aria-hidden="true">{option}</span>

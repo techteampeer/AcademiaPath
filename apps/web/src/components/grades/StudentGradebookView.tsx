@@ -12,6 +12,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
 import { buttonClasses } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { ScrollRegion } from '@/components/ui/ScrollRegion';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Breadcrumbs } from '@/components/ui/PageHeader';
 import { isApiError } from '@/lib/api/client';
@@ -89,7 +90,7 @@ function Content({ courseId, userId, user }: { courseId: string; userId: string;
             { label: name },
           ]}
         />
-        <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{d.title(name)}</h1>
+        <h1 className="mt-4 text-[1.75rem] leading-tight font-semibold text-brand-600 sm:text-[2.1rem]">{d.title(name)}</h1>
         <p className="mt-1 text-sm break-all text-slate-600">{book.student.email}</p>
         <p className="mt-1 text-sm text-slate-600">{t.gradebook.policyStatus[book.policy.status]}</p>
       </div>
@@ -117,7 +118,7 @@ function Content({ courseId, userId, user }: { courseId: string; userId: string;
         {book.activities.length === 0 ? (
           <p className="text-sm text-slate-600">{d.noActivities}</p>
         ) : (
-          <div className="relative overflow-x-auto">
+          <ScrollRegion label={b.gradebookLabel}>
             <table className="w-full text-left text-sm">
               <thead className="border-b border-slate-200 text-slate-500">
                 <tr>
@@ -206,7 +207,7 @@ function Content({ courseId, userId, user }: { courseId: string; userId: string;
                 })}
               </tbody>
             </table>
-          </div>
+          </ScrollRegion>
         )}
       </Card>
       {back}

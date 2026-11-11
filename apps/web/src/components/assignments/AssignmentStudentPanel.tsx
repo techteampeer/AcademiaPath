@@ -56,7 +56,7 @@ export function AssignmentStudentPanel({ courseId, assignmentId }: { courseId: s
 
   return (
     <Card as="section" aria-labelledby="my-submission-heading" className="space-y-4">
-      <h2 id="my-submission-heading" className="text-lg font-semibold text-slate-900">
+      <h2 id="my-submission-heading" className="text-lg font-semibold text-brand-600">
         {a.heading}
       </h2>
       {result ? <Alert tone={result.tone}>{result.message}</Alert> : null}

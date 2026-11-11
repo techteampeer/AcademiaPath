@@ -135,7 +135,7 @@ function DirectoryContent() {
           </button>
         </Alert>
       ) : state.page.items.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-600">{t.users.noResults}</p>
+        <p className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-600">{t.users.noResults}</p>
       ) : (
         <div className={tableClasses.wrapper}>
           <table className={tableClasses.table}>

@@ -13,6 +13,7 @@ import {
   users,
   type CourseRole,
   type EnrollmentStatus,
+  studentGroupMembers,
 } from '../db/schema/index.js';
 import { ApiProblem } from '../http/errors.js';
 import { isValidEmail, normalizeEmail } from '../users/accounts.js';
@@ -150,8 +151,14 @@ export const enrollmentRoutes: FastifyPluginAsync = async (app) => {
           .for('update');
         if (!enrollment) throw enrollmentNotFound();
         // Only a mistaken enrollment without any history can be removed; history is never deleted.
+        // AP-028: group memberships (current or past) are history too.
+        const [membership] = await tx
+          .select({ one: sql`1` })
+          .from(studentGroupMembers)
+          .where(and(eq(studentGroupMembers.courseId, enrollment.courseId), eq(studentGroupMembers.userId, enrollment.userId)))
+          .limit(1);
         for (const table of [quizAttempts, assignmentSubmissions, grades, tutorUsage, courseCertificates]) {
-          const [found] = await tx.select({ one: sql`1` }).from(table).where(eq(table.enrollmentId, enrollment.id)).limit(1);
+          const [found] = membership ? [membership] : await tx.select({ one: sql`1` }).from(table).where(eq(table.enrollmentId, enrollment.id)).limit(1);
           if (found) {
             throw new ApiProblem(
               409,

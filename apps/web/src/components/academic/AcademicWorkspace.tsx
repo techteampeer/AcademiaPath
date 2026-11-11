@@ -85,7 +85,7 @@ function WorkspaceContent() {
       ) : null}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <Card as="section" aria-labelledby="my-programs-heading" className="space-y-3 self-start">
-          <h2 id="my-programs-heading" className="text-lg font-semibold text-slate-900">
+          <h2 id="my-programs-heading" className="text-lg font-semibold text-brand-600">
             {p.programs}
           </h2>
           <ul className="space-y-2">
@@ -145,7 +145,7 @@ function ProgramSubjects({ program, onChanged }: { program: ManagedProgram; onCh
   return (
     <div className="min-w-0 space-y-6">
       <Card as="section" aria-labelledby="program-subjects-heading" className="space-y-4">
-        <h2 id="program-subjects-heading" className="text-lg font-semibold text-slate-900">
+        <h2 id="program-subjects-heading" className="text-lg font-semibold text-brand-600">
           {p.subjectsIn(program.name)}
         </h2>
         {subjects.status === 'loading' ? (
@@ -223,7 +223,7 @@ function SubjectDetail({ subjectId, onChanged }: { subjectId: string; onChanged:
     <Card as="section" aria-labelledby="subject-detail-heading" className="space-y-4">
       <div>
         <p className="text-xs font-semibold tracking-wide text-brand-700 uppercase">{detail.code}</p>
-        <h2 id="subject-detail-heading" className="text-lg font-semibold text-slate-900">
+        <h2 id="subject-detail-heading" className="text-lg font-semibold text-brand-600">
           {latest?.title ?? detail.title}
         </h2>
         {latest?.description ? <p className="text-sm text-slate-700">{latest.description}</p> : null}

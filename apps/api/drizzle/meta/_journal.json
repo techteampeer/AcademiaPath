@@ -197,6 +197,48 @@
       "when": 1794332232911,
       "tag": "0027_communications_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1794376165285,
+      "tag": "0028_messaging_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1794376180212,
+      "tag": "0029_messaging_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1794378877754,
+      "tag": "0030_discussion_forums",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1794378900411,
+      "tag": "0031_forum_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794393117098,
+      "tag": "0032_student_groups",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794393139848,
+      "tag": "0033_student_group_integrity",
+      "breakpoints": true
     }
   ]
 }

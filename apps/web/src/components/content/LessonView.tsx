@@ -134,7 +134,7 @@ function LessonContent({ courseId, activityId, user }: { courseId: string; activ
           {course.code} · {t.activityType[activity.type]}
         </p>
         <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
-          <h1 className="text-2xl font-bold tracking-tight break-words text-slate-900 sm:text-3xl">{activity.title}</h1>
+          <h1 className="text-[1.75rem] leading-tight font-semibold break-words text-brand-600 sm:text-[2.1rem]">{activity.title}</h1>
           {activity.review ? <ReviewStatusBadge status={activity.review.status} /> : null}
         </div>
       </div>
@@ -202,7 +202,7 @@ function LessonCompletion({ courseId, activity }: { courseId: string; activity: 
   return (
     <Card as="section" aria-labelledby="completion-heading" className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h2 id="completion-heading" className="font-semibold text-slate-900">
+        <h2 id="completion-heading" className="font-semibold text-brand-600">
           {t.progress.yourProgress}
         </h2>
         <p className="text-xs text-slate-500">{t.progress.separateFromGrades}</p>
@@ -285,7 +285,7 @@ function StaffPanel({
 
   return (
     <Card as="section" aria-labelledby="review-heading" className="space-y-4">
-      <h2 id="review-heading" className="text-lg font-semibold text-slate-900">
+      <h2 id="review-heading" className="text-lg font-semibold text-brand-600">
         {r.heading}
       </h2>
       {status === 'returned' && review.comment ? <Alert tone="error">{r.returnedFor(review.comment)}</Alert> : null}

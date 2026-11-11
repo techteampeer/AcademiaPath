@@ -43,7 +43,7 @@ export function DocumentLibrary({
   return (
     <Card as="section" aria-labelledby="documents-heading" className="space-y-4">
       <div>
-        <h2 id="documents-heading" className="text-lg font-semibold text-slate-900">
+        <h2 id="documents-heading" className="text-lg font-semibold text-brand-600">
           {l.heading}
         </h2>
         <p className="mt-1 text-sm text-slate-600">{abilities.viewUnapproved ? l.staffIntro : l.studentIntro}</p>

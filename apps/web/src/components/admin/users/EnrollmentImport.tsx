@@ -7,6 +7,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { ScrollRegion } from '@/components/ui/ScrollRegion';
 import { SelectField } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { tableClasses } from '@/components/ui/table';
@@ -104,13 +105,13 @@ function ImportContent() {
 
       {report && summary ? (
         <Card as="section" aria-labelledby="import-report-heading" className="space-y-4">
-          <h2 id="import-report-heading" className="text-lg font-semibold text-slate-900" aria-live="polite">
+          <h2 id="import-report-heading" className="text-lg font-semibold text-brand-600" aria-live="polite">
             {t.users.previewSummary(summary.create, summary.unchanged, summary.errors)}
           </h2>
           {stale ? <Alert tone="info">{t.users.previewStale}</Alert> : null}
           {!report.result.applied && summary.errors > 0 ? <Alert tone="error">{t.users.fixErrors}</Alert> : null}
           {!report.result.applied && summary.errors === 0 && summary.create === 0 ? <Alert tone="info">{t.users.nothingToApply}</Alert> : null}
-          <div className={tableClasses.wrapper}>
+          <ScrollRegion label={t.users.previewSummary(summary.create, summary.unchanged, summary.errors)} className={tableClasses.wrapper}>
             <table className={tableClasses.table}>
               <thead className={tableClasses.head}>
                 <tr>
@@ -132,7 +133,7 @@ function ImportContent() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollRegion>
           {applyAction.result ? <Alert tone={applyAction.result.tone}>{applyAction.result.message}</Alert> : null}
           <div className="flex justify-end">
             <Button disabled={!canApply || applyAction.pending} onClick={() => void apply()}>

@@ -120,7 +120,7 @@ export function AnnouncementCard({ item, onRead, full = false }: { item: Announc
         {item.pinned ? <Badge tone="brand">{a.pinned}</Badge> : null}
         {!item.read ? <Badge tone="warning">{a.unreadBadge}</Badge> : null}
       </div>
-      <h2 className="text-lg font-semibold break-words text-slate-900">
+      <h2 className="text-lg font-semibold break-words text-brand-600">
         {full ? item.title : <Link href={`/announcements/${item.id}`} className="hover:underline">{item.title}</Link>}
       </h2>
       <p className="text-xs text-slate-500">{a.published(announcementDate(item, locale))}</p>
@@ -228,7 +228,7 @@ function Detail({ announcementId }: { announcementId: string }) {
       ) : (
         <Card as="article" className="space-y-2" data-announcement={item.title}>
           <AnnouncementStatusBadge status={item.status} />
-          <h2 className="text-lg font-semibold break-words text-slate-900">{item.title}</h2>
+          <h2 className="text-lg font-semibold break-words text-brand-600">{item.title}</h2>
           <PlainText text={item.body} className="text-sm text-slate-800" />
         </Card>
       )}
@@ -320,7 +320,7 @@ export function AnnouncementManager({ target, canManage }: { target: Announcemen
       {canManage ? <AnnouncementCreateForm target={target} onCreated={() => void list.load()} /> : <Alert tone="info">{a.manage.readOnly}</Alert>}
       <Card as="section" aria-labelledby={`${prefix}-announcements-heading`} className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <h2 id={`${prefix}-announcements-heading`} className="font-semibold text-slate-900">
+          <h2 id={`${prefix}-announcements-heading`} className="font-semibold text-brand-600">
             {target.kind === 'course' ? a.courseTitle : a.institutionTitle}
           </h2>
           <SelectField
@@ -380,7 +380,7 @@ function AnnouncementCreateForm({ target, onCreated }: { target: AnnouncementTar
   };
   return (
     <Card as="section" id="new-announcement" aria-labelledby={`${prefix}-new-announcement`} className="scroll-mt-20 space-y-3">
-      <h2 id={`${prefix}-new-announcement`} className="font-semibold text-slate-900">
+      <h2 id={`${prefix}-new-announcement`} className="font-semibold text-brand-600">
         {m.heading}
       </h2>
       <p className="text-sm text-slate-600">{m.intro}</p>

@@ -284,7 +284,7 @@ export function EventCalendar({ target, staff, canManage }: { target: EventTarge
       {canManage ? <EventForm prefix={prefix} target={target} onSaved={() => void load()} /> : staff ? <Alert tone="info">{c.manage.readOnly}</Alert> : null}
       <Card as="section" aria-labelledby={`${prefix}-calendar-heading`} className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <h2 id={`${prefix}-calendar-heading`} className="font-semibold text-slate-900">
+          <h2 id={`${prefix}-calendar-heading`} className="font-semibold text-brand-600">
             {courseId ? c.courseTitle : c.institutionTitle}
           </h2>
           <WindowControls start={start} setStart={setStart} />
@@ -496,7 +496,7 @@ function EventForm({ prefix, target, event, onSaved, onClose }: { prefix: string
   if (event) return <div className="rounded-lg border border-slate-200 p-3">{form}</div>;
   return (
     <Card as="section" id="new-event" aria-labelledby={`${prefix}-new-event`} className="scroll-mt-20 space-y-3">
-      <h2 id={`${prefix}-new-event`} className="font-semibold text-slate-900">
+      <h2 id={`${prefix}-new-event`} className="font-semibold text-brand-600">
         {m.heading}
       </h2>
       <p className="text-sm text-slate-600">{m.intro}</p>

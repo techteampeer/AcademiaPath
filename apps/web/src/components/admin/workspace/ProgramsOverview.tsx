@@ -61,7 +61,7 @@ function ProgramsContent() {
               <Card as="li" key={program.id} className="space-y-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <h2 className="text-base font-semibold text-slate-900">{program.name}</h2>
+                    <h2 className="text-base font-semibold text-brand-600">{program.name}</h2>
                     <p className="text-xs text-slate-500">
                       {program.code} · {t.admin.subjectCount(own.length)} · {courses.filter((c) => c.programId === program.id).length} {t.admin.courses.toLowerCase()}
                     </p>

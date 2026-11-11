@@ -12,10 +12,11 @@ import { Badge } from '@/components/ui/Badge';
 import { buttonClasses } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { PageHeader } from '@/components/ui/PageHeader';
 import { LoadingCards, Skeleton } from '@/components/ui/Skeleton';
 import { ProgressBar } from '@/components/progress/ProgressDisplay';
 import { DashboardCommunications } from '@/components/communications/DashboardCommunications';
+import { CourseEmblem, HeritageBanner, Icon, type IconName } from '@/components/layout/Heritage';
+import { DashboardCommunity, DashboardRecentActivity } from './DashboardCommunity';
 import { isApiError } from '@/lib/api/client';
 import { api, loadAll } from '@/lib/api/endpoints';
 import type { Activity, Course, CourseRole, CurrentUser, GradeStatus } from '@/lib/api/types';
@@ -30,10 +31,41 @@ export function RoleDashboard() {
   return <RequireAuth>{(user) => <DashboardContent user={user} />}</RequireAuth>;
 }
 
+type PartOfDay = 'morning' | 'afternoon' | 'evening';
+const partOfDay = (hour: number): PartOfDay => (hour < 12 ? 'morning' : hour < 19 ? 'afternoon' : 'evening');
+
+/**
+ * The collegiate welcome banner: today's date, the dashboard title and a greeting with the person's real name,
+ * and a sentence matching the role they hold. The level-1 heading keeps the dashboard title first.
+ */
+function DashboardBanner({ user, primary, multipleRoles }: { user: CurrentUser; primary: CourseRole | 'administrator' | null; multipleRoles: boolean }) {
+  const { t, locale } = useLocale();
+  const d = t.dashboard;
+  const [now] = useState(() => new Date());
+  const today = now.toLocaleDateString(locale === 'es' ? 'es-PE' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return (
+    <HeritageBanner>
+      <div className="max-w-xl">
+        <p className="text-sm font-medium text-gold-200 first-letter:uppercase">{today}</p>
+        <h1 className="mt-3">
+          <span className="block font-sans text-xs font-semibold tracking-[0.16em] text-gold-200 uppercase">{d.title}</span>
+          <span className="mt-1.5 block text-[2rem] leading-tight font-semibold break-words text-ivory sm:text-[2.6rem]">{d.greeting(partOfDay(now.getHours()), user.givenName)}</span>
+        </h1>
+        <div aria-hidden="true" className="heritage-rule mt-4 w-32" />
+        <p className="mt-4 text-ivory/90">{primary ? d.subtitle[primary] : d.welcome(user.givenName)}</p>
+        {multipleRoles || !primary ? <p className="mt-1 text-sm text-ivory/80">{d.rolesIntro}</p> : null}
+      </div>
+    </HeritageBanner>
+  );
+}
+
 function DashboardContent({ user }: { user: CurrentUser }) {
   const { t } = useLocale();
   const workspace = useWorkspace();
-  const header = <PageHeader title={t.dashboard.title} description={`${t.dashboard.welcome(user.givenName)} ${t.dashboard.rolesIntro}`} />;
+  const ready = workspace.status === 'ready';
+  const courseRoles = ready ? ROLE_ORDER.filter((role) => workspace.courses.some((course) => course.viewerRole === role)) : [];
+  const primary = courseRoles[0] ?? (user.systemRole === 'administrator' ? 'administrator' : null);
+  const header = <DashboardBanner user={user} primary={ready ? primary : null} multipleRoles={courseRoles.length > 1} />;
 
   if (workspace.status === 'loading' || workspace.status === 'idle') {
     return (
@@ -58,29 +90,39 @@ function DashboardContent({ user }: { user: CurrentUser }) {
   }
 
   const byRole = (role: CourseRole) => workspace.courses.filter((course) => course.viewerRole === role);
-  const roles = ROLE_ORDER.filter((role) => byRole(role).length > 0);
+  const roles = courseRoles;
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       {header}
-      <DashboardCommunications user={user} />
-      {roles.length === 0 ? (
-        user.systemRole === 'administrator' ? (
-          <Card className="flex flex-wrap items-center justify-between gap-4">
-            <p className="text-sm text-slate-700">{t.dashboard.adminNoCourses}</p>
-            <Link href="/admin" className={buttonClasses()}>
-              {t.dashboard.goToAdmin}
-            </Link>
-          </Card>
-        ) : (
-          <EmptyState title={t.dashboard.noCourses} description={t.dashboard.noCoursesHelp} />
-        )
-      ) : null}
-      {roles.map((role) => (
-        <RoleSection key={role} role={role} courses={byRole(role)} />
-      ))}
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_21rem]">
+        <div className="min-w-0 space-y-10">
+          {roles.length === 0 ? (
+            user.systemRole === 'administrator' ? (
+              <Card className="flex flex-wrap items-center justify-between gap-4">
+                <p className="text-sm text-slate-700">{t.dashboard.adminNoCourses}</p>
+                <Link href="/admin" className={buttonClasses()}>
+                  {t.dashboard.goToAdmin}
+                </Link>
+              </Card>
+            ) : (
+              <EmptyState title={t.dashboard.noCourses} description={t.dashboard.noCoursesHelp} />
+            )
+          ) : null}
+          {roles.map((role) => (
+            <RoleSection key={role} role={role} courses={byRole(role)} />
+          ))}
+          <DashboardCommunications user={user} />
+        </div>
+        <div className="min-w-0 space-y-6">
+          <DashboardCommunity courses={workspace.courses} isStudent={roles.includes('student')} />
+          <DashboardRecentActivity />
+        </div>
+      </div>
     </div>
   );
 }
+
+const SECTION_ICON: Record<CourseRole, IconName> = { student: 'book', instructor: 'columns', non_editing_instructor: 'chart', design_team: 'layers' };
 
 const SECTION_TEXT: Record<CourseRole, (t: Messages) => { title: string; intro: string }> = {
   student: (t) => ({ title: t.dashboard.learningTitle, intro: t.dashboard.learningIntro }),
@@ -98,14 +140,16 @@ function RoleSection({ role, courses }: { role: CourseRole; courses: Course[] })
     <section aria-labelledby={headingId} className="space-y-4" data-role-section={role}>
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 id={headingId} className="text-xl font-semibold tracking-tight text-slate-900">
-            {text.title} <Badge tone="brand" className="ml-1 align-middle">{t.roles[role]}</Badge>
+          <h2 id={headingId} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[1.4rem] font-semibold text-brand-600">
+            <Icon name={SECTION_ICON[role]} className="h-6 w-6 shrink-0 text-gold-600" />
+            {text.title} <Badge tone="gold" className="ml-1 align-middle font-sans">{t.roles[role]}</Badge>
           </h2>
           <p className="mt-1 text-sm text-slate-600">{text.intro}</p>
         </div>
       </div>
+      <div aria-hidden="true" className="heritage-rule w-24" />
       {courses.length > DETAIL_LIMIT ? <p className="text-xs text-slate-500">{t.dashboard.partial(DETAIL_LIMIT, courses.length)}</p> : null}
-      <ul className="grid gap-4 lg:grid-cols-2">
+      <ul className="grid gap-5 lg:grid-cols-2">
         {detailed.map((course) => (
           <li key={course.id}>
             <RoleCourseCard role={role} course={course} />
@@ -223,36 +267,42 @@ async function loadStudentData(courseId: string) {
 function CardShell({ course, role, children, actions }: { course: Course; role: CourseRole; children: ReactNode; actions: ReactNode }) {
   const { t } = useLocale();
   return (
-    <Card as="article" className="flex h-full flex-col gap-4" aria-labelledby={`card-${role}-${course.id}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 id={`card-${role}-${course.id}`} className="text-base font-semibold break-words text-slate-900">
-            <Link href={`/courses/${course.id}`} className="hover:text-brand-700 hover:underline">
-              {course.title}
-            </Link>
-          </h3>
-          <p className="text-xs text-slate-500">
-            {course.code} · {t.roles[role]}
-          </p>
+    <Card as="article" padding="none" className="flex h-full flex-col overflow-hidden" aria-labelledby={`card-${role}-${course.id}`}>
+      <div className="flex items-start gap-4 border-b border-slate-200 bg-parchment/60 p-5">
+        <CourseEmblem code={course.code} className="h-16 w-14 sm:h-[4.5rem] sm:w-16" />
+        <div className="flex min-w-0 flex-1 flex-wrap items-start justify-between gap-x-3 gap-y-2">
+          <div className="min-w-0">
+            <h3 id={`card-${role}-${course.id}`} className="text-lg leading-snug font-semibold break-words text-brand-600">
+              <Link href={`/courses/${course.id}`} className="hover:text-brand-700 hover:underline">
+                {course.title}
+              </Link>
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-600">
+              {course.code} · {t.roles[role]}
+            </p>
+          </div>
+          <CourseStatusBadge status={course.status} />
         </div>
-        <CourseStatusBadge status={course.status} />
       </div>
-      <div className="flex-1 space-y-3 text-sm">{children}</div>
-      <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3">{actions}</div>
+      <div className="flex-1 space-y-4 p-5 text-sm">{children}</div>
+      <div className="flex flex-wrap gap-2 border-t border-slate-200 bg-slate-50/70 px-5 py-3">{actions}</div>
     </Card>
   );
 }
 
-/** Column count follows the number of figures so rows stay even (literal classes for Tailwind). */
-const FIGURE_COLUMNS: Record<number, string> = { 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4', 5: 'sm:grid-cols-3' };
+/**
+ * Column count follows the number of figures so rows stay even, on phones as well (literal classes for Tailwind):
+ * three or five figures use three compact columns instead of leaving half-empty rows.
+ */
+const FIGURE_COLUMNS: Record<number, string> = { 3: 'grid-cols-3', 4: 'grid-cols-2 sm:grid-cols-4', 5: 'grid-cols-3' };
 
 function Figures({ items }: { items: Array<{ label: string; value: number; tone?: 'warn' }> }) {
   return (
-    <dl className={`grid grid-cols-2 gap-2 ${FIGURE_COLUMNS[items.length] ?? 'sm:grid-cols-4'}`}>
+    <dl className={`grid gap-1.5 sm:gap-2 ${FIGURE_COLUMNS[items.length] ?? 'grid-cols-2 sm:grid-cols-4'}`}>
       {items.map((item) => (
-        <div key={item.label} className={`rounded-lg px-3 py-2 ${item.tone === 'warn' && item.value > 0 ? 'bg-amber-50' : 'bg-slate-50'}`}>
-          <dt className="text-xs text-slate-500">{item.label}</dt>
-          <dd className="text-lg font-semibold text-slate-900">{item.value}</dd>
+        <div key={item.label} className={`rounded-md border px-2 py-1.5 sm:px-3 sm:py-2 ${item.tone === 'warn' && item.value > 0 ? 'border-amber-200 bg-amber-50' : 'border-slate-200/70 bg-slate-50'}`}>
+          <dt className="text-xs leading-snug break-words text-slate-600">{item.label}</dt>
+          <dd className="font-serif text-lg font-semibold text-brand-600 sm:text-xl">{item.value}</dd>
         </div>
       ))}
     </dl>

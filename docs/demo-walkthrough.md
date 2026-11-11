@@ -128,6 +128,31 @@ Announcements and calendar (AP-025), in ITIL 4 Foundation and institution-wide. 
 
 The assignment due date (4 Dec 2026) also appears in the course calendar; due dates come only from approved assignments.
 
+Messages (AP-026), in ITIL 4 Foundation, sent through the API. The matching in-app notifications are created by the API:
+
+| Conversation | Messages |
+| --- | --- |
+| Direct: `student@` ↔ `instructor@` | Question about the assignment, and the instructor's reply (left unread for the student) |
+| Direct: `learner.b@` ↔ `ta@` | Question about a grade, and the teaching assistant's reply |
+| Course conversation | Instructor welcome, a question from `learner.a@`, and the instructor's answer |
+
+Students also get notifications for the published announcements and their released grades.
+
+Course forum (AP-027), in ITIL 4 Foundation, posted through the API:
+
+| Topic | Content |
+| --- | --- |
+| "Bienvenida y normas del foro" | Pinned instructor topic, announced to the class (students and teaching staff get a notification) |
+| "¿Cuál es la diferencia entre la cadena de valor y un flujo de valor?" | Question from `student@`, the instructor's answer and a peer response from `learner.a@` to that answer |
+| "Formato del examen de práctica (cerrado)" | Question from `learner.b@`, answers from `ta@` and the instructor; locked by the instructor |
+
+Student groups (AP-028), in ITIL 4 Foundation, created by the instructor through the API:
+
+| Group | Members | Private discussion |
+| --- | --- | --- |
+| Equipo Alfa | `student@`, `learner.a@` | "Plan del caso práctico (Equipo Alfa)" by `student@`, with a reply from `learner.a@` and one from the instructor |
+| Equipo Beta | `learner.b@` | "Borrador del Equipo Beta (privado)" by `learner.b@`, with a reply from `ta@`; Equipo Alfa cannot see it |
+
 ## 4. Demo script
 
 Course paths below are relative to http://localhost:3000. The seed prints each course's ID, and the **My courses** and **Dashboard** pages link to every course.
@@ -213,11 +238,51 @@ Release publishes the current grades of every graded student for that activity. 
 
 Administrators publish institution-wide announcements and events under **Administration → Announcements & calendar**. Non-editing instructors (`ta@`) read every announcement and event of their courses but cannot publish; program managers and the design team get no publishing rights from their grants. No e-mail or push notifications are sent.
 
-## 5. Notes and limitations
+### Messaging and notifications (AP-026)
+**21. Student reads and replies.** As `student@`:
+- The sidebar shows unread badges beside **Messages** and **Notifications**, and the dashboard shows the same counts.
+- Open **Messages**: the conversation with Demo Instructor shows *1 unread*. Open it; the badge clears.
+- Write a reply and choose **Send**.
+- Open ITIL 4 Foundation → **Messages** → **Course conversation** to read the course conversation and post a question.
 
-- **Bilingual UI.** The header's EN/ES switch translates the whole interface (AP-015). Course material stays in the language it was written in: English (ITIL, Project Management) and Spanish (Introduction to AI).
-- **Course lifecycle (optional extra step).** As `admin@`, **Courses & enrollments → Manage** on a course shows its status, sections and roster. Unpublishing ITIL 4 Foundation hides it from students at once without deleting anything; publishing it again restores the same view. Do this only on a rehearsal database.
-- **No malware scanning.** No malware scanner is connected, so uploads are recorded as `not_scanned`. Only use the synthetic demo files.
-- **Mock AI only.** Mock summaries and tutor answers quote approved course text. They are not AI-generated and must be presented as mock functionality.
-- **Announcement scheduling without a scheduler.** A scheduled announcement becomes visible as soon as the server clock reaches its publication time; no background job runs. Re-seeding a fresh database regenerates the relative dates.
-- **Wall-clock dates.** Due dates and quiz time limits use real time. The assignment due date (4 Dec 2026, 23:59 Lima time) keeps submissions open for the November demo.
+**22. Instructor answers and moderates.** As `instructor@`:
+- **Notifications** lists the new direct message and the course-conversation message. Notifications never include message text or grade values.
+- Open the direct message from **Messages** and answer it.
+- In the course conversation, use **Hide** on one message. Students then see "This message was hidden by an instructor".
+- **Lock conversation** stops new posts until it is unlocked.
+
+**23. Non-editing instructor.** As `ta@`, answer Demo Learner B in **Messages**. The course conversation has no **Hide** or **Lock**: non-editing instructors take part but never moderate.
+
+**24. Administrator.** As `admin@`, **Administration → Course messaging** shows each published course's conversation with its state and message count. The administrator can lock or unlock it but cannot read it. The design team (`reviewer@`) gets no access to private conversations.
+
+New messages appear within a few seconds while a conversation is open. This is near-real-time polling (about every 8 seconds; badges every 30 seconds), not instant delivery.
+
+### Course forum (AP-027)
+**25. Student asks and replies.** As `student@`, open ITIL 4 Foundation → **Forum**:
+- The pinned "Bienvenida y normas del foro" comes first. The locked "Formato del examen de práctica" shows **Locked** and has no reply box.
+- Open the value-chain question: the instructor's answer has a peer response nested under it.
+- Use **Reply** under the instructor's answer, then **Start a topic** with a new question. Your own post shows **Edit** for 30 minutes, until somebody replies.
+
+**26. Instructor moderates.** As `instructor@`:
+- **Notifications** shows the reply to the instructor's answer, without its text.
+- In the student's new topic, answer it, then try **Pin**, **Lock** and **Hide** (with confirmation) and **Restore**. A hidden reply disappears for students, including from reply counts, search and notifications. Instructors see it marked **Hidden**.
+- **Start a topic** with **Notify the class** checked to announce it.
+
+**27. Other roles.** As `ta@`, reply in a topic: non-editing instructors take part but get no moderation buttons. As `admin@`, **Administration → Course forums** lists each published course's forum as counts only, with **Open forum** to moderate it; administrators cannot post. As `reviewer@`, the forum is not available: the design team has no access to student discussions.
+
+### Student groups (AP-028)
+**28. Student workspace.** As `student@`, open **My groups**:
+- **Equipo Alfa** shows its members and an unread indicator.
+- Open its workspace: the private discussion "Plan del caso práctico" has replies from Demo Learner A and the instructor.
+- Reply, or start a new group discussion. Group discussions never appear in the course **Forum**.
+- **Equipo Beta**'s workspace and discussion are "not available" to this account, even by direct URL.
+
+**29. Instructor manages groups.** As `instructor@`, open ITIL 4 Foundation → **Groups**:
+- Create a group, open it, add students with **Add students**, and remove one; **Membership changes** records each step.
+- Open a group discussion to reply or moderate it (pin, lock, hide).
+- **Archive group** keeps the workspace as read-only history; **Restore group** reopens it.
+
+**30. Other roles.**
+- `ta@` (non-editing instructor) sees every group and takes part in its discussions, but has no management controls.
+- As `admin@`, **Administration → Student groups** shows counts per course, with **Manage groups**. Administrators manage groups but cannot read their discussions.
+- `reviewer@` (design team) has no access to groups.

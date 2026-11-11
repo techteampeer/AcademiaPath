@@ -4,6 +4,7 @@ import { LocaleProvider } from '@/components/i18n/LocaleProvider';
 import { AppShell } from '@/components/layout/AppShell';
 import { SessionProvider } from '@/components/session/SessionProvider';
 import { WorkspaceProvider } from '@/components/session/WorkspaceProvider';
+import { UnreadSummaryProvider } from '@/components/messaging/polling';
 import { MESSAGES } from '@/lib/i18n/messages';
 import { serverLocale } from '@/lib/i18n/server';
 import './globals.css';
@@ -24,7 +25,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <LocaleProvider initialLocale={locale}>
           <SessionProvider>
             <WorkspaceProvider>
+              <UnreadSummaryProvider>
               <AppShell>{children}</AppShell>
+              </UnreadSummaryProvider>
             </WorkspaceProvider>
           </SessionProvider>
         </LocaleProvider>

@@ -22,6 +22,18 @@ export type AppConfig = {
     max: number;
     windowMinutes: number;
   };
+  /** Messages a person may send within the window, across all conversations (AP-026; counted in PostgreSQL). */
+  messageRateLimit: {
+    max: number;
+    windowMinutes: number;
+  };
+  /** Forum topics and replies a person may post within the window, across all courses (AP-027; counted in PostgreSQL). */
+  forumRateLimit: {
+    max: number;
+    windowMinutes: number;
+  };
+  /** How long after posting an author may still edit their own forum topic or reply (AP-027). */
+  forumEditWindowMinutes: number;
   /**
    * Fastify `trustProxy`: false, or a comma-separated list of trusted proxy IPs/CIDRs, so
    * X-Forwarded-For is honored only when the connecting peer is a trusted proxy. Never `true`
@@ -185,6 +197,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       max: readPositiveInt(env, 'TUTOR_RATE_LIMIT_MAX', 20, 1000),
       windowMinutes: readPositiveInt(env, 'TUTOR_RATE_LIMIT_WINDOW_MINUTES', 10, 24 * 60),
     },
+    messageRateLimit: {
+      max: readPositiveInt(env, 'MESSAGE_RATE_LIMIT_MAX', 30, 1000),
+      windowMinutes: readPositiveInt(env, 'MESSAGE_RATE_LIMIT_WINDOW_MINUTES', 5, 24 * 60),
+    },
+    forumRateLimit: {
+      max: readPositiveInt(env, 'FORUM_POST_RATE_LIMIT_MAX', 10, 1000),
+      windowMinutes: readPositiveInt(env, 'FORUM_POST_RATE_LIMIT_WINDOW_MINUTES', 5, 24 * 60),
+    },
+    forumEditWindowMinutes: readPositiveInt(env, 'FORUM_EDIT_WINDOW_MINUTES', 30, 7 * 24 * 60),
     trustProxy: parseTrustProxy(env.TRUST_PROXY),
     documents: {
       storageDir: parseStorageDir(env.DOCUMENT_STORAGE_DIR, isProduction),

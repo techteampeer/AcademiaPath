@@ -80,25 +80,30 @@ export function LoginForm() {
   };
 
   return (
-    <div className="mx-auto grid w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:grid-cols-2">
-      <section aria-label={t.login.tagline} className="hidden flex-col justify-between bg-brand-900 p-8 text-white md:flex">
+    <div className="mx-auto grid w-full max-w-4xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-raised md:grid-cols-2">
+      <section aria-label={t.login.tagline} className="relative isolate hidden flex-col justify-between overflow-hidden bg-brand-800 p-8 text-ivory md:flex">
+        {/* eslint-disable-next-line @next/next/no-img-element -- static decorative SVG */}
+        <img src="/heritage/campus-panorama.svg" alt="" aria-hidden="true" className="absolute inset-0 -z-10 h-full w-full object-cover object-[62%_center]" />
+        <div aria-hidden="true" className="absolute inset-0 -z-10 bg-linear-to-b from-brand-900/90 via-brand-900/75 to-brand-900/85" />
         <div className="flex items-center gap-3">
-          <BrandMark className="h-10 w-10" />
-          <span className="text-xl font-semibold tracking-tight">AcademiaPath</span>
+          <BrandMark className="h-11 w-11" />
+          <span className="font-serif text-2xl font-semibold tracking-wide">AcademiaPath</span>
         </div>
         <div>
-          <p className="text-sm font-semibold tracking-wider text-brand-100 uppercase">{t.login.tagline}</p>
-          <p className="mt-3 text-lg leading-relaxed text-white">{t.login.pitch}</p>
+          <p className="text-sm font-semibold tracking-[0.14em] text-gold-200 uppercase">{t.login.tagline}</p>
+          <div aria-hidden="true" className="heritage-rule mt-3 w-28" />
+          <p className="mt-4 font-serif text-xl leading-relaxed text-ivory">{t.login.pitch}</p>
         </div>
-        <p className="text-xs text-brand-100">{t.common.devPreview}</p>
+        <p className="text-xs text-gold-200">{t.common.devPreview}</p>
       </section>
-      <div className="p-6 sm:p-8">
+      <div className="p-6 sm:p-10">
         <div className="flex items-center gap-2 md:hidden">
           <BrandMark />
-          <span className="font-semibold text-brand-900">AcademiaPath</span>
+          <span className="font-serif text-lg font-semibold text-brand-600">AcademiaPath</span>
         </div>
-        <h1 className="mt-6 text-2xl font-bold tracking-tight text-slate-900 md:mt-0">{t.login.title}</h1>
-        <p className="mt-1 text-sm text-slate-600">{t.login.subtitle}</p>
+        <h1 className="mt-6 text-[1.75rem] font-semibold text-brand-600 md:mt-0">{t.login.title}</h1>
+        <div aria-hidden="true" className="heritage-rule mt-2 w-20" />
+        <p className="mt-3 text-sm text-slate-600">{t.login.subtitle}</p>
         {notice.expired ? (
           <Alert tone="info" className="mt-4">
             {t.login.expired}
@@ -134,7 +139,7 @@ export function LoginForm() {
             {submitting ? t.login.submitting : t.login.submit}
           </Button>
         </form>
-        <p className="mt-6 text-xs leading-relaxed text-slate-500">{t.login.accountHelp}</p>
+        <p className="mt-6 text-xs leading-relaxed text-slate-600">{t.login.accountHelp}</p>
       </div>
     </div>
   );

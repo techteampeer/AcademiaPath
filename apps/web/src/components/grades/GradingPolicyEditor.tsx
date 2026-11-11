@@ -130,10 +130,10 @@ function Content({ courseId, user }: { courseId: string; user: CurrentUser }) {
             { label: e.title },
           ]}
         />
-        <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{e.title}</h1>
+        <h1 className="mt-4 text-[1.75rem] leading-tight font-semibold text-brand-600 sm:text-[2.1rem]">{e.title}</h1>
         <p className="mt-2 max-w-3xl text-sm text-slate-600">{e.intro}</p>
         <p className="mt-2 text-sm" data-policy-status={policy.status}>
-          <Badge tone={policy.status === 'published' ? 'success' : policy.status === 'draft' ? 'warning' : 'neutral'}>{e.statusNow(statusLabel)}</Badge>
+          <Badge wrap tone={policy.status === 'published' ? 'success' : policy.status === 'draft' ? 'warning' : 'neutral'}>{e.statusNow(statusLabel)}</Badge>
           {policy.version ? <span className="ml-2 text-xs text-slate-500">{e.version(policy.version)}</span> : null}
         </p>
       </div>

@@ -138,7 +138,7 @@ function DetailsForm({ user, isSelf, onSaved }: { user: UserDetail; isSelf: bool
   return (
     <Card as="section" aria-labelledby="details-heading">
       <form noValidate onSubmit={submit} className="space-y-4">
-        <h2 id="details-heading" className="text-lg font-semibold text-slate-900">
+        <h2 id="details-heading" className="text-lg font-semibold text-brand-600">
           {t.users.detailsTitle}
         </h2>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -210,7 +210,7 @@ function StatusCard({ user, isSelf, onChanged }: { user: UserDetail; isSelf: boo
 
   return (
     <Card as="section" aria-labelledby="status-heading" className="space-y-3">
-      <h2 id="status-heading" className="text-lg font-semibold text-slate-900">
+      <h2 id="status-heading" className="text-lg font-semibold text-brand-600">
         {t.users.accountTitle}
       </h2>
       <p className="text-sm text-slate-700">{user.isActive ? t.users.activeExplanation : t.users.inactiveExplanation}</p>
@@ -263,7 +263,7 @@ function ActivationCard({ user, onIssued }: { user: UserDetail; onIssued: () => 
 
   return (
     <Card as="section" aria-labelledby="activation-heading" className="space-y-3">
-      <h2 id="activation-heading" className="text-lg font-semibold text-slate-900">
+      <h2 id="activation-heading" className="text-lg font-semibold text-brand-600">
         {t.users.activationTitle}
       </h2>
       <p className="text-sm text-slate-700">{text}</p>
@@ -310,7 +310,7 @@ function EnrollmentsCard({ user, onChanged }: { user: UserDetail; onChanged: () 
   return (
     <Card as="section" aria-labelledby="enrollments-heading" className="space-y-4">
       <div>
-        <h2 id="enrollments-heading" className="text-lg font-semibold text-slate-900">
+        <h2 id="enrollments-heading" className="text-lg font-semibold text-brand-600">
           {t.users.enrollmentsTitle}
         </h2>
         <p className="text-sm text-slate-600">{t.users.initialRolesHint}</p>

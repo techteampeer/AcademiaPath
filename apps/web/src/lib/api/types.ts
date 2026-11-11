@@ -158,3 +158,35 @@ export type ActivityOrganization = Schemas['ActivityOrganization'];
 export type ActivityOrganizationResult = Schemas['ActivityOrganizationResult'];
 
 export type QuizFeedback = Schemas['QuizFeedback'];
+
+export type Conversation = Schemas['Conversation'];
+export type ConversationPage = Schemas['ConversationPage'];
+export type CourseMessaging = Schemas['CourseMessaging'];
+export type Message = Schemas['Message'];
+export type MessagePage = Schemas['MessagePage'];
+export type MessagingSummary = Schemas['MessagingSummary'];
+export type AppNotification = Schemas['Notification'];
+export type NotificationPage = Schemas['NotificationPage'];
+export type AdminCourseConversationList = Schemas['AdminCourseConversationList'];
+export type LockResult = Schemas['LockResult'];
+
+export type ForumViewer = Schemas['ForumViewer'];
+export type ForumTopicSummary = Schemas['ForumTopicSummary'];
+export type ForumTopicPage = Schemas['ForumTopicPage'];
+export type ForumTopic = Schemas['ForumTopic'];
+export type ForumTopicInput = Schemas['ForumTopicInput'];
+export type ForumPost = Schemas['ForumPost'];
+export type ForumThreadItem = Schemas['ForumThreadItem'];
+export type ForumPostPage = Schemas['ForumPostPage'];
+export type ForumTopicAction = Schemas['ForumTopicModeration']['action'];
+export type ForumPostAction = Schemas['ForumPostModeration']['action'];
+export type AdminForumCourseList = Schemas['AdminForumCourseList'];
+
+export type GroupSummary = Schemas['GroupSummary'];
+export type CourseGroupList = Schemas['CourseGroupList'];
+export type MyGroupList = Schemas['MyGroupList'];
+export type GroupDetail = Schemas['GroupDetail'];
+export type GroupInput = Schemas['GroupInput'];
+export type GroupUpdate = Schemas['GroupUpdate'];
+export type GroupMemberAddResult = Schemas['GroupMemberAddResult'];
+export type AdminGroupOverview = Schemas['AdminGroupOverview'];

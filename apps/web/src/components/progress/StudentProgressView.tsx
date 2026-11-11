@@ -9,6 +9,7 @@ import { describeApiError } from '@/components/session/useCsrfAction';
 import { Alert } from '@/components/ui/Alert';
 import { buttonClasses } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ScrollRegion } from '@/components/ui/ScrollRegion';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { LoadingCards } from '@/components/ui/Skeleton';
 import { tableClasses } from '@/components/ui/table';
@@ -96,7 +97,7 @@ function StudentProgressContent({ courseId }: { courseId: string }) {
       {rows.length === 0 ? (
         <EmptyState title={p.noStudents} />
       ) : (
-        <div className={tableClasses.wrapper}>
+        <ScrollRegion label={p.studentProgress} className={tableClasses.wrapper}>
           <table className={tableClasses.table}>
             <caption className="sr-only">{p.studentProgress}</caption>
             <thead className={tableClasses.head}>
@@ -131,7 +132,7 @@ function StudentProgressContent({ courseId }: { courseId: string }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollRegion>
       )}
       {backLink}
     </div>

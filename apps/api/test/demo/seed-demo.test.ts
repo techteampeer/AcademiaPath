@@ -35,6 +35,13 @@ const TABLES = [
   'grades',
   'course_documents',
   'document_summaries',
+  'conversations',
+  'messages',
+  'notifications',
+  'forum_topics',
+  'forum_posts',
+  'student_groups',
+  'student_group_members',
 ];
 const collapse = (value: string) => value.replace(/\s+/g, ' ');
 
@@ -88,6 +95,16 @@ describe('demo dataset seed (PostgreSQL)', { skip: testServerUrl ? false : 'TEST
     // AP-025: a pinned and a scheduled course announcement, one institution-wide; a course and an institution event.
     assert.equal(first.counts.announcements?.created, 3);
     assert.equal(first.counts['calendar events']?.created, 2);
+    assert.equal(first.counts.conversations?.created, 3);
+    assert.equal(first.counts.messages?.created, 7);
+    // AP-027: a pinned instructor topic, a student question (instructor answer, peer response), a locked discussion.
+    assert.equal(first.counts['forum topics']?.created, 3);
+    assert.equal(first.counts['forum replies']?.created, 4);
+    // AP-028: two ITIL groups (3 memberships), each with a private topic (3 replies in all).
+    assert.equal(first.counts['student groups']?.created, 2);
+    assert.equal(first.counts['group memberships']?.created, 3);
+    assert.equal(first.counts['group topics']?.created, 2);
+    assert.equal(first.counts['group replies']?.created, 3);
   });
 
   it('is repeatable: a second run creates nothing and leaves every table unchanged', async () => {

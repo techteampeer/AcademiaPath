@@ -161,7 +161,7 @@ function HierarchyContent() {
         </nav>
         <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{t.academics.title}</h1>
+            <h1 className="text-[1.75rem] leading-tight font-semibold text-brand-600 sm:text-[2.1rem]">{t.academics.title}</h1>
             <p className="mt-1 max-w-3xl text-sm text-slate-600">{t.academics.intro}</p>
           </div>
           <Link href="/admin/setup" className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
@@ -357,7 +357,7 @@ function TreeItem({
       aria-expanded={depth < 3 ? Boolean(expanded) : undefined}
       className={`flex w-full items-center gap-2 rounded-lg py-1.5 pr-2 text-left ${indent} ${selected ? 'bg-brand-50 font-semibold text-brand-900' : 'text-slate-800 hover:bg-slate-100'}`}
     >
-      <span aria-hidden="true" className="w-3 text-xs text-slate-400">
+      <span aria-hidden="true" className="w-3 text-xs text-slate-500">
         {depth < 3 ? (expanded ? '▾' : '▸') : '•'}
       </span>
       <span className="min-w-0 flex-1">
@@ -378,7 +378,7 @@ export function PanelPlaceholder({ title, description, children }: { title: stri
   const { t } = useLocale();
   return (
     <Card className="space-y-2">
-      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+      <h2 className="text-lg font-semibold text-brand-600">{title}</h2>
       <p className="text-sm text-slate-600">{description}</p>
       {children}
       <Badge tone="neutral">{t.setup.hierarchy.adminOnly}</Badge>

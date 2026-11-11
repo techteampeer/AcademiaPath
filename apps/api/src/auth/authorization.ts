@@ -55,7 +55,29 @@ export type CoursePermission =
   /** Read and update one's own learning progress (students only; role-only check). */
   | 'progress.own'
   /** See every student's learning progress in the course (read-only; administrators via the override). */
-  | 'progress.viewAll';
+  | 'progress.viewAll'
+  /**
+   * AP-026 messaging (role-only; never via the administrator override or the design team): direct conversations
+   * between a student and the course's teaching staff, and the course conversation.
+   */
+  | 'messages.direct'
+  | 'messages.course'
+  /** Hide course-conversation messages and lock or unlock the course conversation (instructors only). */
+  | 'messages.moderate'
+  /**
+   * AP-027 course discussion forum (role-only; never via the design team): read the forum of a published course,
+   * start topics and reply. Administrators read and moderate through their institutional override, never post.
+   */
+  | 'forum.participate'
+  /** Pin, lock, hide and restore forum topics and replies (instructors only; administrators via the override). */
+  | 'forum.moderate'
+  /**
+   * AP-028 student groups: see every group of the course, its members and (with `forum.participate`) its private
+   * discussions (instructors and non-editing instructors). Students see only the groups they belong to.
+   */
+  | 'groups.view'
+  /** Create, edit, archive and restore groups and change their members (instructors; administrators via the override). */
+  | 'groups.manage';
 
 /**
  * Course-level permissions per role. Default deny: a permission not listed here is not granted.
@@ -92,6 +114,13 @@ export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermi
     'calendar.manage',
     'tutor.use',
     'progress.viewAll',
+    'messages.direct',
+    'messages.course',
+    'messages.moderate',
+    'forum.participate',
+    'forum.moderate',
+    'groups.view',
+    'groups.manage',
   ]),
   // Non-editing instructors grade submissions (rubric scores and feedback; AP-009, documented in the API
   // contract) and read the gradebook and certificates, but never change content, release grades, change the
@@ -106,8 +135,26 @@ export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermi
     'calendar.viewAll',
     'tutor.use',
     'progress.viewAll',
+    // AP-026: they message students and take part in the course conversation, but never moderate it.
+    'messages.direct',
+    'messages.course',
+    // AP-027: they take part in the course forum (topics and replies) but never pin, lock, hide or restore.
+    'forum.participate',
+    // AP-028: they see the course's groups and take part in their discussions, but never change groups or members.
+    'groups.view',
   ]),
-  student: new Set(['course.view', 'quiz.attempt', 'assignment.submit', 'grades.viewOwn', 'tutor.use', 'progress.own', 'certificates.own']),
+  student: new Set([
+    'course.view',
+    'quiz.attempt',
+    'assignment.submit',
+    'grades.viewOwn',
+    'tutor.use',
+    'progress.own',
+    'certificates.own',
+    'messages.direct',
+    'messages.course',
+    'forum.participate',
+  ]),
 };
 
 export function hasCoursePermission(role: CourseRole | null, permission: CoursePermission): boolean {

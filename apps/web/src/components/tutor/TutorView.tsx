@@ -82,7 +82,7 @@ function TutorContent({ courseId, user }: { courseId: string; user: CurrentUser 
         />
         <p className="mt-4 text-sm text-slate-500">{course.data.code}</p>
         <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{t.heading}</h1>
+          <h1 className="text-[1.75rem] leading-tight font-semibold text-brand-600 sm:text-[2.1rem]">{t.heading}</h1>
           <Badge tone="warning">{t.mock}</Badge>
         </div>
         <p className="mt-2 max-w-3xl text-sm text-slate-600">{t.mockNote}</p>
@@ -152,7 +152,7 @@ function QuestionPanel({ courseId, language, t, onDone }: { courseId: string; la
 
   return (
     <Card as="section" aria-labelledby="tutor-question-heading" className="space-y-4">
-      <h2 id="tutor-question-heading" className="text-lg font-semibold text-slate-900">
+      <h2 id="tutor-question-heading" className="text-lg font-semibold text-brand-600">
         {t.askHeading}
       </h2>
       <form noValidate onSubmit={submit} className="space-y-3">
@@ -223,7 +223,7 @@ function PracticePanel({ courseId, language, t, onDone }: { courseId: string; la
 
   return (
     <Card as="section" aria-labelledby="tutor-practice-heading" className="space-y-4">
-      <h2 id="tutor-practice-heading" className="text-lg font-semibold text-slate-900">
+      <h2 id="tutor-practice-heading" className="text-lg font-semibold text-brand-600">
         {t.practiceHeading}
       </h2>
       <p className="text-sm text-slate-600">{t.practiceNote}</p>

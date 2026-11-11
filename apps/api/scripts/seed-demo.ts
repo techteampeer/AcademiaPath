@@ -22,6 +22,9 @@ import { loadConfig, type AppConfig } from '../src/config.js';
 import { createDatabase, type Database } from '../src/db/client.js';
 import { signIn, type Actor } from './demo/api.js';
 import { DEMO_COMMUNICATIONS, seedCommunications } from './demo/communications.js';
+import { DEMO_MESSAGING, seedMessaging } from './demo/messaging.js';
+import { DEMO_FORUMS, seedForums } from './demo/forums.js';
+import { DEMO_GROUPS, seedGroups } from './demo/groups.js';
 import {
   ACCOUNTS,
   COURSES,
@@ -211,6 +214,15 @@ export async function seedDemoDataset(db: Database, options: SeedDatasetOptions)
 
     // ---------------------------------------------------------------- Announcements and calendar (AP-025)
     await seedCommunications({ instructor, admin }, courseIds.get(DEMO_COMMUNICATIONS.courseCode)!, tally);
+
+    // ---------------------------------------------------------------- Messages (AP-026)
+    await seedMessaging(actors, courseIds.get(DEMO_MESSAGING.courseCode)!, tally);
+
+    // ---------------------------------------------------------------- Course forum (AP-027)
+    await seedForums(actors, courseIds.get(DEMO_FORUMS.courseCode)!, tally);
+
+    // ---------------------------------------------------------------- Student groups (AP-028)
+    await seedGroups(actors, courseIds.get(DEMO_GROUPS.courseCode)!, tally);
 
     // ---------------------------------------------------------------- Files for the live upload step
     const uploadFiles: string[] = [];

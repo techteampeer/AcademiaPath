@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.18.0
+  version: 0.21.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -198,6 +198,54 @@ info:
     `hidden`, `published` or `cancelled`; students see published and cancelled ones. A published event can
     only be cancelled, never deleted. Calendars also list due dates of approved assignments the reader can
     open; quizzes have no due date. Every write is audited.
+
+    Messaging and notifications (0.19.0): every conversation belongs to one published course. A direct
+    conversation joins a student and a member of the course's teaching staff (instructor or non-editing
+    instructor); the course conversation is open to the course's current students and teaching staff. Who
+    may read and write is derived from current active enrollments on every request (never from a stored or
+    client-supplied participant list): losing the enrollment, a deactivated account or an unpublished course
+    ends access, and anything the caller may not read is "not found". Administrators and the design team
+    have no access to private conversations; administrators may only list course conversations (state and
+    size, never messages) and lock or unlock them. Instructors moderate the course conversation (hide a
+    message, lock); non-editing instructors take part but never moderate. Messages are plain text (1–4000
+    characters), ordered by a server sequence (`seq`), never deleted, never logged or audited with their
+    text; a client-chosen `clientMessageId` makes a retried send return the first message. Sending is
+    rate-limited per person (`MESSAGE_RATE_LIMIT_MAX` per `MESSAGE_RATE_LIMIT_WINDOW_MINUTES`). Read positions
+    only move forward. In-app notifications (no e-mail or push) are recorded in the same transaction as their
+    event (a message, a published announcement, a released grade, an issued certificate), one per recipient
+    and event key (a repeated event refreshes it). They carry only what the recipient may see (no message
+    text, grade value or answer) and are shown only while the recipient still has access to the course.
+    Updates are near-real-time by polling (`/me/messaging/summary`, `/conversations/{id}/messages?after=`),
+    not guaranteed instant delivery.
+
+    Discussion forums (0.20.0): every published course has one forum of topics (a title and a plain-text
+    opening) and replies; a reply answers the topic or a reply to it (one level deep). The course's students,
+    instructors and non-editing instructors (active account and enrollment) read and post; instructors also
+    moderate (pin, lock, hide and restore); administrators read and moderate any published course's forum as
+    institutional control but never post. The design team and program managers have no forum access, and
+    forums never expose private conversations. Access is derived from current enrollments on every request.
+    Replies are numbered within their topic in commit order (stable, gap-free ordering under concurrency).
+    Authors edit their own topic or reply for `FORUM_EDIT_WINDOW_MINUTES` (default 30) while the topic is open,
+    the post is visible and nobody has replied to it. Nothing is deleted; hidden topics and replies (and
+    replies to a hidden reply) are visible only to moderators and are left out of lists, counts, previews,
+    search and notifications. Posting is rate-limited per person (`FORUM_POST_RATE_LIMIT_MAX` per
+    `FORUM_POST_RATE_LIMIT_WINDOW_MINUTES`) and idempotent with a client-chosen `clientRequestId`. Replies
+    notify the topic's and the answered reply's authors, and announced instructor topics notify the course,
+    as one in-app notification per person and topic, never with the text. Moderation is audited without
+    text.
+
+    Student groups (0.21.0): instructors of a course (and administrators, as institutional control) create,
+    rename, archive and restore groups and add or remove the course's active students; non-editing instructors
+    see every group and take part in its discussions but never change groups; students see only the groups they
+    currently belong to. A student may belong to several groups. Memberships are never deleted: removing a
+    student closes the membership (history), and access is re-checked on every request, so it ends immediately
+    (as it does when the enrollment is revoked or the account deactivated). A group's private workspace holds
+    forum topics scoped to the group (`group`), visible only to its current members and the course's teaching
+    staff: never in the course-wide forum, its search or counts, and never to administrators, the design team
+    or program managers. Group topics follow every forum rule (ordering, editing, hiding, locking, rate limits);
+    an archived group is read-only history (moderation still works). New group topics notify the group's other
+    current members, and group notifications show only while the reader may still read the group. Every group
+    management change is audited without discussion text.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -228,6 +276,14 @@ tags:
     description: Course and institution-wide announcements, scheduling and read tracking
   - name: Calendar
     description: Academic calendar events and assignment due dates
+  - name: Messaging
+    description: Direct and course conversations (polling, no real-time channel)
+  - name: Notifications
+    description: In-app notification center
+  - name: Forums
+    description: Course discussion forums (topics, threaded replies and moderation)
+  - name: Groups
+    description: Student groups and their private collaborative workspaces
   - name: Tutor
     description: Course-grounded tutor (local mock provider) and usage
   - name: Documents
@@ -4556,6 +4612,1180 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/v1/me/messaging/summary:
+    get:
+      operationId: getMyMessagingSummary
+      summary: Unread messages and notifications (for polling)
+      description: |
+        Counts unread messages in the conversations the caller can read now and unread visible notifications.
+        Cheap enough to poll; rate-limited per person.
+      tags: [Messaging]
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagingSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/me/conversations:
+    get:
+      operationId: listMyConversations
+      summary: The caller's conversations, most recent activity first
+      tags: [Messaging]
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/courses/{id}/messaging:
+    get:
+      operationId: getCourseMessaging
+      summary: The caller's messaging in one course
+      description: |
+        The course conversation (if opened), the caller's direct conversations in the course and the people
+        they may message (students: the teaching staff; teaching staff: the students). `403
+        MESSAGING_NOT_AVAILABLE` for people who can see the course without a messaging role (administrators,
+        design team) and in unpublished courses.
+      tags: [Messaging]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseMessaging"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/conversations:
+    post:
+      operationId: openDirectConversation
+      summary: Open (or return) the direct conversation with a person of the course
+      description: |
+        A student may open one with the course's instructors and non-editing instructors; teaching staff with
+        the course's students. Other pairs get `422 RECIPIENT_NOT_ALLOWED`. Returns the existing conversation
+        (200) or a new one (201).
+      tags: [Messaging]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DirectConversationInput"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/course-conversation:
+    post:
+      operationId: openCourseConversation
+      summary: Open (or return) the course conversation
+      tags: [Messaging]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/conversations/{conversationId}:
+    get:
+      operationId: getConversation
+      summary: One conversation the caller can read
+      tags: [Messaging]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/conversations/{conversationId}/messages:
+    get:
+      operationId: listMessages
+      summary: Messages of a conversation, oldest first within the page
+      description: |
+        Without a cursor: the latest page. `before`: older messages (pass `olderCursor`). `after`: newer
+        messages than a `seq` (polling). At most 100 per page; rate-limited per person.
+      tags: [Messaging]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+        - name: before
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+        - name: after
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagePage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    post:
+      operationId: sendMessage
+      summary: Send a message
+      description: |
+        Plain text, 1–4000 characters. A retry with the same `clientMessageId` returns the first message (200)
+        instead of creating another. `409 CONVERSATION_LOCKED` (course conversation locked) or
+        `RECIPIENT_UNAVAILABLE` (the other person can no longer receive messages in this course); `429
+        RATE_LIMITED` beyond the per-person limit.
+      tags: [Messaging]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageInput"
+      responses:
+        "200":
+          description: The message of an earlier attempt with the same clientMessageId.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/conversations/{conversationId}/read:
+    put:
+      operationId: markConversationRead
+      summary: Mark a conversation read up to a message
+      description: Read positions only move forward; concurrent marks keep the highest.
+      tags: [Messaging]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReadInput"
+      responses:
+        "204":
+          description: Done (no content).
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/conversations/{conversationId}/messages/{messageId}/hide:
+    post:
+      operationId: hideMessage
+      summary: Hide a course-conversation message (instructors)
+      description: The message is kept but its text is no longer returned. Audited without the text.
+      tags: [Messaging]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+        - $ref: "#/components/parameters/MessageId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/conversations/{conversationId}/lock:
+    post:
+      operationId: lockConversation
+      summary: Lock a course conversation (instructors, administrators)
+      description: No new messages while locked. Administrators may lock without being able to read it. Audited.
+      tags: [Messaging]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LockResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/conversations/{conversationId}/unlock:
+    post:
+      operationId: unlockConversation
+      summary: Unlock a course conversation (instructors, administrators)
+      tags: [Messaging]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LockResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/admin/messaging/courses:
+    get:
+      operationId: listCourseConversationsAdmin
+      summary: Course conversations of published courses (administrators; never messages)
+      tags: [Messaging]
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCourseConversationList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/me/notifications:
+    get:
+      operationId: listMyNotifications
+      summary: The caller's notifications, newest first
+      description: Only the caller's own, not withdrawn, available, and for courses they can still access.
+      tags: [Notifications]
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - $ref: "#/components/parameters/Cursor"
+        - name: unread
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/me/notifications/{notificationId}/read:
+    put:
+      operationId: markNotificationRead
+      summary: Mark one of the caller's notifications read
+      tags: [Notifications]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/NotificationId"
+      responses:
+        "204":
+          description: Done (no content).
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/me/notifications/read-all:
+    post:
+      operationId: markAllNotificationsRead
+      summary: Mark all of the caller's visible notifications read
+      tags: [Notifications]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadAllResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/courses/{id}/forum/topics:
+    get:
+      operationId: listForumTopics
+      summary: Topics of a course forum, pinned first, then latest activity
+      description: |
+        For the course's students, instructors and non-editing instructors (active enrollment, published course),
+        and for administrators (read and moderate only). `403 FORUM_NOT_AVAILABLE` when the caller can see the
+        course but has no forum access (design team, unpublished course). Hidden topics are listed only for
+        moderators. `q` searches topic titles and texts and visible replies; counts and the last reply only
+        include replies the caller may see.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 500
+        - name: q
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopicPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createForumTopic
+      summary: Start a topic
+      description: |
+        Participants only (administrators moderate but never post). Plain text. A retry with the same
+        `clientRequestId` returns the first topic (200). `announce` (instructors only) notifies the course's
+        participants. `429 RATE_LIMITED` beyond the per-person forum posting limit.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForumTopicInput"
+      responses:
+        "200":
+          description: The topic of an earlier attempt with the same clientRequestId.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopic"
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopic"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/forum/topics/{topicId}:
+    get:
+      operationId: getForumTopic
+      summary: A topic with the caller's permissions on it
+      description: A hidden topic is "not found" except for moderators.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/TopicId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopic"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateForumTopic
+      summary: Edit one's own topic
+      description: |
+        Only its author, within `FORUM_EDIT_WINDOW_MINUTES` (default 30) of posting, while the topic is not
+        locked or hidden and has no replies (`409 EDIT_WINDOW_CLOSED`, `TOPIC_LOCKED` or `EDIT_NOT_ALLOWED`).
+        Sets `editedAt`.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/TopicId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForumTopicUpdate"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopic"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/forum/topics/{topicId}/moderation:
+    post:
+      operationId: moderateForumTopic
+      summary: Pin, unpin, lock, unlock, hide or restore a topic (moderators)
+      description: |
+        Instructors of the course, and administrators as institutional control. Non-editing instructors and
+        students get `403 FORBIDDEN`. Repeating the current state changes nothing. Every change is audited
+        without the title or text. Hiding withdraws the topic's notifications.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/TopicId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForumTopicModeration"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopic"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/forum/topics/{topicId}/posts:
+    get:
+      operationId: listForumPosts
+      summary: Replies of a topic, in order, each with the replies to it
+      description: |
+        Pages hold replies to the topic ordered by `number`, each with all its replies (one level deep). Pass
+        `nextCursor` as `after` for the next page. Hidden replies, and replies to a hidden reply, are returned
+        only to moderators; `total` counts the replies the caller may see.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/TopicId"
+        - name: after
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumPostPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createForumPost
+      summary: Reply to a topic or to a reply
+      description: |
+        Participants only. `parentPostId` answers a reply to the topic (`422 REPLY_NESTING_LIMIT` for a reply
+        to a reply). `409 TOPIC_LOCKED` for non-moderators in a locked topic; `TOPIC_HIDDEN` or `POST_HIDDEN`
+        for moderators answering hidden content. A retry with the same `clientRequestId` returns the first
+        reply (200). Notifies the topic's author and the answered reply's author (one notification per person
+        and topic). `429 RATE_LIMITED` beyond the per-person forum posting limit.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/TopicId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForumPostInput"
+      responses:
+        "200":
+          description: The reply of an earlier attempt with the same clientRequestId.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumPost"
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumPost"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/forum/posts/{postId}:
+    patch:
+      operationId: updateForumPost
+      summary: Edit one's own reply
+      description: |
+        Only its author, within `FORUM_EDIT_WINDOW_MINUTES` of posting, while the topic is open, the reply is
+        visible and has no replies (`409 EDIT_WINDOW_CLOSED`, `TOPIC_LOCKED` or `EDIT_NOT_ALLOWED`). Sets
+        `editedAt`.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/PostId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForumPostUpdate"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumPost"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/forum/posts/{postId}/moderation:
+    post:
+      operationId: moderateForumPost
+      summary: Hide or restore a reply (moderators)
+      description: |
+        Instructors of the course and administrators. The reply is kept; while hidden, it and the replies to it
+        are visible only to moderators and its notifications are withdrawn. Audited without the text.
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/PostId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForumPostModeration"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumPost"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/admin/forums/courses:
+    get:
+      operationId: listForumCoursesAdmin
+      summary: Forum activity and moderation state of published courses (administrators; counts only)
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminForumCourseList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/courses/{id}/groups:
+    get:
+      operationId: listCourseGroups
+      summary: Groups of a course the caller may see
+      description: |
+        Instructors, non-editing instructors and administrators see every group (archived ones last); students see
+        only the groups they currently belong to (published course). `403 GROUPS_NOT_AVAILABLE` when the caller can
+        see the course but has no access to its groups (design team).
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseGroupList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createCourseGroup
+      summary: Create a group (instructors of the course, administrators)
+      description: Names are unique among the course's active groups, ignoring case (`409 GROUP_NAME_TAKEN`). Audited.
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupInput"
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/me/groups:
+    get:
+      operationId: listMyGroups
+      summary: The groups the caller currently belongs to
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyGroupList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/groups/{groupId}:
+    get:
+      operationId: getGroup
+      summary: A group's workspace overview
+      description: |
+        Members, recent discussions (only for callers who can read them), membership changes (teaching staff and
+        administrators) and students who can be added (managers). "Not found" for anyone who may not see the group.
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateGroup
+      summary: Rename a group or change its description (managers)
+      description: "`409 GROUP_ARCHIVED` for an archived group; `409 GROUP_NAME_TAKEN`. Audited."
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupUpdate"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/groups/{groupId}/members:
+    post:
+      operationId: addGroupMembers
+      summary: Add students to a group (managers)
+      description: |
+        Every id must be an active student of the group's course (`422 MEMBER_NOT_ELIGIBLE`, without saying which).
+        Students already in the group are left as they are (idempotent). Membership changes of one group are
+        serialized. Each addition is audited.
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupMemberInput"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupMemberAddResult"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/groups/{groupId}/members/{userId}:
+    delete:
+      operationId: removeGroupMember
+      summary: Remove a student from a group (managers)
+      description: |
+        Closes the membership (kept as history); the student's access to the group's discussions and their
+        notifications ends immediately. Idempotent (`removed: false` when they were not a member). Audited.
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupMemberRemoveResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/groups/{groupId}/archive:
+    post:
+      operationId: archiveGroup
+      summary: Archive a group (managers)
+      description: |
+        The group, its members and discussions are kept as read-only history: no new topics, replies, edits or
+        membership changes (moderation still works). Idempotent; audited.
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/groups/{groupId}/restore:
+    post:
+      operationId: restoreGroup
+      summary: Restore an archived group (managers)
+      description: "`409 GROUP_NAME_TAKEN` when an active group of the course now has its name. Idempotent; audited."
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/groups/{groupId}/topics:
+    get:
+      operationId: listGroupTopics
+      summary: A group's discussion topics
+      description: |
+        The group's current members and the course's teaching staff (published course). `403
+        GROUP_DISCUSSIONS_NOT_AVAILABLE` for administrators (they manage groups but never read their discussions).
+        Same ordering, pagination, search and hidden rules as the course forum.
+      tags: [Groups, Forums]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 500
+        - name: q
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopicPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createGroupTopic
+      summary: Start a topic in a group's workspace
+      description: |
+        Current members and teaching staff; `409 GROUP_ARCHIVED` in an archived group. The group's other current
+        members are notified (`announce` is ignored). Same retry and rate-limit rules as course topics.
+      tags: [Groups, Forums]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForumTopicInput"
+      responses:
+        "200":
+          description: The topic of an earlier attempt with the same clientRequestId.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopic"
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForumTopic"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/forum/topics/{topicId}/read:
+    put:
+      operationId: markForumTopicRead
+      summary: Mark the caller's notification about a topic as read
+      description: Clears the topic's unread indicator for the caller (course forum and group topics alike).
+      tags: [Forums]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/TopicId"
+      responses:
+        "204":
+          description: Done (no content).
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/admin/groups:
+    get:
+      operationId: listGroupOverviewAdmin
+      summary: Group organization per published course (administrators; counts only)
+      tags: [Groups]
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminGroupOverview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 components:
   parameters:
     Limit:
@@ -4659,6 +5889,48 @@ components:
       schema:
         type: string
         format: uuid
+    ConversationId:
+      name: conversationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    MessageId:
+      name: messageId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    NotificationId:
+      name: notificationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TopicId:
+      name: topicId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PostId:
+      name: postId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    GroupId:
+      name: groupId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     CertificateId:
       name: certificateId
       in: path
@@ -4740,7 +6012,7 @@ components:
             detail: Invalid email or password.
             code: INVALID_CREDENTIALS
     Forbidden:
-      description: "`code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks) or `FEEDBACK_NOT_AVAILABLE` (correctness review not enabled or not yet released)."
+      description: "`code` is `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED`, `FORBIDDEN` (for example a non-administrator calling an administrator endpoint), `SELF_REVIEW_NOT_ALLOWED` or `SECTION_LOCKED` (a student opening content of a section that a prerequisite still locks), `FEEDBACK_NOT_AVAILABLE` (correctness review not enabled or not yet released) `MESSAGING_NOT_AVAILABLE` (messaging is for the students and teaching staff of a published course) `FORUM_NOT_AVAILABLE` (the course forum is for the students and teaching staff of a published course), `GROUPS_NOT_AVAILABLE` (student groups are for the course's students, teaching staff and administrators) or `GROUP_DISCUSSIONS_NOT_AVAILABLE` (a group's discussions are for its members and the course's teaching staff)."
       content:
         application/problem+json:
           schema:
@@ -4779,7 +6051,7 @@ components:
             detail: Only PDF (.pdf), Word (.docx) and PowerPoint (.pptx) files are accepted.
             code: UNSUPPORTED_FILE_TYPE
     RateLimited:
-      description: "Too many sign-in or activation attempts, or tutor requests (`code`: `RATE_LIMITED`)."
+      description: "Too many sign-in or activation attempts, tutor requests, messages, forum posts or polling requests (`code`: `RATE_LIMITED`)."
       headers:
         Retry-After:
           description: Seconds until another attempt is allowed.
@@ -4823,7 +6095,9 @@ components:
         `GRADING_POLICY_CONFLICT` (the grading policy changed since it was loaded); or a certificate rule:
         `CERTIFICATE_POLICY_CONFLICT`, `CERTIFICATE_ALREADY_REVOKED`, `CERTIFICATE_REVOKED`; or an
         announcement or calendar rule: `ANNOUNCEMENT_ARCHIVED`, `ANNOUNCEMENT_NOT_SCHEDULED`, `EVENT_CANCELLED`,
-        `EVENT_WAS_PUBLISHED`.
+        `EVENT_WAS_PUBLISHED`; or a messaging rule: `CONVERSATION_LOCKED`, `RECIPIENT_UNAVAILABLE`; or a forum
+        rule: `TOPIC_LOCKED`, `TOPIC_HIDDEN`, `POST_HIDDEN`, `EDIT_NOT_ALLOWED` (hidden, or already answered),
+        `EDIT_WINDOW_CLOSED`, `IDEMPOTENCY_KEY_REUSED`; or a group rule: `GROUP_ARCHIVED`, `GROUP_NAME_TAKEN`.
       content:
         application/problem+json:
           schema:
@@ -4854,7 +6128,10 @@ components:
         `GRADE_CATEGORY_DUPLICATE`, `GRADE_CATEGORY_ACTIVITY_DUPLICATE`, `GRADE_CATEGORY_ACTIVITY_INVALID`,
         `GRADE_WEIGHTS_INVALID` or `GRADE_RELEASE_DUPLICATE`; or a certificate rule:
         `CERTIFICATE_POLICY_INVALID` or `CERTIFICATE_NOT_ELIGIBLE`; or an announcement or calendar rule:
-        `PUBLISH_AT_INVALID`, `EVENT_TIME_INVALID`, `INVALID_TIME_ZONE` or `RANGE_INVALID`.
+        `PUBLISH_AT_INVALID`, `EVENT_TIME_INVALID`, `INVALID_TIME_ZONE` or `RANGE_INVALID`; or
+        `RECIPIENT_NOT_ALLOWED` (a direct conversation that is not between a student and the course's teaching
+        staff); or `REPLY_NESTING_LIMIT` (a forum reply to a reply to a reply); or `MEMBER_NOT_ELIGIBLE` (only
+        active students of the group's course can join it).
       content:
         application/problem+json:
           schema:
@@ -9125,3 +10402,875 @@ components:
               createdAt:
                 type: string
                 format: date-time
+    PersonRef:
+      type: object
+      required: [id, name, role]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        role:
+          type: [string, "null"]
+          enum: [student, instructor, non_editing_instructor, null]
+          description: The person's course role (null when it no longer applies).
+    CourseRef:
+      type: object
+      required: [id, title, code]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        code:
+          type: string
+    Conversation:
+      type: object
+      required: [id, kind, course, counterpart, locked, canPost, canModerate, unreadCount, lastMessage]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [direct, course]
+        course:
+          $ref: "#/components/schemas/CourseRef"
+        counterpart:
+          description: The other person of a direct conversation; null for the course conversation.
+          oneOf:
+            - $ref: "#/components/schemas/PersonRef"
+            - type: "null"
+        locked:
+          type: boolean
+        canPost:
+          type: boolean
+        canModerate:
+          type: boolean
+        unreadCount:
+          type: integer
+          minimum: 0
+        lastMessage:
+          type: [object, "null"]
+          required: [senderName, preview, createdAt]
+          additionalProperties: false
+          properties:
+            senderName:
+              type: string
+            preview:
+              type: [string, "null"]
+              description: Start of the text; null when the message was hidden.
+            createdAt:
+              type: string
+              format: date-time
+    ConversationPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Conversation"
+        nextCursor:
+          type: [string, "null"]
+    CourseMessaging:
+      type: object
+      required: [course, role, courseConversation, directConversations, contacts]
+      additionalProperties: false
+      properties:
+        course:
+          $ref: "#/components/schemas/CourseRef"
+        role:
+          type: string
+          enum: [student, instructor, non_editing_instructor]
+        courseConversation:
+          oneOf:
+            - $ref: "#/components/schemas/Conversation"
+            - type: "null"
+        directConversations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Conversation"
+        contacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersonRef"
+    DirectConversationInput:
+      type: object
+      required: [recipientUserId]
+      additionalProperties: false
+      properties:
+        recipientUserId:
+          type: string
+          format: uuid
+    Message:
+      type: object
+      required: [id, seq, sender, body, hidden, mine, createdAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        seq:
+          type: integer
+          minimum: 0
+          description: Server order (strictly increasing).
+        sender:
+          $ref: "#/components/schemas/PersonRef"
+        body:
+          type: [string, "null"]
+          description: Plain text (never HTML); null when hidden by moderation.
+        hidden:
+          type: boolean
+        mine:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    MessagePage:
+      type: object
+      required: [items, olderCursor, latestSeq, readSeq]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+        olderCursor:
+          type: [integer, "null"]
+          minimum: 0
+          description: Pass as `before` to load older messages; null when there are none.
+        latestSeq:
+          type: [integer, "null"]
+          minimum: 0
+        readSeq:
+          type: integer
+          minimum: 0
+          description: The caller's read position.
+    MessageInput:
+      type: object
+      required: [body, clientMessageId]
+      additionalProperties: false
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          pattern: "\\S"
+        clientMessageId:
+          type: string
+          format: uuid
+          description: Chosen by the client for each message; a retry with the same value returns the first message.
+    ReadInput:
+      type: object
+      required: [upToSeq]
+      additionalProperties: false
+      properties:
+        upToSeq:
+          type: integer
+          minimum: 0
+    MessagingSummary:
+      type: object
+      required: [unreadMessages, unreadNotifications]
+      additionalProperties: false
+      properties:
+        unreadMessages:
+          type: integer
+          minimum: 0
+        unreadNotifications:
+          type: integer
+          minimum: 0
+    LockResult:
+      type: object
+      required: [conversationId, locked]
+      additionalProperties: false
+      properties:
+        conversationId:
+          type: string
+          format: uuid
+        locked:
+          type: boolean
+    AdminCourseConversationList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [course, conversationId, locked, messageCount, lastMessageAt]
+            additionalProperties: false
+            properties:
+              course:
+                $ref: "#/components/schemas/CourseRef"
+              conversationId:
+                type: [string, "null"]
+                format: uuid
+              locked:
+                type: boolean
+              messageCount:
+                type: integer
+                minimum: 0
+              lastMessageAt:
+                type: [string, "null"]
+                format: date-time
+    Notification:
+      type: object
+      required: [id, type, course, data, link, eventAt, read]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [direct_message, course_message, announcement, grade_released, certificate_issued, forum_reply, forum_topic]
+        course:
+          oneOf:
+            - $ref: "#/components/schemas/CourseRef"
+            - type: "null"
+        data:
+          type: object
+          maxProperties: 10
+          additionalProperties:
+            type: string
+          description: |
+            Display values the recipient may see: `senderName`, `courseCode`, `title` (announcements),
+            `activityTitle` (grades), `courseTitle` (certificates), `topicTitle`, `authorName` and `postId`
+            (forums), `groupName` (group discussions). Never message or post text, or grade values.
+        link:
+          type: string
+          description: Application path of the destination (which checks access again).
+        eventAt:
+          type: string
+          format: date-time
+        read:
+          type: boolean
+    NotificationPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Notification"
+        nextCursor:
+          type: [string, "null"]
+    ReadAllResult:
+      type: object
+      required: [updated]
+      additionalProperties: false
+      properties:
+        updated:
+          type: integer
+          minimum: 0
+    ForumViewer:
+      type: object
+      required: [role, canPost, canModerate]
+      additionalProperties: false
+      properties:
+        role:
+          type: [string, "null"]
+          enum: [student, instructor, non_editing_instructor, null]
+          description: The caller's forum role; null for an administrator (moderation only).
+        canPost:
+          type: boolean
+        canModerate:
+          type: boolean
+    ForumLastReply:
+      type: [object, "null"]
+      required: [authorName, createdAt]
+      additionalProperties: false
+      properties:
+        authorName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    ForumTopicSummary:
+      type: object
+      required: [id, title, group, excerpt, author, mine, pinned, locked, hidden, replyCount, lastReply, lastActivityAt, createdAt, editedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        group:
+          $ref: "#/components/schemas/ForumGroupRef"
+        excerpt:
+          type: string
+          description: The start of the topic's text (plain text).
+        author:
+          $ref: "#/components/schemas/PersonRef"
+        mine:
+          type: boolean
+        pinned:
+          type: boolean
+        locked:
+          type: boolean
+        hidden:
+          type: boolean
+          description: Only moderators ever receive hidden topics.
+        replyCount:
+          type: integer
+          minimum: 0
+          description: Replies the caller may see.
+        lastReply:
+          $ref: "#/components/schemas/ForumLastReply"
+        lastActivityAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        editedAt:
+          type: [string, "null"]
+          format: date-time
+    ForumTopicPage:
+      type: object
+      required: [course, viewer, items, nextCursor]
+      additionalProperties: false
+      properties:
+        course:
+          $ref: "#/components/schemas/CourseRef"
+        viewer:
+          $ref: "#/components/schemas/ForumViewer"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ForumTopicSummary"
+        nextCursor:
+          type: [string, "null"]
+    ForumTopic:
+      type: object
+      required: [id, title, group, excerpt, author, mine, pinned, locked, hidden, replyCount, lastReply, lastActivityAt, createdAt, editedAt, course, body, canReply, canEdit, canModerate, editableUntil]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        group:
+          $ref: "#/components/schemas/ForumGroupRef"
+        excerpt:
+          type: string
+        author:
+          $ref: "#/components/schemas/PersonRef"
+        mine:
+          type: boolean
+        pinned:
+          type: boolean
+        locked:
+          type: boolean
+        hidden:
+          type: boolean
+        replyCount:
+          type: integer
+          minimum: 0
+        lastReply:
+          $ref: "#/components/schemas/ForumLastReply"
+        lastActivityAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        editedAt:
+          type: [string, "null"]
+          format: date-time
+        course:
+          $ref: "#/components/schemas/CourseRef"
+        body:
+          type: string
+          description: Plain text; clients render it literally.
+        canReply:
+          type: boolean
+        canEdit:
+          type: boolean
+        canModerate:
+          type: boolean
+        editableUntil:
+          type: [string, "null"]
+          format: date-time
+          description: When the caller can no longer edit the topic; null when they cannot edit it now.
+    ForumTopicInput:
+      type: object
+      required: [title, body, clientRequestId]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: \S
+        body:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          pattern: \S
+        clientRequestId:
+          type: string
+          format: uuid
+          description: Chosen by the client for this topic; a retry with the same value returns the first topic.
+        announce:
+          type: boolean
+          default: false
+          description: Instructors only. Notifies the course's students and teaching staff.
+    ForumTopicUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: \S
+        body:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          pattern: \S
+    ForumPost:
+      type: object
+      required: [id, number, parentPostId, author, body, hidden, mine, canEdit, editableUntil, createdAt, editedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        number:
+          type: integer
+          minimum: 1
+          description: Position in the topic (1, 2, 3… in the order replies were recorded).
+        parentPostId:
+          type: [string, "null"]
+          format: uuid
+          description: The reply this one answers, or null for a reply to the topic.
+        author:
+          $ref: "#/components/schemas/PersonRef"
+        body:
+          type: string
+          description: Plain text; clients render it literally.
+        hidden:
+          type: boolean
+          description: Only moderators ever receive hidden replies.
+        mine:
+          type: boolean
+        canEdit:
+          type: boolean
+        editableUntil:
+          type: [string, "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        editedAt:
+          type: [string, "null"]
+          format: date-time
+    ForumThreadItem:
+      type: object
+      required: [id, number, parentPostId, author, body, hidden, mine, canEdit, editableUntil, createdAt, editedAt, replies]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        number:
+          type: integer
+          minimum: 1
+        parentPostId:
+          type: [string, "null"]
+          format: uuid
+        author:
+          $ref: "#/components/schemas/PersonRef"
+        body:
+          type: string
+        hidden:
+          type: boolean
+        mine:
+          type: boolean
+        canEdit:
+          type: boolean
+        editableUntil:
+          type: [string, "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        editedAt:
+          type: [string, "null"]
+          format: date-time
+        replies:
+          type: array
+          items:
+            $ref: "#/components/schemas/ForumPost"
+    ForumPostPage:
+      type: object
+      required: [items, nextCursor, total]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ForumThreadItem"
+        nextCursor:
+          type: [integer, "null"]
+          minimum: 1
+          description: Pass as `after` for the next replies; null when there are none.
+        total:
+          type: integer
+          minimum: 0
+          description: Replies in the topic that the caller may see.
+    ForumPostInput:
+      type: object
+      required: [body, clientRequestId]
+      additionalProperties: false
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          pattern: \S
+        clientRequestId:
+          type: string
+          format: uuid
+        parentPostId:
+          type: string
+          format: uuid
+          description: Answer this reply (which must itself answer the topic).
+    ForumPostUpdate:
+      type: object
+      required: [body]
+      additionalProperties: false
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          pattern: \S
+    ForumTopicModeration:
+      type: object
+      required: [action]
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+          enum: [pin, unpin, lock, unlock, hide, restore]
+    ForumPostModeration:
+      type: object
+      required: [action]
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+          enum: [hide, restore]
+    AdminForumCourseList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [course, topicCount, replyCount, lockedTopicCount, hiddenTopicCount, hiddenReplyCount, lastActivityAt]
+            additionalProperties: false
+            properties:
+              course:
+                $ref: "#/components/schemas/CourseRef"
+              topicCount:
+                type: integer
+                minimum: 0
+              replyCount:
+                type: integer
+                minimum: 0
+              lockedTopicCount:
+                type: integer
+                minimum: 0
+              hiddenTopicCount:
+                type: integer
+                minimum: 0
+              hiddenReplyCount:
+                type: integer
+                minimum: 0
+              lastActivityAt:
+                type: [string, "null"]
+                format: date-time
+    ForumGroupRef:
+      type: [object, "null"]
+      required: [id, name, archived]
+      additionalProperties: false
+      description: The student group whose private workspace holds the topic; null for a course-wide topic.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        archived:
+          type: boolean
+    GroupPersonRef:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    GroupSummary:
+      type: object
+      required: [id, course, name, description, archived, isMember, memberCount, topicCount, lastActivityAt, unreadCount, createdAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        course:
+          $ref: "#/components/schemas/CourseRef"
+        name:
+          type: string
+        description:
+          type: [string, "null"]
+        archived:
+          type: boolean
+        isMember:
+          type: boolean
+        memberCount:
+          type: integer
+          minimum: 0
+          description: Current members (open membership, active student enrollment, active account).
+        topicCount:
+          type: integer
+          minimum: 0
+          description: Discussions the caller may see (hidden topics only for moderators).
+        lastActivityAt:
+          type: [string, "null"]
+          format: date-time
+        unreadCount:
+          type: integer
+          minimum: 0
+          description: The caller's unread notifications about this group's discussions.
+        createdAt:
+          type: string
+          format: date-time
+    CourseGroupList:
+      type: object
+      required: [course, viewer, items]
+      additionalProperties: false
+      properties:
+        course:
+          $ref: "#/components/schemas/CourseRef"
+        viewer:
+          type: object
+          required: [role, canManage, canViewAll]
+          additionalProperties: false
+          properties:
+            role:
+              type: [string, "null"]
+              enum: [design_team, instructor, non_editing_instructor, student, null]
+            canManage:
+              type: boolean
+            canViewAll:
+              type: boolean
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupSummary"
+    MyGroupList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupSummary"
+    GroupDetail:
+      type: object
+      required: [group, viewer, members, recentTopics, membershipChanges, candidates]
+      additionalProperties: false
+      properties:
+        group:
+          $ref: "#/components/schemas/GroupSummary"
+        viewer:
+          type: object
+          required: [role, isMember, canManage, canRead, canPost, canModerate]
+          additionalProperties: false
+          properties:
+            role:
+              type: [string, "null"]
+              enum: [design_team, instructor, non_editing_instructor, student, null]
+            isMember:
+              type: boolean
+            canManage:
+              type: boolean
+            canRead:
+              type: boolean
+              description: Can read the group's discussions (members and teaching staff; never administrators by that role).
+            canPost:
+              type: boolean
+            canModerate:
+              type: boolean
+        members:
+          type: array
+          items:
+            type: object
+            required: [id, name, addedAt]
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              addedAt:
+                type: string
+                format: date-time
+        recentTopics:
+          type: array
+          description: Latest discussion activity; empty for callers who cannot read the group's discussions.
+          items:
+            type: object
+            required: [id, title, replyCount, lastActivityAt, pinned, locked]
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+                format: uuid
+              title:
+                type: string
+              replyCount:
+                type: integer
+                minimum: 0
+              lastActivityAt:
+                type: string
+                format: date-time
+              pinned:
+                type: boolean
+              locked:
+                type: boolean
+        membershipChanges:
+          type: array
+          description: Teaching staff and administrators only (empty for students).
+          items:
+            type: object
+            required: [kind, person, actor, at]
+            additionalProperties: false
+            properties:
+              kind:
+                type: string
+                enum: [group_created, member_added, member_removed, group_archived]
+              person:
+                oneOf:
+                  - $ref: "#/components/schemas/GroupPersonRef"
+                  - type: "null"
+              actor:
+                oneOf:
+                  - $ref: "#/components/schemas/GroupPersonRef"
+                  - type: "null"
+              at:
+                type: string
+                format: date-time
+        candidates:
+          type: array
+          description: Active students of the course who can be added (managers of an active group only).
+          items:
+            $ref: "#/components/schemas/GroupPersonRef"
+    GroupInput:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: \S
+        description:
+          type: [string, "null"]
+          maxLength: 1000
+    GroupUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: \S
+        description:
+          type: [string, "null"]
+          maxLength: 1000
+    GroupMemberInput:
+      type: object
+      required: [userIds]
+      additionalProperties: false
+      properties:
+        userIds:
+          type: array
+          minItems: 1
+          maxItems: 50
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+    GroupMemberAddResult:
+      type: object
+      required: [added, alreadyMembers]
+      additionalProperties: false
+      properties:
+        added:
+          type: integer
+          minimum: 0
+        alreadyMembers:
+          type: integer
+          minimum: 0
+    GroupMemberRemoveResult:
+      type: object
+      required: [removed]
+      additionalProperties: false
+      properties:
+        removed:
+          type: boolean
+    AdminGroupOverview:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [course, activeGroups, archivedGroups, memberships, studentsWithoutGroup]
+            additionalProperties: false
+            properties:
+              course:
+                $ref: "#/components/schemas/CourseRef"
+              activeGroups:
+                type: integer
+                minimum: 0
+              archivedGroups:
+                type: integer
+                minimum: 0
+              memberships:
+                type: integer
+                minimum: 0
+                description: Open memberships in active groups.
+              studentsWithoutGroup:
+                type: integer
+                minimum: 0

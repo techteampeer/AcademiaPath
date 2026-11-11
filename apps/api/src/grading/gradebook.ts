@@ -7,12 +7,14 @@ import {
   activities,
   assignmentCriterionScores,
   assignmentSubmissions,
+  courses,
   grades,
   quizAttempts,
   sections,
   type ReleasedGradeDetail,
 } from '../db/schema/index.js';
 import { readSettings, readSnapshotQuestions } from '../quizzes/model.js';
+import { notifyUsers } from '../messaging/notify.js';
 import type { GradeRecord } from './grades.js';
 import { computeCourseGrade, computeCourseGradeExact, type CountedColumn, type CourseGrade, type PolicyCategory } from './policy.js';
 
@@ -187,7 +189,11 @@ async function releaseDetails(tx: Executor, pending: GradeRecord[]): Promise<Map
  * columns. Quizzes also record which attempt was released, so its saved passing threshold decides the
  * released pass/fail status. Callers lock the rows and re-check eligibility under the lock first.
  */
-export async function releaseGradeRows(tx: Executor, releasedBy: string, pending: GradeRecord[]): Promise<GradeRecord[]> {
+/**
+ * Releases the given grades (each once per revision) and notifies each student whose grade became visible
+ * (AP-026: one notification per student and activity, refreshed on a later release; never the grade itself).
+ */
+export async function releaseGradeRows(tx: Executor, releasedBy: string, pending: GradeRecord[], at: Date = new Date()): Promise<GradeRecord[]> {
   if (!pending.length) return [];
   const details = await releaseDetails(tx, pending);
   const released: GradeRecord[] = [];
@@ -206,6 +212,27 @@ export async function releaseGradeRows(tx: Executor, releasedBy: string, pending
       .where(and(eq(grades.id, grade.id), sql`${grades.releasedRevision} IS DISTINCT FROM ${grade.revision}`, eq(grades.revision, grade.revision)))
       .returning();
     if (row) released.push(row);
+  }
+  if (released.length) {
+    const activityIds = [...new Set(released.map((grade) => grade.activityId))];
+    const titles = await tx
+      .select({ id: activities.id, title: activities.title, courseCode: courses.code })
+      .from(activities)
+      .innerJoin(sections, eq(sections.id, activities.sectionId))
+      .innerJoin(courses, eq(courses.id, sections.courseId))
+      .where(inArray(activities.id, activityIds));
+    const byId = new Map(titles.map((row) => [row.id, row]));
+    for (const grade of released) {
+      const activity = byId.get(grade.activityId);
+      await notifyUsers(tx, [grade.userId], {
+        type: 'grade_released',
+        courseId: grade.courseId,
+        entityId: grade.activityId,
+        dedupeKey: `grade:${grade.activityId}`,
+        data: { activityTitle: activity?.title ?? '', courseCode: activity?.courseCode ?? '' },
+        at,
+      });
+    }
   }
   return released;
 }

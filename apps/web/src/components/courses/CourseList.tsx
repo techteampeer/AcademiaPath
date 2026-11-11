@@ -8,6 +8,7 @@ import { useWorkspace } from '@/components/session/WorkspaceProvider';
 import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
+import { CourseEmblem } from '@/components/layout/Heritage';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -74,20 +75,25 @@ function CourseListContent({ user }: { user: CurrentUser }) {
             {t.common.showing(courses.length, workspace.courses.length)}
           </p>
           {courses.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-600">{t.courses.empty}</p>
+            <p className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-600">{t.courses.empty}</p>
           ) : (
             <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {courses.map((course) => (
                 <Card as="li" key={course.id} className="flex flex-col gap-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <h2 className="min-w-0 text-base font-semibold break-words text-slate-900">
-                      <Link href={`/courses/${course.id}`} className="hover:text-brand-700 hover:underline">
-                        {course.title}
-                      </Link>
-                    </h2>
-                    <CourseStatusBadge status={course.status} />
+                  <div className="flex items-start gap-3">
+                    <CourseEmblem code={course.code} className="h-14 w-12" />
+                    <div className="flex min-w-0 flex-1 flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h2 className="text-lg leading-snug font-semibold break-words text-brand-600">
+                          <Link href={`/courses/${course.id}`} className="hover:text-brand-700 hover:underline">
+                            {course.title}
+                          </Link>
+                        </h2>
+                        <p className="mt-0.5 text-xs text-slate-600">{course.code}</p>
+                      </div>
+                      <CourseStatusBadge status={course.status} />
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-500">{course.code}</p>
                   {course.description ? <p className="line-clamp-3 text-sm text-slate-600">{course.description}</p> : null}
                   <div className="mt-auto">
                     <Badge tone={course.viewerRole ? 'brand' : 'neutral'}>{course.viewerRole ? t.roles[course.viewerRole] : t.roles.adminAccess}</Badge>

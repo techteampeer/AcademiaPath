@@ -13,7 +13,7 @@ export default function CourseComponentsPreviewPage() {
     <div className="space-y-10">
       <div>
         <Badge tone="warning">Demonstration data</Badge>
-        <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+        <h1 className="mt-3 text-[1.75rem] leading-tight font-semibold text-brand-600 sm:text-[2.1rem]">
           Course components preview
         </h1>
         <p className="mt-2 max-w-2xl text-slate-600">
@@ -21,7 +21,7 @@ export default function CourseComponentsPreviewPage() {
         </p>
       </div>
 
-      <div role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+      <div role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <p className="font-semibold">These courses are synthetic demonstration data.</p>
         <p className="mt-1">
           They are defined in the frontend for preview purposes only and are not loaded from the AcademiaPath API or
@@ -30,7 +30,7 @@ export default function CourseComponentsPreviewPage() {
       </div>
 
       <section aria-labelledby="course-grid-heading">
-        <h2 id="course-grid-heading" className="text-xl font-semibold tracking-tight text-slate-900">
+        <h2 id="course-grid-heading" className="text-xl font-semibold tracking-tight text-brand-600">
           Course grid
         </h2>
         <p className="mt-1 text-sm text-slate-600">
@@ -42,7 +42,7 @@ export default function CourseComponentsPreviewPage() {
       </section>
 
       <section aria-labelledby="empty-state-heading">
-        <h2 id="empty-state-heading" className="text-xl font-semibold tracking-tight text-slate-900">
+        <h2 id="empty-state-heading" className="text-xl font-semibold tracking-tight text-brand-600">
           Empty state
         </h2>
         <p className="mt-1 text-sm text-slate-600">How the course grid appears when there are no courses to display.</p>

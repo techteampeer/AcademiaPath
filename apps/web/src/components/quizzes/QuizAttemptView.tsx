@@ -141,7 +141,7 @@ function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: 
       <Link href={quizHref} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
         {a.backToQuiz}
       </Link>
-      <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{a.title(attempt.attemptNumber, attempt.attemptLimit)}</h1>
+      <h1 className="mt-4 text-[1.75rem] leading-tight font-semibold text-brand-600 sm:text-[2.1rem]">{a.title(attempt.attemptNumber, attempt.attemptLimit)}</h1>
     </div>
   );
 

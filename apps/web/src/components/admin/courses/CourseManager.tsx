@@ -124,7 +124,7 @@ function StatusCard({ data, onChanged }: { data: CourseLifecycle; onChanged: () 
 
   return (
     <Card as="section" aria-labelledby="course-status-heading" className="space-y-4">
-      <h2 id="course-status-heading" className="text-lg font-semibold text-slate-900">
+      <h2 id="course-status-heading" className="text-lg font-semibold text-brand-600">
         {c.statusTitle}
       </h2>
       <p className="text-sm text-slate-700">{explanation}</p>
@@ -220,7 +220,7 @@ function DetailsForm({ data, onSaved }: { data: CourseLifecycle; onSaved: () => 
   return (
     <Card as="section" aria-labelledby="course-details-heading">
       <form noValidate onSubmit={submit} className="space-y-4">
-        <h2 id="course-details-heading" className="text-lg font-semibold text-slate-900">
+        <h2 id="course-details-heading" className="text-lg font-semibold text-brand-600">
           {c.detailsTitle}
         </h2>
         <TextField id="course-title" label={c.title} value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} error={errors.title} />
@@ -290,7 +290,7 @@ function SectionsCard({ courseId, sections, onChanged }: { courseId: string; sec
   return (
     <Card as="section" aria-labelledby="sections-heading" className="space-y-4">
       <div>
-        <h2 id="sections-heading" className="text-lg font-semibold text-slate-900">
+        <h2 id="sections-heading" className="text-lg font-semibold text-brand-600">
           {c.sectionsTitle}
         </h2>
         <p className="text-sm text-slate-600">{c.sectionsIntro}</p>
@@ -299,7 +299,7 @@ function SectionsCard({ courseId, sections, onChanged }: { courseId: string; sec
       {sections.length === 0 ? (
         <p className="text-sm text-slate-600">{c.noSections}</p>
       ) : (
-        <ol className="divide-y divide-slate-100 rounded-xl border border-slate-200" aria-label={c.sectionsTitle}>
+        <ol className="divide-y divide-slate-100 rounded-lg border border-slate-200" aria-label={c.sectionsTitle}>
           {sections.map((section, index) => (
             <li key={section.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 space-y-1">
@@ -437,7 +437,7 @@ function RosterCard({ courseId, counts, onChanged }: { courseId: string; counts:
   return (
     <Card as="section" aria-labelledby="roster-heading" className="space-y-4">
       <div>
-        <h2 id="roster-heading" className="text-lg font-semibold text-slate-900">
+        <h2 id="roster-heading" className="text-lg font-semibold text-brand-600">
           {c.rosterTitle}
         </h2>
         <p className="text-sm text-slate-600">{c.rosterIntro}</p>

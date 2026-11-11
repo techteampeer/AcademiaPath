@@ -89,6 +89,30 @@ import type {
   CalendarEvent,
   CalendarEventInput,
   CalendarEventList,
+  Conversation,
+  ConversationPage,
+  CourseMessaging,
+  Message,
+  MessagePage,
+  MessagingSummary,
+  NotificationPage,
+  AdminCourseConversationList,
+  LockResult,
+  AdminForumCourseList,
+  AdminGroupOverview,
+  CourseGroupList,
+  GroupDetail,
+  GroupInput,
+  GroupMemberAddResult,
+  GroupUpdate,
+  MyGroupList,
+  ForumPost,
+  ForumPostAction,
+  ForumPostPage,
+  ForumTopic,
+  ForumTopicAction,
+  ForumTopicInput,
+  ForumTopicPage,
   StudentProgressPage,
   StudentQuizAttempt,
   StudentQuizAttemptSummary,
@@ -338,6 +362,77 @@ export const api = {
     apiRequest<CalendarEvent>('PUT', `/calendar/events/${encodeURIComponent(eventId)}`, { body, csrfToken }),
   cancelEvent: (eventId: string, csrfToken: string) => apiRequest<CalendarEvent>('POST', `/calendar/events/${encodeURIComponent(eventId)}/cancel`, { csrfToken }),
   deleteEvent: (eventId: string, csrfToken: string) => apiRequest<void>('DELETE', `/calendar/events/${encodeURIComponent(eventId)}`, { csrfToken }),
+
+  // Messaging and notifications (AP-026): who may read or write is decided by the API on every request.
+  messagingSummary: () => apiRequest<MessagingSummary>('GET', '/me/messaging/summary'),
+  myConversations: (cursor?: string | null) => apiRequest<ConversationPage>('GET', `/me/conversations?${rangeParams({ limit: '50', cursor })}`),
+  courseMessaging: (courseId: string) => apiRequest<CourseMessaging>('GET', `${course(courseId)}/messaging`),
+  openDirectConversation: (courseId: string, recipientUserId: string, csrfToken: string) =>
+    apiRequest<Conversation>('POST', `${course(courseId)}/conversations`, { body: { recipientUserId }, csrfToken }),
+  openCourseConversation: (courseId: string, csrfToken: string) => apiRequest<Conversation>('POST', `${course(courseId)}/course-conversation`, { csrfToken }),
+  getConversation: (conversationId: string) => apiRequest<Conversation>('GET', `/conversations/${encodeURIComponent(conversationId)}`),
+  listMessages: (conversationId: string, page: { before?: number; after?: number; limit?: number } = {}) =>
+    apiRequest<MessagePage>(
+      'GET',
+      `/conversations/${encodeURIComponent(conversationId)}/messages?${rangeParams({
+        limit: String(page.limit ?? 30),
+        before: page.before === undefined ? undefined : String(page.before),
+        after: page.after === undefined ? undefined : String(page.after),
+      })}`,
+    ),
+  sendMessage: (conversationId: string, body: string, clientMessageId: string, csrfToken: string) =>
+    apiRequest<Message>('POST', `/conversations/${encodeURIComponent(conversationId)}/messages`, { body: { body, clientMessageId }, csrfToken }),
+  markConversationRead: (conversationId: string, upToSeq: number, csrfToken: string) =>
+    apiRequest<void>('PUT', `/conversations/${encodeURIComponent(conversationId)}/read`, { body: { upToSeq }, csrfToken }),
+  hideMessage: (conversationId: string, messageId: string, csrfToken: string) =>
+    apiRequest<Message>('POST', `/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/hide`, { csrfToken }),
+  setConversationLock: (conversationId: string, locked: boolean, csrfToken: string) =>
+    apiRequest<LockResult>('POST', `/conversations/${encodeURIComponent(conversationId)}/${locked ? 'lock' : 'unlock'}`, { csrfToken }),
+  adminCourseConversations: () => apiRequest<AdminCourseConversationList>('GET', '/admin/messaging/courses'),
+  myNotifications: (filter: { cursor?: string | null; unread?: boolean } = {}) =>
+    apiRequest<NotificationPage>('GET', `/me/notifications?${rangeParams({ limit: '20', cursor: filter.cursor, unread: filter.unread ? 'true' : undefined })}`),
+  markNotificationRead: (notificationId: string, csrfToken: string) =>
+    apiRequest<void>('PUT', `/me/notifications/${encodeURIComponent(notificationId)}/read`, { csrfToken }),
+  markAllNotificationsRead: (csrfToken: string) => apiRequest<{ updated: number }>('POST', '/me/notifications/read-all', { csrfToken }),
+
+  // Course discussion forums (AP-027): access, visibility, edit windows and moderation are decided by the API.
+  forumTopics: (courseId: string, filter: { cursor?: string | null; q?: string | null } = {}) =>
+    apiRequest<ForumTopicPage>('GET', `${course(courseId)}/forum/topics?${rangeParams({ limit: '20', cursor: filter.cursor, q: filter.q })}`),
+  createForumTopic: (courseId: string, body: ForumTopicInput, csrfToken: string) =>
+    apiRequest<ForumTopic>('POST', `${course(courseId)}/forum/topics`, { body, csrfToken }),
+  getForumTopic: (topicId: string) => apiRequest<ForumTopic>('GET', `/forum/topics/${encodeURIComponent(topicId)}`),
+  updateForumTopic: (topicId: string, body: { title?: string; body?: string }, csrfToken: string) =>
+    apiRequest<ForumTopic>('PATCH', `/forum/topics/${encodeURIComponent(topicId)}`, { body, csrfToken }),
+  moderateForumTopic: (topicId: string, action: ForumTopicAction, csrfToken: string) =>
+    apiRequest<ForumTopic>('POST', `/forum/topics/${encodeURIComponent(topicId)}/moderation`, { body: { action }, csrfToken }),
+  forumPosts: (topicId: string, after?: number | null) =>
+    apiRequest<ForumPostPage>('GET', `/forum/topics/${encodeURIComponent(topicId)}/posts?${rangeParams({ limit: '20', after: after == null ? undefined : String(after) })}`),
+  createForumPost: (topicId: string, body: { body: string; clientRequestId: string; parentPostId?: string }, csrfToken: string) =>
+    apiRequest<ForumPost>('POST', `/forum/topics/${encodeURIComponent(topicId)}/posts`, { body, csrfToken }),
+  updateForumPost: (postId: string, body: string, csrfToken: string) =>
+    apiRequest<ForumPost>('PATCH', `/forum/posts/${encodeURIComponent(postId)}`, { body: { body }, csrfToken }),
+  moderateForumPost: (postId: string, action: ForumPostAction, csrfToken: string) =>
+    apiRequest<ForumPost>('POST', `/forum/posts/${encodeURIComponent(postId)}/moderation`, { body: { action }, csrfToken }),
+  adminForumCourses: () => apiRequest<AdminForumCourseList>('GET', '/admin/forums/courses'),
+  markForumTopicRead: (topicId: string, csrfToken: string) => apiRequest<void>('PUT', `/forum/topics/${encodeURIComponent(topicId)}/read`, { csrfToken }),
+
+  // Student groups (AP-028): membership, access and every group rule are decided by the API.
+  courseGroups: (courseId: string) => apiRequest<CourseGroupList>('GET', `${course(courseId)}/groups`),
+  myGroups: () => apiRequest<MyGroupList>('GET', '/me/groups'),
+  createGroup: (courseId: string, body: GroupInput, csrfToken: string) => apiRequest<GroupDetail>('POST', `${course(courseId)}/groups`, { body, csrfToken }),
+  getGroup: (groupId: string) => apiRequest<GroupDetail>('GET', `/groups/${encodeURIComponent(groupId)}`),
+  updateGroup: (groupId: string, body: GroupUpdate, csrfToken: string) => apiRequest<GroupDetail>('PATCH', `/groups/${encodeURIComponent(groupId)}`, { body, csrfToken }),
+  addGroupMembers: (groupId: string, userIds: string[], csrfToken: string) =>
+    apiRequest<GroupMemberAddResult>('POST', `/groups/${encodeURIComponent(groupId)}/members`, { body: { userIds }, csrfToken }),
+  removeGroupMember: (groupId: string, userId: string, csrfToken: string) =>
+    apiRequest<{ removed: boolean }>('DELETE', `/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`, { csrfToken }),
+  setGroupArchived: (groupId: string, archived: boolean, csrfToken: string) =>
+    apiRequest<GroupDetail>('POST', `/groups/${encodeURIComponent(groupId)}/${archived ? 'archive' : 'restore'}`, { csrfToken }),
+  groupTopics: (groupId: string, filter: { cursor?: string | null; q?: string | null } = {}) =>
+    apiRequest<ForumTopicPage>('GET', `/groups/${encodeURIComponent(groupId)}/topics?${rangeParams({ limit: '20', cursor: filter.cursor, q: filter.q })}`),
+  createGroupTopic: (groupId: string, body: ForumTopicInput, csrfToken: string) =>
+    apiRequest<ForumTopic>('POST', `/groups/${encodeURIComponent(groupId)}/topics`, { body, csrfToken }),
+  adminGroups: () => apiRequest<AdminGroupOverview>('GET', '/admin/groups'),
 
   // Advanced gradebook (AP-023): every calculation and permission check happens in the API.
   getGradingPolicy: (courseId: string) => apiRequest<GradingPolicy>('GET', `${course(courseId)}/grading-policy`),
