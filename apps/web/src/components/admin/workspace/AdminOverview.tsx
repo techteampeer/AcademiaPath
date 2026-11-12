@@ -16,7 +16,7 @@ import { StatCard } from '@/components/ui/StatCard';
 import { isApiError } from '@/lib/api/client';
 import { api, loadAll } from '@/lib/api/endpoints';
 import type { Course, CourseTemplate, Program, Term } from '@/lib/api/types';
-import { formatDate } from '@/lib/i18n/messages';
+import { formatDate, localizeTermName } from '@/lib/i18n/messages';
 
 type Records = { programs: Program[]; terms: Term[]; subjects: CourseTemplate[]; courses: Course[] };
 
@@ -143,7 +143,7 @@ function OverviewContent() {
                     <Link href={`/admin/academics?year=${term.academicYear}&term=${term.id}`} className="font-medium text-brand-700 hover:underline">
                       {term.code}
                     </Link>
-                    <span className="ml-2 text-sm text-slate-600">{term.name}</span>
+                    <span className="ml-2 text-sm text-slate-600">{localizeTermName(term.name, locale)}</span>
                   </div>
                   <span className="text-xs text-slate-500">
                     {formatDate(term.startsOn, locale)} – {formatDate(term.endsOn, locale)} · {coursesInTerm(term.id)} {t.admin.courses.toLowerCase()}

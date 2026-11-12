@@ -1,0 +1,732 @@
+{
+ "label": "before",
+ "runs": 5,
+ "latencyMs": 60,
+ "recordedAt": "2026-11-12T05:34:31.449Z",
+ "results": {
+  "sign-in → dashboard (rotating accounts)": {
+   "ms": {
+    "median": 1620,
+    "p95": 1824
+   },
+   "apiCalls": {
+    "median": 30,
+    "p95": 36
+   },
+   "apiMs": {
+    "median": 104,
+    "p95": 191
+   },
+   "samples": [
+    {
+     "ms": 1634,
+     "apiCalls": 30,
+     "apiMs": 104
+    },
+    {
+     "ms": 1446,
+     "apiCalls": 28,
+     "apiMs": 185
+    },
+    {
+     "ms": 1620,
+     "apiCalls": 36,
+     "apiMs": 191
+    },
+    {
+     "ms": 1824,
+     "apiCalls": 32,
+     "apiMs": 68
+    },
+    {
+     "ms": 1590,
+     "apiCalls": 30,
+     "apiMs": 97
+    }
+   ]
+  },
+  "load: student dashboard": {
+   "ms": {
+    "median": 2030,
+    "p95": 2064
+   },
+   "apiCalls": {
+    "median": 32,
+    "p95": 32
+   },
+   "apiMs": {
+    "median": 74,
+    "p95": 107
+   },
+   "samples": [
+    {
+     "ms": 1994,
+     "apiCalls": 32,
+     "apiMs": 71
+    },
+    {
+     "ms": 2025,
+     "apiCalls": 32,
+     "apiMs": 74
+    },
+    {
+     "ms": 2045,
+     "apiCalls": 32,
+     "apiMs": 73
+    },
+    {
+     "ms": 2030,
+     "apiCalls": 32,
+     "apiMs": 78
+    },
+    {
+     "ms": 2064,
+     "apiCalls": 32,
+     "apiMs": 107
+    }
+   ]
+  },
+  "load: instructor dashboard": {
+   "ms": {
+    "median": 1851,
+    "p95": 1862
+   },
+   "apiCalls": {
+    "median": 36,
+    "p95": 36
+   },
+   "apiMs": {
+    "median": 178,
+    "p95": 201
+   },
+   "samples": [
+    {
+     "ms": 1843,
+     "apiCalls": 36,
+     "apiMs": 201
+    },
+    {
+     "ms": 1857,
+     "apiCalls": 36,
+     "apiMs": 173
+    },
+    {
+     "ms": 1851,
+     "apiCalls": 36,
+     "apiMs": 178
+    },
+    {
+     "ms": 1862,
+     "apiCalls": 36,
+     "apiMs": 158
+    },
+    {
+     "ms": 1836,
+     "apiCalls": 36,
+     "apiMs": 186
+    }
+   ]
+  },
+  "load: teaching assistant dashboard": {
+   "ms": {
+    "median": 1859,
+    "p95": 1889
+   },
+   "apiCalls": {
+    "median": 30,
+    "p95": 30
+   },
+   "apiMs": {
+    "median": 96,
+    "p95": 113
+   },
+   "samples": [
+    {
+     "ms": 1889,
+     "apiCalls": 30,
+     "apiMs": 113
+    },
+    {
+     "ms": 1818,
+     "apiCalls": 30,
+     "apiMs": 96
+    },
+    {
+     "ms": 1827,
+     "apiCalls": 30,
+     "apiMs": 95
+    },
+    {
+     "ms": 1874,
+     "apiCalls": 30,
+     "apiMs": 112
+    },
+    {
+     "ms": 1859,
+     "apiCalls": 30,
+     "apiMs": 95
+    }
+   ]
+  },
+  "load: reviewer dashboard": {
+   "ms": {
+    "median": 1671,
+    "p95": 1677
+   },
+   "apiCalls": {
+    "median": 28,
+    "p95": 28
+   },
+   "apiMs": {
+    "median": 167,
+    "p95": 190
+   },
+   "samples": [
+    {
+     "ms": 1664,
+     "apiCalls": 28,
+     "apiMs": 167
+    },
+    {
+     "ms": 1673,
+     "apiCalls": 28,
+     "apiMs": 146
+    },
+    {
+     "ms": 1671,
+     "apiCalls": 28,
+     "apiMs": 190
+    },
+    {
+     "ms": 1657,
+     "apiCalls": 28,
+     "apiMs": 190
+    },
+    {
+     "ms": 1677,
+     "apiCalls": 28,
+     "apiMs": 152
+    }
+   ]
+  },
+  "load: admin overview": {
+   "ms": {
+    "median": 1640,
+    "p95": 1654
+   },
+   "apiCalls": {
+    "median": 7,
+    "p95": 7
+   },
+   "apiMs": {
+    "median": 45,
+    "p95": 47
+   },
+   "samples": [
+    {
+     "ms": 1652,
+     "apiCalls": 7,
+     "apiMs": 39
+    },
+    {
+     "ms": 1640,
+     "apiCalls": 7,
+     "apiMs": 45
+    },
+    {
+     "ms": 1638,
+     "apiCalls": 7,
+     "apiMs": 47
+    },
+    {
+     "ms": 1631,
+     "apiCalls": 7,
+     "apiMs": 47
+    },
+    {
+     "ms": 1654,
+     "apiCalls": 7,
+     "apiMs": 43
+    }
+   ]
+  },
+  "load: course list (student)": {
+   "ms": {
+    "median": 1297,
+    "p95": 1325
+   },
+   "apiCalls": {
+    "median": 4,
+    "p95": 4
+   },
+   "apiMs": {
+    "median": 8,
+    "p95": 14
+   },
+   "samples": [
+    {
+     "ms": 1325,
+     "apiCalls": 4,
+     "apiMs": 5
+    },
+    {
+     "ms": 1293,
+     "apiCalls": 4,
+     "apiMs": 1
+    },
+    {
+     "ms": 1293,
+     "apiCalls": 4,
+     "apiMs": 14
+    },
+    {
+     "ms": 1297,
+     "apiCalls": 4,
+     "apiMs": 13
+    },
+    {
+     "ms": 1306,
+     "apiCalls": 4,
+     "apiMs": 8
+    }
+   ]
+  },
+  "load: course page (student)": {
+   "ms": {
+    "median": 1677,
+    "p95": 1682
+   },
+   "apiCalls": {
+    "median": 16,
+    "p95": 16
+   },
+   "apiMs": {
+    "median": 65,
+    "p95": 68
+   },
+   "samples": [
+    {
+     "ms": 1677,
+     "apiCalls": 16,
+     "apiMs": 67
+    },
+    {
+     "ms": 1653,
+     "apiCalls": 16,
+     "apiMs": 64
+    },
+    {
+     "ms": 1681,
+     "apiCalls": 16,
+     "apiMs": 65
+    },
+    {
+     "ms": 1648,
+     "apiCalls": 16,
+     "apiMs": 68
+    },
+    {
+     "ms": 1682,
+     "apiCalls": 16,
+     "apiMs": 61
+    }
+   ]
+  },
+  "load: admin users": {
+   "ms": {
+    "median": 1786,
+    "p95": 1795
+   },
+   "apiCalls": {
+    "median": 4,
+    "p95": 4
+   },
+   "apiMs": {
+    "median": 3,
+    "p95": 19
+   },
+   "samples": [
+    {
+     "ms": 1786,
+     "apiCalls": 4,
+     "apiMs": 0
+    },
+    {
+     "ms": 1786,
+     "apiCalls": 4,
+     "apiMs": 3
+    },
+    {
+     "ms": 1768,
+     "apiCalls": 4,
+     "apiMs": 0
+    },
+    {
+     "ms": 1779,
+     "apiCalls": 4,
+     "apiMs": 19
+    },
+    {
+     "ms": 1795,
+     "apiCalls": 4,
+     "apiMs": 5
+    }
+   ]
+  },
+  "load: gradebook (instructor)": {
+   "ms": {
+    "median": 1665,
+    "p95": 1708
+   },
+   "apiCalls": {
+    "median": 6,
+    "p95": 6
+   },
+   "apiMs": {
+    "median": 12,
+    "p95": 18
+   },
+   "samples": [
+    {
+     "ms": 1696,
+     "apiCalls": 6,
+     "apiMs": 12
+    },
+    {
+     "ms": 1649,
+     "apiCalls": 6,
+     "apiMs": 3
+    },
+    {
+     "ms": 1662,
+     "apiCalls": 6,
+     "apiMs": 14
+    },
+    {
+     "ms": 1665,
+     "apiCalls": 6,
+     "apiMs": 4
+    },
+    {
+     "ms": 1708,
+     "apiCalls": 6,
+     "apiMs": 18
+    }
+   ]
+  },
+  "load: course forum (student)": {
+   "ms": {
+    "median": 1501,
+    "p95": 1512
+   },
+   "apiCalls": {
+    "median": 5,
+    "p95": 5
+   },
+   "apiMs": {
+    "median": 10,
+    "p95": 22
+   },
+   "samples": [
+    {
+     "ms": 1501,
+     "apiCalls": 5,
+     "apiMs": 2
+    },
+    {
+     "ms": 1512,
+     "apiCalls": 5,
+     "apiMs": 22
+    },
+    {
+     "ms": 1501,
+     "apiCalls": 5,
+     "apiMs": 2
+    },
+    {
+     "ms": 1505,
+     "apiCalls": 5,
+     "apiMs": 15
+    },
+    {
+     "ms": 1498,
+     "apiCalls": 5,
+     "apiMs": 10
+    }
+   ]
+  },
+  "load: my groups (student)": {
+   "ms": {
+    "median": 1233,
+    "p95": 1239
+   },
+   "apiCalls": {
+    "median": 5,
+    "p95": 5
+   },
+   "apiMs": {
+    "median": 22,
+    "p95": 37
+   },
+   "samples": [
+    {
+     "ms": 1239,
+     "apiCalls": 5,
+     "apiMs": 37
+    },
+    {
+     "ms": 1212,
+     "apiCalls": 5,
+     "apiMs": 1
+    },
+    {
+     "ms": 1233,
+     "apiCalls": 5,
+     "apiMs": 4
+    },
+    {
+     "ms": 1239,
+     "apiCalls": 5,
+     "apiMs": 22
+    },
+    {
+     "ms": 1230,
+     "apiCalls": 5,
+     "apiMs": 26
+    }
+   ]
+  },
+  "load: login page (anonymous)": {
+   "ms": {
+    "median": 999,
+    "p95": 1025
+   },
+   "apiCalls": {
+    "median": 1,
+    "p95": 1
+   },
+   "apiMs": {
+    "median": 1,
+    "p95": 1
+   },
+   "samples": [
+    {
+     "ms": 1025,
+     "apiCalls": 1,
+     "apiMs": 1
+    },
+    {
+     "ms": 978,
+     "apiCalls": 1,
+     "apiMs": 1
+    },
+    {
+     "ms": 999,
+     "apiCalls": 1,
+     "apiMs": 1
+    },
+    {
+     "ms": 977,
+     "apiCalls": 1,
+     "apiMs": 0
+    },
+    {
+     "ms": 1012,
+     "apiCalls": 1,
+     "apiMs": 1
+    }
+   ]
+  },
+  "navigate: dashboard → my courses (student)": {
+   "ms": {
+    "median": 207,
+    "p95": 214
+   },
+   "feedbackMs": {
+    "median": 194,
+    "p95": 204
+   },
+   "apiCalls": {
+    "median": 0,
+    "p95": 0
+   },
+   "apiMs": {
+    "median": 0,
+    "p95": 0
+   },
+   "samples": [
+    {
+     "ms": 214,
+     "feedbackMs": 204,
+     "apiCalls": 0,
+     "apiMs": 0
+    },
+    {
+     "ms": 210,
+     "feedbackMs": 194,
+     "apiCalls": 0,
+     "apiMs": 0
+    },
+    {
+     "ms": 199,
+     "feedbackMs": 190,
+     "apiCalls": 0,
+     "apiMs": 0
+    },
+    {
+     "ms": 207,
+     "feedbackMs": 192,
+     "apiCalls": 0,
+     "apiMs": 0
+    },
+    {
+     "ms": 203,
+     "feedbackMs": 196,
+     "apiCalls": 0,
+     "apiMs": 0
+    }
+   ]
+  },
+  "navigate: dashboard → calendar (student)": {
+   "ms": {
+    "median": 215,
+    "p95": 222
+   },
+   "feedbackMs": {
+    "median": 203,
+    "p95": 216
+   },
+   "apiCalls": {
+    "median": 1,
+    "p95": 1
+   },
+   "apiMs": {
+    "median": 0,
+    "p95": 0
+   },
+   "samples": [
+    {
+     "ms": 222,
+     "feedbackMs": 216,
+     "apiCalls": 1,
+     "apiMs": 0
+    },
+    {
+     "ms": 215,
+     "feedbackMs": 203,
+     "apiCalls": 1,
+     "apiMs": 0
+    },
+    {
+     "ms": 218,
+     "feedbackMs": 211,
+     "apiCalls": 1,
+     "apiMs": 0
+    },
+    {
+     "ms": 202,
+     "feedbackMs": 188,
+     "apiCalls": 1,
+     "apiMs": 0
+    },
+    {
+     "ms": 211,
+     "feedbackMs": 197,
+     "apiCalls": 1,
+     "apiMs": 0
+    }
+   ]
+  },
+  "navigate: admin overview → users": {
+   "ms": {
+    "median": 214,
+    "p95": 216
+   },
+   "feedbackMs": {
+    "median": 197,
+    "p95": 207
+   },
+   "apiCalls": {
+    "median": 1,
+    "p95": 1
+   },
+   "apiMs": {
+    "median": 0,
+    "p95": 0
+   },
+   "samples": [
+    {
+     "ms": 216,
+     "feedbackMs": 200,
+     "apiCalls": 1,
+     "apiMs": 0
+    },
+    {
+     "ms": 211,
+     "feedbackMs": 207,
+     "apiCalls": 1,
+     "apiMs": 0
+    },
+    {
+     "ms": 214,
+     "feedbackMs": 197,
+     "apiCalls": 1,
+     "apiMs": 0
+    },
+    {
+     "ms": 210,
+     "feedbackMs": 193,
+     "apiCalls": 1,
+     "apiMs": 0
+    },
+    {
+     "ms": 215,
+     "feedbackMs": 194,
+     "apiCalls": 1,
+     "apiMs": 0
+    }
+   ]
+  },
+  "api: send a chat message (instructor)": {
+   "ms": {
+    "median": 14,
+    "p95": 17
+   },
+   "apiCalls": {
+    "median": 1,
+    "p95": 1
+   },
+   "apiMs": {
+    "median": 14,
+    "p95": 17
+   },
+   "samples": [
+    {
+     "ms": 14,
+     "apiCalls": 1,
+     "apiMs": 14
+    },
+    {
+     "ms": 13,
+     "apiCalls": 1,
+     "apiMs": 13
+    },
+    {
+     "ms": 14,
+     "apiCalls": 1,
+     "apiMs": 14
+    },
+    {
+     "ms": 17,
+     "apiCalls": 1,
+     "apiMs": 17
+    },
+    {
+     "ms": 14,
+     "apiCalls": 1,
+     "apiMs": 14
+    }
+   ]
+  }
+ }
+}

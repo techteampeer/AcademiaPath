@@ -196,11 +196,11 @@ function useLoad<T>(loader: () => Promise<T>, deps: unknown[]): Load<T> {
 }
 
 /**
- * Sections and activities the caller may see (students: approved, visible only — enforced by the API).
- * Sections a prerequisite still locks are skipped: the API refuses them with 403 SECTION_LOCKED.
+ * Sections and activities of a course for the staff cards (review and teaching). Students' cards use grades/mine.
+ * A section a prerequisite locks for the caller is skipped: the API refuses it with 403 SECTION_LOCKED.
  */
-async function loadActivities(courseId: string, locked: ReadonlySet<string> = new Set()): Promise<Activity[]> {
-  const sections = (await loadAll((page) => api.listSections(courseId, page), 2)).slice(0, SECTION_LIMIT).filter((section) => !locked.has(section.id));
+async function loadActivities(courseId: string): Promise<Activity[]> {
+  const sections = (await loadAll((page) => api.listSections(courseId, page), 2)).slice(0, SECTION_LIMIT);
   const lists = await Promise.all(
     sections.map((section) =>
       loadAll((page) => api.listActivities(courseId, section.id, page), 2).catch((error: unknown) => {
@@ -240,24 +240,25 @@ async function loadGradingCounts(courseId: string) {
   return { counts, needsGrading, partial: book.nextCursor !== null };
 }
 
-/** Student to-do items (open assignments not yet submitted, quizzes not yet attempted) and learning progress. */
+/**
+ * A student's card: progress, released grades and what is still to do. `grades/mine` already lists the approved,
+ * visible quizzes and assignments of unlocked sections in course order with the student's work status, so the to-do
+ * list comes from it in one parallel round (no section → activity → per-activity walk): a quiz is to do when it
+ * has no attempt (`not_submitted`), and only assignments without a submission need their window checked.
+ */
 async function loadStudentData(courseId: string) {
-  const progress = await api.courseProgress(courseId);
-  const activities = await loadActivities(courseId, new Set(progress.sections.filter((s) => s.locked).map((s) => s.sectionId)));
-  const assignments = activities.filter((a) => a.type === 'assignment').slice(0, 10);
-  const quizzes = activities.filter((a) => a.type === 'quiz').slice(0, 10);
-  const [grades, assignmentStates, quizStates] = await Promise.all([
-    api.myGrades(courseId),
-    Promise.all(assignments.map((a) => api.myAssignmentStatus(courseId, a.id).then((status) => ({ activity: a, status })))),
-    Promise.all(quizzes.map((q) => api.myQuizAttempts(courseId, q.id).then((summary) => ({ activity: q, summary })))),
-  ]);
+  const [progress, grades] = await Promise.all([api.courseProgress(courseId), api.myGrades(courseId)]);
+  const open = grades.items.filter((item) => item.workStatus === 'not_submitted');
+  const assignments = open.filter((item) => item.type === 'assignment').slice(0, 10);
+  const quizzes = open.filter((item) => item.type === 'quiz').slice(0, 10);
+  const assignmentStates = await Promise.all(
+    assignments.map((item) => api.myAssignmentStatus(courseId, item.activityId).then((status) => ({ item, status }))),
+  );
   const todo = [
     ...assignmentStates
       .filter(({ status }) => status.acceptingSubmissions && !status.submission)
-      .map(({ activity, status }) => ({ id: activity.id, title: activity.title, kind: 'assignment' as const, due: status.dueAt })),
-    ...quizStates
-      .filter(({ summary }) => summary.attemptsUsed === 0)
-      .map(({ activity }) => ({ id: activity.id, title: activity.title, kind: 'quiz' as const, due: null as string | null })),
+      .map(({ item, status }) => ({ id: item.activityId, title: item.title, kind: 'assignment' as const, due: status.dueAt })),
+    ...quizzes.map((item) => ({ id: item.activityId, title: item.title, kind: 'quiz' as const, due: null as string | null })),
   ].sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'));
   return { grades, todo, progress };
 }

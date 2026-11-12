@@ -296,7 +296,9 @@ describe('announcements and academic calendar (PostgreSQL)', { skip: testServerU
     assert.deepEqual([kolkata.startsAt, kolkata.endsAt], ['2026-12-08T18:30:00.000Z', '2026-12-10T18:30:00.000Z']);
     // Range queries use the instants: Lima 13 November contains the 19:00 class (stored as 14 November UTC).
     const day = await ok<Calendar>('s1', 'GET', `${A()}/calendar?from=2026-11-13T00:00:00-05:00&to=2026-11-14T00:00:00-05:00`);
-    assert.deepEqual(day.events.map((e) => e.id), [timed.id]);
+    // Test 11's review session is scheduled 24 hours from now, so on 12 November 2026 it also falls on this day:
+    // only the events created here are compared.
+    assert.deepEqual(day.events.map((e) => e.id).filter((id) => id !== ids.reviewEvent), [timed.id]);
     assert.equal(day.timeZone, 'America/Lima');
     problem(await request('s1', 'GET', `${A()}/calendar?from=2026-11-14T00:00:00Z&to=2026-11-13T00:00:00Z`), 422, 'RANGE_INVALID');
     problem(await request('s1', 'GET', `${A()}/calendar?from=2026-01-01T00:00:00Z&to=2027-06-01T00:00:00Z`), 422, 'RANGE_INVALID');

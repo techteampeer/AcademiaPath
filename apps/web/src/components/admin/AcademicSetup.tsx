@@ -13,7 +13,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { Course, CourseRole, CourseTemplate, Program, Term } from '@/lib/api/types';
-import type { Messages } from '@/lib/i18n/messages';
+import { localizeTermName, type Messages } from '@/lib/i18n/messages';
 
 /** Lists show the first page only; enough for the demo setup. */
 const LIST_LIMIT = 100;
@@ -335,7 +335,7 @@ function CourseStep({
   onCreated: () => Promise<void>;
 }) {
   const { run, pending, result } = useAction();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const s = t.setup.setup;
   const f = t.setup.fields;
   const [programId, setProgramId] = useState('');
@@ -410,7 +410,7 @@ function CourseStep({
           value={termId}
           onChange={(e) => setTermId(e.target.value)}
           error={errors.termId}
-          options={selectOptions(s.selectTerm, terms.map((term) => ({ value: term.id, label: `${term.code} — ${term.name}` })))}
+          options={selectOptions(s.selectTerm, terms.map((term) => ({ value: term.id, label: `${term.code} — ${localizeTermName(term.name, locale)}` })))}
         />
         <SelectField
           id="course-template"

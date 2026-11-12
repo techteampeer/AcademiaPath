@@ -14,7 +14,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
-import { formatDate } from '@/lib/i18n/messages';
+import { formatDate, localizeTermName } from '@/lib/i18n/messages';
 import type { MyCertificates } from '@/lib/api/types';
 import { CertificateStatusBadge, DownloadCertificateButton, EligibilityBadge } from './certificateDisplay';
 
@@ -69,7 +69,7 @@ function Content() {
                         <CertificateStatusBadge status={certificate.status} />
                       </div>
                       <p className="text-sm text-slate-600">
-                        {c.period(certificate.termName, certificate.academicYear)} · {c.issuedOn(formatDate(certificate.issuedAt, locale))}
+                        {c.period(localizeTermName(certificate.termName, locale), certificate.academicYear)} · {c.issuedOn(formatDate(certificate.issuedAt, locale))}
                       </p>
                       <p className="text-xs text-slate-500">
                         {c.number}: <span className="font-mono">{certificate.certificateNumber}</span>

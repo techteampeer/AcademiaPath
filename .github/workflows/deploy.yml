@@ -80,8 +80,18 @@ jobs:
             --labels=app=academiapath \
             --execute-now --wait
 
+      - name: Allowed browser origins (every URL of the web service)
+        run: |
+          # Cloud Run serves the web app at its deterministic URL and at its default *.a.run.app URL; browsers sign in
+          # from either, so the API accepts exactly the URLs the web service reports (no wildcards). See infra/web-origins.sh.
+          SERVICE_JSON="$(gcloud run services describe "$WEB_SERVICE" --region="$REGION" --format=json 2>/dev/null || true)"
+          APP_ORIGINS="$(printf '%s' "$SERVICE_JSON" | bash infra/web-origins.sh "$WEB_URL")"
+          echo "APP_ORIGINS=${APP_ORIGINS}" >> "$GITHUB_ENV"
+          echo "API accepts browser requests from: ${APP_ORIGINS}"
+
       - name: Deploy API
         run: |
+          # ^@^ makes @ the separator between variables, because APP_ORIGINS is a comma-separated list.
           gcloud run deploy "$API_SERVICE" \
             --image="$API_IMAGE" \
             --region="$REGION" \
@@ -89,7 +99,7 @@ jobs:
             --execution-environment=gen2 \
             --add-cloudsql-instances="$SQL_INSTANCE" \
             --set-secrets=DATABASE_URL=academiapath-db-url:latest \
-            --set-env-vars="NODE_ENV=production,API_HOST=0.0.0.0,LOG_LEVEL=info,APP_ORIGINS=${WEB_URL},SESSION_TTL_HOURS=8,DOCUMENT_STORAGE_DIR=/mnt/documents,DOCUMENT_MAX_UPLOAD_MB=10" \
+            --set-env-vars="^@^NODE_ENV=production@API_HOST=0.0.0.0@LOG_LEVEL=info@APP_ORIGINS=${APP_ORIGINS}@SESSION_TTL_HOURS=8@DOCUMENT_STORAGE_DIR=/mnt/documents@DOCUMENT_MAX_UPLOAD_MB=10" \
             --clear-volume-mounts --clear-volumes \
             --add-volume=name=documents,type=cloud-storage,bucket="$DOCUMENTS_BUCKET" \
             --add-volume-mount=volume=documents,mount-path=/mnt/documents \
