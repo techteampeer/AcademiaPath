@@ -240,7 +240,6 @@ async function loadGradingCounts(courseId: string) {
   return { counts, needsGrading, partial: book.nextCursor !== null };
 }
 
-/** Student to-do items (open assignments not yet submitted, quizzes not yet attempted) and learning progress. */
 /**
  * A student's card: progress, released grades and what is still to do. `grades/mine` already lists the approved,
  * visible quizzes and assignments of unlocked sections in course order with the student's work status, so the to-do
