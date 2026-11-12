@@ -145,7 +145,7 @@ describe('content quality checks (PostgreSQL, demo dataset)', { skip: testServer
   });
 
   it('2. missing course information and structure are reported as warnings', async () => {
-    const [{ version }] = await query<{ version: number }>('SELECT version FROM courses WHERE id = $1', [C()]);
+    const { version } = (await query<{ version: number }>('SELECT version FROM courses WHERE id = $1', [C()]))[0]!;
     await ok('admin', 'PUT', `/courses/${C()}`, { version, description: null });
     const emptySection = await ok<{ id: string }>('admin', 'POST', `/courses/${C()}/sections`, { title: 'Week 9 [insertar título]', isVisible: true }, 201);
     const result = await courseReport();
@@ -165,7 +165,7 @@ describe('content quality checks (PostgreSQL, demo dataset)', { skip: testServer
     await ok('admin', 'PUT', `/courses/${C()}/sections/${ids.section}/prerequisites`, { requiredSectionIds: [] });
     // None of these course-level warnings blocks the existing content workflow (checked in test 7).
     assert.ok(withPrerequisite.findings.filter((f) => f.target !== 'activity').every((f) => f.severity === 'warning'));
-    const [{ version: v2 }] = await query<{ version: number }>('SELECT version FROM courses WHERE id = $1', [C()]);
+    const { version: v2 } = (await query<{ version: number }>('SELECT version FROM courses WHERE id = $1', [C()]))[0]!;
     await ok('admin', 'PUT', `/courses/${C()}`, { version: v2, description: 'Foundations of IT service management.' });
     assert.ok(!codes((await courseReport()).findings).includes('COURSE_DESCRIPTION_MISSING'));
     ids.emptySection = emptySection.id;
@@ -333,7 +333,7 @@ describe('content quality checks (PostgreSQL, demo dataset)', { skip: testServer
     assert.ok(pmfOutsider, 'learnerB is not enrolled in PMF');
     problem(await call('learnerB', 'GET', `/courses/${courseId(PMF)}/quality`), 404, 'NOT_FOUND');
     // An activity of another course is not found through this course.
-    const [{ id: otherActivity }] = await query<{ id: string }>("SELECT a.id FROM activities a JOIN sections s ON s.id = a.section_id WHERE s.course_id = $1 LIMIT 1", [courseId(PMF)]);
+    const { id: otherActivity } = (await query<{ id: string }>("SELECT a.id FROM activities a JOIN sections s ON s.id = a.section_id WHERE s.course_id = $1 LIMIT 1", [courseId(PMF)]))[0]!;
     problem(await call('instructor', 'GET', `/courses/${C()}/activities/${otherActivity}/quality`), 404, 'NOT_FOUND');
     problem(await call('instructor', 'GET', `/courses/${randomUUID()}/quality`), 404, 'NOT_FOUND');
     assert.equal((await call('instructor', 'GET', `/courses/not-a-uuid/quality`)).statusCode, 400);
