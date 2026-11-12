@@ -196,11 +196,11 @@ function useLoad<T>(loader: () => Promise<T>, deps: unknown[]): Load<T> {
 }
 
 /**
- * Sections and activities the caller may see (students: approved, visible only — enforced by the API).
- * Sections a prerequisite still locks are skipped: the API refuses them with 403 SECTION_LOCKED.
+ * Sections and activities of a course for the staff cards (review and teaching). Students' cards use grades/mine.
+ * A section a prerequisite locks for the caller is skipped: the API refuses it with 403 SECTION_LOCKED.
  */
-async function loadActivities(courseId: string, locked: ReadonlySet<string> = new Set()): Promise<Activity[]> {
-  const sections = (await loadAll((page) => api.listSections(courseId, page), 2)).slice(0, SECTION_LIMIT).filter((section) => !locked.has(section.id));
+async function loadActivities(courseId: string): Promise<Activity[]> {
+  const sections = (await loadAll((page) => api.listSections(courseId, page), 2)).slice(0, SECTION_LIMIT);
   const lists = await Promise.all(
     sections.map((section) =>
       loadAll((page) => api.listActivities(courseId, section.id, page), 2).catch((error: unknown) => {
