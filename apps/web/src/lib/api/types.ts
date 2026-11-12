@@ -36,6 +36,9 @@ export type EnrollmentCreate = Schemas['EnrollmentCreate'];
 
 export type ReviewStatus = Schemas['ReviewStatus'];
 export type Activity = Schemas['Activity'];
+export type QualityReport = Schemas['QualityReport'];
+export type QualityFinding = Schemas['QualityFinding'];
+export type QualityIssueCode = Schemas['QualityIssueCode'];
 export type ActivityPage = Schemas['ActivityPage'];
 export type ActivityCreate = Schemas['ActivityCreate'];
 export type ActivityUpdate = Schemas['ActivityUpdate'];

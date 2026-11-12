@@ -32,9 +32,10 @@ export async function launch(): Promise<Browser> {
   return playwright().chromium.launch();
 }
 
-const sessions = new Map<Role, Promise<Array<{ name: string; value: string }>>>();
-/** Session cookies for a demo account (signed in once per run through the API, as the browser would). */
-export function sessionCookies(role: Role) {
+type SignedIn = { cookies: Array<{ name: string; value: string }>; csrfToken: string };
+const sessions = new Map<Role, Promise<SignedIn>>();
+/** A demo account's session (signed in once per test file through the API, as the browser would). */
+export function session(role: Role): Promise<SignedIn> {
   if (!sessions.has(role)) {
     sessions.set(
       role,
@@ -42,17 +43,34 @@ export function sessionCookies(role: Role) {
         method: 'POST',
         headers: { 'content-type': 'application/json', origin: BASE },
         body: JSON.stringify({ email: EMAIL[role], password: PASSWORD }),
-      }).then((res) => {
+      }).then(async (res) => {
         if (res.status !== 200) throw new Error(`sign-in for ${role} failed with ${res.status}`);
-        return res.headers.getSetCookie().map((cookie) => {
+        const { csrfToken } = (await res.json()) as { csrfToken: string };
+        const cookies = res.headers.getSetCookie().map((cookie) => {
           const pair = cookie.split(';')[0]!;
           const index = pair.indexOf('=');
           return { name: pair.slice(0, index), value: pair.slice(index + 1) };
         });
+        return { cookies, csrfToken };
       }),
     );
   }
   return sessions.get(role)!;
+}
+
+/** Session cookies for a demo account. */
+export const sessionCookies = async (role: Role) => (await session(role)).cookies;
+
+/** A state-changing API request as `role` (same-site Origin and CSRF token, like the web app). */
+export async function apiWrite<T>(role: Role, method: 'POST' | 'PUT' | 'DELETE', pathname: string, body?: unknown): Promise<T> {
+  const { cookies, csrfToken } = await session(role);
+  const res = await fetch(`${API}${pathname}`, {
+    method,
+    headers: { cookie: cookies.map((c) => `${c.name}=${c.value}`).join('; '), origin: BASE, 'x-csrf-token': csrfToken, ...(body ? { 'content-type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`${method} ${pathname} as ${role}: ${res.status} ${await res.text()}`);
+  return (res.status === 204 ? null : await res.json()) as T;
 }
 
 /** A browser context in the given interface language, signed in as `role` (or anonymous). */

@@ -23,6 +23,7 @@ import { readSettings, readSnapshotQuestions, settingsFromInput, validatePool, t
 import { assignmentFromInput, readAssignment, rubricTotal, type AssignmentInput } from '../assignments/model.js';
 import { presentDocumentContent } from '../documents/model.js';
 import { assertSectionOpen } from '../progress/model.js';
+import { blockingFindings } from '../quality/report.js';
 
 type SectionParams = { id: string; sectionId: string };
 type ActivityParams = { id: string; activityId: string };
@@ -41,6 +42,20 @@ type ActivityRecord = typeof activities.$inferSelect;
 type Executor = Pick<Database, 'select' | 'insert' | 'update'>;
 
 const notFound = (what: string) => new ApiProblem(404, 'NOT_FOUND', `${what} not found.`);
+
+/**
+ * AP-029: content with blocking quality findings (states the editors already refuse, or broken references) is
+ * neither submitted nor approved. Runs inside the transaction, after the existing checks, so their specific
+ * problem codes are unchanged; the course quality report lists the findings.
+ */
+async function assertNoBlockingFindings(executor: Executor, access: CourseAccess, now: Date, activityId: string) {
+  const blocking = await blockingFindings(executor, access, now, activityId);
+  if (blocking.length) {
+    // Shown as-is by English interfaces, so it is plain language; the report lists each finding and its code.
+    const issues = blocking.length === 1 ? '1 blocking quality issue' : `${blocking.length} blocking quality issues`;
+    throw new ApiProblem(422, 'QUALITY_CHECK_BLOCKED', `This content has ${issues}. Run the content quality check to see what to fix.`);
+  }
+}
 const forbidden = () => new ApiProblem(403, 'FORBIDDEN', 'You do not have permission to perform this action.');
 
 /** Validated, type-specific content stored in `config`. Lesson text is stored as plain text. */
@@ -360,6 +375,7 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
           // AP-022: a question pool must hold enough questions, all worth the same points.
           validatePool(readSettings(current.config), await tx.select({ points: quizQuestions.points }).from(quizQuestions).where(eq(quizQuestions.activityId, current.id)));
         }
+        await assertNoBlockingFindings(tx, access, app.now(), current.id);
         const [row] = await tx
           .update(activities)
           .set({ reviewStatus: 'submitted', submittedAt: sql`now()`, submittedByUserId: user.id })
@@ -419,6 +435,7 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
           };
           approvedConfig = snapshot;
         }
+        if (decision === 'approve') await assertNoBlockingFindings(tx, access, app.now(), current.id);
         const [row] = await tx
           .update(activities)
           .set(

@@ -1,0 +1,266 @@
+/**
+ * Content quality checks (AP-029). The API reports stable codes; every description and correction guidance is
+ * worded here. `value` is the finding's one machine value (authored text, a URL, a number, a file name, a date
+ * already formatted for the interface language, or a section title) and is never translated.
+ */
+const en = {
+  heading: 'Content quality',
+  courseIntro: 'Checks the working copy of every section and activity before content is submitted or approved. Nothing is changed.',
+  activityIntro: 'Checks this activity before it is submitted or approved. Nothing is changed.',
+  run: 'Check content quality',
+  runActivity: 'Check this activity',
+  rerun: 'Check again',
+  checking: 'Checking content…',
+  failed: 'The quality check could not be completed.',
+  stale: 'The content changed after this check. Check again to see current results.',
+  checkedAt: (time: string) => `Checked at ${time}`,
+  scope: (sections: number, activities: number) =>
+    `${sections === 1 ? '1 section' : `${sections} sections`} and ${activities === 1 ? '1 activity' : `${activities} activities`} checked`,
+  summary: (blocking: number, warnings: number) =>
+    `${blocking === 1 ? '1 blocking issue' : `${blocking} blocking issues`} · ${warnings === 1 ? '1 warning' : `${warnings} warnings`}`,
+  allClear: 'No issues found. The content checked is ready for review.',
+  nothingToCheck: 'There is no content to check yet. Add sections and activities first.',
+  limited: 'This course is very large: only its first 1000 activities were checked.',
+  blockingHeading: 'Blocking issues',
+  blockingHelp: 'Content with a blocking issue cannot be submitted for review or approved until it is fixed.',
+  warningsHeading: 'Warnings',
+  warningsHelp: 'Suggestions to improve the content. They never block submission or approval.',
+  severity: { blocking: 'Blocking', warning: 'Warning' },
+  severityLabel: 'Severity',
+  howToFix: 'How to fix',
+  courseInformation: 'Course information',
+  question: (n: number) => `Question ${n}`,
+  criterion: (n: number) => `Rubric criterion ${n}`,
+  openActivity: 'Open activity',
+  goToSection: 'Go to section',
+  untitled: 'Untitled',
+  field: {
+    title: 'Title',
+    description: 'Description',
+    summary: 'Summary',
+    body: 'Lesson text',
+    url: 'Address',
+    instructions: 'Instructions',
+    settings: 'Quiz settings',
+    questions: 'Questions',
+    question: 'Question',
+    option: 'Answer options',
+    rubric: 'Rubric',
+    criterion: 'Rubric criterion',
+    dates: 'Dates',
+    document: 'Document',
+    activities: 'Activities',
+    prerequisites: 'Prerequisites',
+    sections: 'Sections',
+  },
+  issues: {
+    ACTIVITY_TITLE_EMPTY: { title: () => 'The activity has no title.', fix: 'Give the activity a title students will recognize.' },
+    PAGE_BODY_EMPTY: { title: () => 'The lesson has no text.', fix: 'Write the lesson text, or remove the lesson.' },
+    LINK_URL_INVALID: {
+      title: (value: string) => (value ? `The link address is not allowed: ${value}` : 'The link has no address.'),
+      fix: 'Use a full https:// address on a domain name, without a user name or password.',
+    },
+    QUIZ_NO_QUESTIONS: { title: () => 'The quiz has no questions.', fix: 'Add at least one question before submitting the quiz.' },
+    QUIZ_POOL_TOO_SMALL: {
+      title: (value: string) => `The quiz draws ${value} questions per attempt but has fewer questions.`,
+      fix: 'Add questions, or lower the number of questions per attempt.',
+    },
+    QUIZ_POOL_POINTS_MIXED: {
+      title: () => 'Questions drawn from a pool are worth different points.',
+      fix: 'Give every question the same points, or stop drawing questions from a pool.',
+    },
+    QUIZ_QUESTION_PROMPT_EMPTY: { title: () => 'The question has no text.', fix: 'Write the question.' },
+    QUIZ_QUESTION_OPTIONS_INCOMPLETE: { title: () => 'The answer options are incomplete.', fix: 'Give the question 2 to 10 options, each with text.' },
+    QUIZ_QUESTION_ANSWER_INVALID: {
+      title: () => 'The correct answer is missing or invalid.',
+      fix: 'Edit the question and mark the correct option (exactly one for single-answer and true/false questions).',
+    },
+    QUIZ_QUESTION_POINTS_INVALID: { title: () => 'The question points are out of range.', fix: 'Use whole points from 1 to 100.' },
+    ASSIGNMENT_INSTRUCTIONS_EMPTY: { title: () => 'The assignment has no instructions.', fix: 'Explain what students must hand in.' },
+    ASSIGNMENT_RUBRIC_EMPTY: { title: () => 'The assignment has no rubric criteria.', fix: 'Add at least one rubric criterion with its maximum points.' },
+    ASSIGNMENT_RUBRIC_CRITERION_INVALID: { title: () => 'A rubric criterion is incomplete.', fix: 'Give each criterion a title and whole points from 1 to 100.' },
+    ASSIGNMENT_DATES_INVALID: {
+      title: () => 'The due date or the late-submission window is invalid.',
+      fix: 'Use a valid due date; a late window must end after it and within 30 days.',
+    },
+    DOCUMENT_REFERENCE_INVALID: { title: () => 'The document file or its summary cannot be found.', fix: 'Upload the document again in this section.' },
+    PLACEHOLDER_TEXT: { title: (value: string) => `Placeholder text found: “${value}”.`, fix: 'Replace the placeholder with the final text.' },
+    TEXT_LINK_UNSAFE_SCHEME: {
+      title: (value: string) => `The text contains an address students cannot open safely: ${value}`,
+      fix: 'Remove it, or use a full https:// address.',
+    },
+    TEXT_LINK_INSECURE: {
+      title: (value: string) => `The text links to an insecure http:// address: ${value}`,
+      fix: 'Use the https:// version of the address if the site offers one.',
+    },
+    INTERNAL_LINK_BROKEN: {
+      title: (value: string) => `The text refers to course content that does not exist: ${value}`,
+      fix: 'Update the reference or remove it.',
+    },
+    LINK_MEDIA_DESCRIPTION_MISSING: {
+      title: () => 'The video or interactive resource has no description.',
+      fix: 'Describe what it shows, so every student, including screen-reader users, knows what to expect.',
+    },
+    QUIZ_DUPLICATE_OPTIONS: { title: () => 'Two answer options have the same text.', fix: 'Make every option distinct.' },
+    ASSIGNMENT_DEADLINE_PASSED: {
+      title: (value: string) => `The submission window has already closed (${value}).`,
+      fix: 'Move the due date if students should still hand in this work.',
+    },
+    DOCUMENT_NO_TEXT: {
+      title: (value: string) => `No text could be read from “${value}”; it may be a scanned image.`,
+      fix: 'Upload a version with selectable text, so screen readers and the course tutor can use it.',
+    },
+    DOCUMENT_TEXT_TRUNCATED: {
+      title: (value: string) => `Only the first part of “${value}” could be read.`,
+      fix: 'Split very long documents so their full text is available.',
+    },
+    SECTION_EMPTY: { title: () => 'The section has no activities.', fix: 'Add content to the section, or hide it from students.' },
+    PREREQUISITE_SECTION_HIDDEN: {
+      title: (value: string) => `The required section “${value}” is hidden from students, so this requirement is not applied.`,
+      fix: 'Show the required section, or remove the requirement.',
+    },
+    PREREQUISITE_SECTION_EMPTY: {
+      title: (value: string) => `The required section “${value}” has no published activities, so this requirement holds nothing back.`,
+      fix: 'Publish content in the required section, or remove the requirement.',
+    },
+    COURSE_DESCRIPTION_MISSING: { title: () => 'The course has no description.', fix: 'Ask an administrator to add a short description of the course.' },
+    COURSE_NO_SECTIONS: { title: () => 'The course has no sections.', fix: 'Ask an administrator to add the course sections.' },
+    COURSE_NO_STUDENT_CONTENT: {
+      title: () => 'The course is published, but students cannot see any content yet.',
+      fix: 'Submit and approve at least one visible activity in a visible section.',
+    },
+  },
+};
+
+export type QualityMessages = typeof en;
+
+const es: QualityMessages = {
+  heading: 'Calidad del contenido',
+  courseIntro: 'Revisa la copia de trabajo de cada sección y actividad antes de enviar o aprobar el contenido. No se modifica nada.',
+  activityIntro: 'Revisa esta actividad antes de enviarla o aprobarla. No se modifica nada.',
+  run: 'Revisar calidad del contenido',
+  runActivity: 'Revisar esta actividad',
+  rerun: 'Revisar de nuevo',
+  checking: 'Revisando el contenido…',
+  failed: 'No se pudo completar la revisión de calidad.',
+  stale: 'El contenido cambió después de esta revisión. Revisa de nuevo para ver los resultados actuales.',
+  checkedAt: (time: string) => `Revisado el ${time}`,
+  scope: (sections: number, activities: number) =>
+    `${sections === 1 ? '1 sección' : `${sections} secciones`} y ${activities === 1 ? '1 actividad revisada' : `${activities} actividades revisadas`}`,
+  summary: (blocking: number, warnings: number) =>
+    `${blocking === 1 ? '1 problema bloqueante' : `${blocking} problemas bloqueantes`} · ${warnings === 1 ? '1 advertencia' : `${warnings} advertencias`}`,
+  allClear: 'No se encontraron problemas. El contenido revisado está listo para revisión.',
+  nothingToCheck: 'Aún no hay contenido para revisar. Primero agrega secciones y actividades.',
+  limited: 'Este curso es muy grande: solo se revisaron sus primeras 1000 actividades.',
+  blockingHeading: 'Problemas bloqueantes',
+  blockingHelp: 'El contenido con un problema bloqueante no se puede enviar a revisión ni aprobar hasta corregirlo.',
+  warningsHeading: 'Advertencias',
+  warningsHelp: 'Sugerencias para mejorar el contenido. Nunca impiden enviarlo ni aprobarlo.',
+  severity: { blocking: 'Bloqueante', warning: 'Advertencia' },
+  severityLabel: 'Gravedad',
+  howToFix: 'Cómo corregirlo',
+  courseInformation: 'Información del curso',
+  question: (n: number) => `Pregunta ${n}`,
+  criterion: (n: number) => `Criterio de rúbrica ${n}`,
+  openActivity: 'Abrir actividad',
+  goToSection: 'Ir a la sección',
+  untitled: 'Sin título',
+  field: {
+    title: 'Título',
+    description: 'Descripción',
+    summary: 'Resumen',
+    body: 'Texto de la lección',
+    url: 'Dirección',
+    instructions: 'Instrucciones',
+    settings: 'Configuración del cuestionario',
+    questions: 'Preguntas',
+    question: 'Pregunta',
+    option: 'Opciones de respuesta',
+    rubric: 'Rúbrica',
+    criterion: 'Criterio de rúbrica',
+    dates: 'Fechas',
+    document: 'Documento',
+    activities: 'Actividades',
+    prerequisites: 'Requisitos previos',
+    sections: 'Secciones',
+  },
+  issues: {
+    ACTIVITY_TITLE_EMPTY: { title: () => 'La actividad no tiene título.', fix: 'Dale a la actividad un título que los estudiantes reconozcan.' },
+    PAGE_BODY_EMPTY: { title: () => 'La lección no tiene texto.', fix: 'Escribe el texto de la lección o elimínala.' },
+    LINK_URL_INVALID: {
+      title: (value: string) => (value ? `La dirección del enlace no está permitida: ${value}` : 'El enlace no tiene dirección.'),
+      fix: 'Usa una dirección https:// completa con un nombre de dominio, sin usuario ni contraseña.',
+    },
+    QUIZ_NO_QUESTIONS: { title: () => 'El cuestionario no tiene preguntas.', fix: 'Agrega al menos una pregunta antes de enviar el cuestionario.' },
+    QUIZ_POOL_TOO_SMALL: {
+      title: (value: string) => `El cuestionario toma ${value} preguntas por intento, pero tiene menos preguntas.`,
+      fix: 'Agrega preguntas o reduce la cantidad de preguntas por intento.',
+    },
+    QUIZ_POOL_POINTS_MIXED: {
+      title: () => 'Las preguntas tomadas de un banco valen puntos distintos.',
+      fix: 'Asigna los mismos puntos a todas las preguntas o deja de tomarlas de un banco.',
+    },
+    QUIZ_QUESTION_PROMPT_EMPTY: { title: () => 'La pregunta no tiene texto.', fix: 'Escribe la pregunta.' },
+    QUIZ_QUESTION_OPTIONS_INCOMPLETE: { title: () => 'Las opciones de respuesta están incompletas.', fix: 'Dale a la pregunta de 2 a 10 opciones, cada una con texto.' },
+    QUIZ_QUESTION_ANSWER_INVALID: {
+      title: () => 'Falta la respuesta correcta o no es válida.',
+      fix: 'Edita la pregunta y marca la opción correcta (exactamente una en preguntas de respuesta única y de verdadero/falso).',
+    },
+    QUIZ_QUESTION_POINTS_INVALID: { title: () => 'Los puntos de la pregunta están fuera de rango.', fix: 'Usa puntos enteros de 1 a 100.' },
+    ASSIGNMENT_INSTRUCTIONS_EMPTY: { title: () => 'La tarea no tiene instrucciones.', fix: 'Explica qué deben entregar los estudiantes.' },
+    ASSIGNMENT_RUBRIC_EMPTY: { title: () => 'La tarea no tiene criterios de rúbrica.', fix: 'Agrega al menos un criterio de rúbrica con su puntaje máximo.' },
+    ASSIGNMENT_RUBRIC_CRITERION_INVALID: { title: () => 'Un criterio de rúbrica está incompleto.', fix: 'Dale a cada criterio un título y puntos enteros de 1 a 100.' },
+    ASSIGNMENT_DATES_INVALID: {
+      title: () => 'La fecha de entrega o el plazo de entrega tardía no son válidos.',
+      fix: 'Usa una fecha de entrega válida; el plazo tardío debe terminar después y dentro de 30 días.',
+    },
+    DOCUMENT_REFERENCE_INVALID: { title: () => 'No se encuentra el archivo del documento o su resumen.', fix: 'Vuelve a subir el documento en esta sección.' },
+    PLACEHOLDER_TEXT: { title: (value: string) => `Se encontró texto provisional: «${value}».`, fix: 'Reemplaza el texto provisional por el texto definitivo.' },
+    TEXT_LINK_UNSAFE_SCHEME: {
+      title: (value: string) => `El texto contiene una dirección que los estudiantes no pueden abrir de forma segura: ${value}`,
+      fix: 'Elimínala o usa una dirección https:// completa.',
+    },
+    TEXT_LINK_INSECURE: {
+      title: (value: string) => `El texto enlaza a una dirección http:// no segura: ${value}`,
+      fix: 'Usa la versión https:// de la dirección si el sitio la ofrece.',
+    },
+    INTERNAL_LINK_BROKEN: {
+      title: (value: string) => `El texto hace referencia a contenido del curso que no existe: ${value}`,
+      fix: 'Actualiza la referencia o elimínala.',
+    },
+    LINK_MEDIA_DESCRIPTION_MISSING: {
+      title: () => 'El video o recurso interactivo no tiene descripción.',
+      fix: 'Describe lo que muestra, para que todos los estudiantes, incluidos quienes usan lectores de pantalla, sepan qué esperar.',
+    },
+    QUIZ_DUPLICATE_OPTIONS: { title: () => 'Dos opciones de respuesta tienen el mismo texto.', fix: 'Haz que cada opción sea distinta.' },
+    ASSIGNMENT_DEADLINE_PASSED: {
+      title: (value: string) => `El plazo de entrega ya se cerró (${value}).`,
+      fix: 'Cambia la fecha de entrega si los estudiantes aún deben entregar este trabajo.',
+    },
+    DOCUMENT_NO_TEXT: {
+      title: (value: string) => `No se pudo leer texto de «${value}»; puede ser una imagen escaneada.`,
+      fix: 'Sube una versión con texto seleccionable, para que los lectores de pantalla y el tutor del curso puedan usarla.',
+    },
+    DOCUMENT_TEXT_TRUNCATED: {
+      title: (value: string) => `Solo se pudo leer la primera parte de «${value}».`,
+      fix: 'Divide los documentos muy largos para que su texto completo esté disponible.',
+    },
+    SECTION_EMPTY: { title: () => 'La sección no tiene actividades.', fix: 'Agrega contenido a la sección u ocúltala a los estudiantes.' },
+    PREREQUISITE_SECTION_HIDDEN: {
+      title: (value: string) => `La sección requerida «${value}» está oculta para los estudiantes, por lo que este requisito no se aplica.`,
+      fix: 'Muestra la sección requerida o elimina el requisito.',
+    },
+    PREREQUISITE_SECTION_EMPTY: {
+      title: (value: string) => `La sección requerida «${value}» no tiene actividades publicadas, por lo que este requisito no retiene nada.`,
+      fix: 'Publica contenido en la sección requerida o elimina el requisito.',
+    },
+    COURSE_DESCRIPTION_MISSING: { title: () => 'El curso no tiene descripción.', fix: 'Pide a un administrador que agregue una breve descripción del curso.' },
+    COURSE_NO_SECTIONS: { title: () => 'El curso no tiene secciones.', fix: 'Pide a un administrador que agregue las secciones del curso.' },
+    COURSE_NO_STUDENT_CONTENT: {
+      title: () => 'El curso está publicado, pero los estudiantes aún no pueden ver ningún contenido.',
+      fix: 'Envía y aprueba al menos una actividad visible en una sección visible.',
+    },
+  },
+};
+
+export const quality = { en, es };
