@@ -71,11 +71,10 @@ export async function apiGet<T>(role: Role, pathname: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** Waits until the page has a level-1 heading and no polite "loading" status is left in the main region. */
+/** Waits until the page's requests have finished and its level-1 heading is shown. */
 export async function settle(page: Page): Promise<void> {
   await page.waitForLoadState('networkidle');
   await page.locator('main h1').first().waitFor({ state: 'visible', timeout: 15_000 });
-  await page.waitForFunction(() => !document.querySelector('[data-route-loading]'), undefined, { timeout: 15_000 });
 }
 
 // ------------------------------------------------------------------------------------------- catalog leak scanner

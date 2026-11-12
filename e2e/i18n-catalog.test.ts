@@ -20,7 +20,7 @@ function shape(value: unknown, prefix = ''): string[] {
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const full = path.join(dir, name);
-    return statSync(full).isDirectory() ? files(full) : full.endsWith('.ts') ? [full] : [];
+    return statSync(full).isDirectory() ? files(full) : /\.tsx?$/.test(full) ? [full] : [];
   });
 }
 
@@ -52,6 +52,55 @@ describe('interface catalogs', () => {
     assert.ok(codes.size > 50, `found only ${codes.size} codes; the extraction pattern no longer matches the API`);
     const missing = [...codes].filter((code) => !MESSAGES.es.errors.codes[code] || !MESSAGES.en.errors.codes[code]).sort();
     assert.deepEqual(missing, [], 'add these codes to apps/web/src/lib/i18n/catalog/errors.ts (EN and ES)');
+  });
+});
+
+/**
+ * Interface text written directly in components instead of the catalog cannot be caught by the browser leak scan
+ * (it only knows catalog phrases), so the sources are scanned for the patterns that let English through before:
+ * JSX text of two or more words, literal interface attributes (aria-label, placeholder, title, alt, label…),
+ * template-literal labels with English words, and English default values for label props.
+ */
+const HARDCODED_ALLOWED = new Set([
+  // Language-neutral examples (a program code and a product name) shown as input placeholders.
+  'components/admin/academics/AcademicPanels.tsx IT-MGMT',
+  'components/admin/academics/AcademicPanels.tsx ITIL Foundation',
+  // Fallback defaults of shared components; every caller passes the localized text (checked when this was added).
+  'components/courses/CourseCard.tsx Status',
+  'components/ui/PageHeader.tsx Breadcrumb',
+]);
+
+function hardcodedText(webSrc: string): string[] {
+  const words = (text: string) => (text.match(/[A-Za-zÁÉÍÓÚáéíóúñÑ]{2,}/g) ?? []).length;
+  const code = (text: string) => /\b\w+\.\w+/.test(text) || /\s[?:]\s/.test(text);
+  const found: string[] = [];
+  const tsx = [...files(path.join(webSrc, 'app')), ...files(path.join(webSrc, 'components'))].filter((file) => file.endsWith('.tsx'));
+  for (const file of tsx) {
+    const rel = path.relative(webSrc, file);
+    readFileSync(file, 'utf8')
+      .split('\n')
+      .forEach((line, index) => {
+        const text = line.trim();
+        if (/^(\/\/|\*|\/\*|\{\/\*)/.test(text)) return;
+        const hit = (literal: string) => {
+          if (!HARDCODED_ALLOWED.has(`${rel} ${literal}`)) found.push(`${rel}:${index + 1} "${literal}"`);
+        };
+        if (/^[A-Z][a-zA-Z'’]*(\s+[a-zA-Z'’,()-]+)+[.:!?…]?$/.test(text) && !/[=;{}<>]/.test(text)) hit(text);
+        for (const m of line.matchAll(/(?<=[\w"'}])>([^<>{}=;()`]*?[A-Za-z][^<>{}=;()`]*?)(?=<|\{)/g)) if (words(m[1]!) >= 2 && !code(m[1]!)) hit(m[1]!.trim());
+        for (const m of line.matchAll(/\b(?:aria-label|aria-valuetext|placeholder|title|alt|label|description|emptyTitle|emptyDescription|accessibleLabel|statusLabel)=["']([^"']+)["']/g)) if (words(m[1]!) >= 2) hit(m[1]!);
+        for (const m of line.matchAll(/\b(?:aria-label|aria-valuetext|placeholder|title|alt|label|accessibleLabel)=\{`([^`]*)`\}/g)) {
+          const literal = m[1]!.replace(/\$\{[^}]*\}/g, ' ');
+          if (/[A-Za-z]{3,}/.test(literal)) hit(m[1]!);
+        }
+        for (const m of line.matchAll(/\b(?:label|title|description|emptyTitle|emptyDescription|statusLabel|accessibleLabel)\s*=\s*'([^']+)'/g)) if (words(m[1]!) >= 1) hit(m[1]!);
+      });
+  }
+  return found;
+}
+
+describe('interface text in components', () => {
+  it('no interface text is hardcoded outside the catalogs', () => {
+    assert.deepEqual(hardcodedText(path.join(ROOT, 'apps/web/src')), [], 'move these texts to apps/web/src/lib/i18n (EN and ES)');
   });
 });
 

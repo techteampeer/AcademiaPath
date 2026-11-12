@@ -4,8 +4,8 @@
  * Every scenario runs E2E_BENCH_RUNS times (default 7) in a fresh, signed-in Chromium context with emulated network
  * latency (E2E_BENCH_LATENCY_MS per request, default 60 ms, roughly a browser → Cloud Run round trip), and records
  * the raw samples, median and p95 of:
- *   ms        click/navigation → page settled (level-1 heading shown, network idle, no loading state)
- *   feedbackMs  (navigations only) click → first visible response (loading state or new page)
+ *   ms        click/navigation → page settled (level-1 heading shown, network idle)
+ *   feedbackMs  (navigations only) click → first visible response (pending marker on the link, or the new page)
  *   apiCalls  API requests made by the page
  *   apiMs     slowest API response seen by the browser (server + proxy time, excluding emulated latency)
  * Results are comparisons on one machine, not production figures: Cloud Run cold starts, the second Cloud Run hop
@@ -77,7 +77,7 @@ function navigate(role: Role, from: string, linkLabel: string) {
     const href = (await link.getAttribute('href'))!;
     const start = Date.now();
     const feedback = page
-      .waitForFunction((target) => location.pathname === target || !!document.querySelector('[data-route-loading],[data-nav-pending]'), href, { polling: 'raf' })
+      .waitForFunction((target) => location.pathname === target || !!document.querySelector('[data-nav-pending]'), href, { polling: 'raf' })
       .then(() => Date.now() - start);
     await link.click();
     await page.waitForURL((url) => url.pathname === href);
@@ -88,14 +88,20 @@ function navigate(role: Role, from: string, linkLabel: string) {
   };
 }
 
-/** Sign-in through the form until the dashboard has settled. */
+/**
+ * Sign-in through the form until the dashboard has settled. Accounts rotate between samples: sign-in is limited to
+ * five attempts per account and address in each window, so one account cannot provide every sample.
+ */
+const SIGN_IN_ROTATION: Role[] = ['student', 'ta', 'reviewer', 'instructor'];
+let signIns = 0;
 async function signIn(browser: Browser): Promise<Sample> {
+  const role = SIGN_IN_ROTATION[signIns++ % SIGN_IN_ROTATION.length]!;
   const page = await (await context(browser, 'en')).newPage();
   await page.goto(`${BASE}/login`);
   await page.locator('#login-email').waitFor();
   await emulate(page);
   const tracker = track(page);
-  await page.locator('#login-email').fill(EMAIL.student);
+  await page.locator('#login-email').fill(EMAIL[role]);
   await page.locator('#login-password').fill(process.env.E2E_PASSWORD!);
   const start = Date.now();
   await page.locator('form button[type="submit"]').click();
@@ -106,18 +112,23 @@ async function signIn(browser: Browser): Promise<Sample> {
   return sample;
 }
 
-/** Sending one chat message through the API, as the message box does (server + proxy time). */
+/** Sending one chat message through the API, as the message box does (server + proxy time); one sign-in for all. */
+let messaging: Promise<{ cookie: string; csrfToken: string; conversationId: string }> | null = null;
 async function sendMessage(): Promise<Sample> {
-  const login = await fetch(`${API}/auth/login`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', origin: BASE },
-    body: JSON.stringify({ email: EMAIL.instructor, password: process.env.E2E_PASSWORD }),
-  });
-  const { csrfToken } = (await login.json()) as { csrfToken: string };
-  const cookie = login.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
-  const conversations = (await (await fetch(`${API}/me/conversations?limit=50`, { headers: { cookie } })).json()) as { items: Array<{ id: string }> };
+  messaging ??= (async () => {
+    const login = await fetch(`${API}/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: BASE },
+      body: JSON.stringify({ email: EMAIL.instructor, password: process.env.E2E_PASSWORD }),
+    });
+    const { csrfToken } = (await login.json()) as { csrfToken: string };
+    const cookie = login.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+    const conversations = (await (await fetch(`${API}/me/conversations?limit=50`, { headers: { cookie } })).json()) as { items: Array<{ id: string }> };
+    return { cookie, csrfToken, conversationId: conversations.items[0]!.id };
+  })();
+  const { cookie, csrfToken, conversationId } = await messaging;
   const start = Date.now();
-  const res = await fetch(`${API}/conversations/${conversations.items[0]!.id}/messages`, {
+  const res = await fetch(`${API}/conversations/${conversationId}/messages`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', origin: BASE, cookie, 'x-csrf-token': csrfToken },
     body: JSON.stringify({ body: 'Benchmark message (synthetic).', clientMessageId: crypto.randomUUID() }),
@@ -132,7 +143,7 @@ async function main() {
   const browser = await launch();
   const course = { student: await firstCourse('student')(), instructor: await firstCourse('instructor')() };
   const scenarios: Record<string, (browser: Browser) => Promise<Sample>> = {
-    'sign-in → student dashboard': signIn,
+    'sign-in → dashboard (rotating accounts)': signIn,
     'load: student dashboard': load('student', '/dashboard'),
     'load: instructor dashboard': load('instructor', '/dashboard'),
     'load: teaching assistant dashboard': load('ta', '/dashboard'),
