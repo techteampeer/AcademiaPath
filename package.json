@@ -15,6 +15,7 @@
     "build": "pnpm -r run build",
     "validate:openapi": "pnpm --filter @academiapath/contract run validate",
     "test": "pnpm -r run test",
+    "test:e2e": "bash e2e/run.sh",
     "db:generate": "pnpm --filter @academiapath/api run db:generate",
     "db:check": "pnpm --filter @academiapath/api run db:check",
     "db:migrate": "pnpm --filter @academiapath/api run db:migrate",

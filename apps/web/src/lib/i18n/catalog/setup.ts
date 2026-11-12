@@ -84,7 +84,7 @@ const en = {
   },
   hierarchy: {
     adminOnly: 'Administrators only',
-    periods: { first: '1 — First semester', second: '2 — Second semester', summer: '0 — Summer term (verano)' },
+    periods: { first: '1 — First semester', second: '2 — Second semester', summer: '0 — Summer term' },
     yearKicker: 'Academic year',
     noTermsInYear: (year: number) => `No terms in ${year} yet. The academic year is saved together with its first term.`,
     newTermIn: (year: number) => `New term in ${year}`,

@@ -6,7 +6,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Card } from '@/components/ui/Card';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
-import { formatDate } from '@/lib/i18n/messages';
+import { formatDate, localizeTermName } from '@/lib/i18n/messages';
 import type { CertificateVerification } from '@/lib/api/types';
 import { CertificateStatusBadge } from './certificateDisplay';
 
@@ -54,7 +54,7 @@ export function VerifyCertificateView({ token }: { token: string }) {
               [
                 [v.recipient, state.data.recipientName],
                 [v.course, state.data.courseTitle],
-                [v.period, state.data.academicPeriod],
+                [v.period, localizeTermName(state.data.academicPeriod, locale)],
                 [v.issuer, state.data.issuerName],
                 [v.issuedAt, formatDate(state.data.issuedAt, locale)],
                 [v.number, state.data.certificateNumber],

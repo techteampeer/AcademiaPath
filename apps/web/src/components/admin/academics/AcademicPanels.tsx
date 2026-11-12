@@ -14,7 +14,7 @@ import { SelectField, TextField } from '@/components/ui/Field';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { Course, CourseTemplate, CourseTemplateDetail, Program, Term } from '@/lib/api/types';
-import { formatDate, type Messages } from '@/lib/i18n/messages';
+import { defaultTermName, formatDate, localizeTermName, type Messages } from '@/lib/i18n/messages';
 import { ProgramManagersPanel } from './ProgramManagers';
 
 const CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -120,7 +120,7 @@ export function YearPanel({ year, terms, onSelectTerm, onCreated }: { year: numb
     setErrors(next);
     if (Object.keys(next).length) return;
     const created = await run(
-      (csrf) => api.createTerm({ code, name: name.trim() || (period === '0' ? `Verano ${code}` : `Semestre ${code}`), academicYear: year, startsOn, endsOn }, csrf),
+      (csrf) => api.createTerm({ code, name: name.trim() || defaultTermName(code, period), academicYear: year, startsOn, endsOn }, csrf),
       (term) => h.termCreated(term.code),
     );
     if (created) await onCreated(created);
@@ -139,7 +139,7 @@ export function YearPanel({ year, terms, onSelectTerm, onCreated }: { year: numb
                 <button type="button" onClick={() => onSelectTerm(term.id)} className="font-medium text-brand-700 hover:underline">
                   {term.code}
                 </button>
-                <span className="ml-2 text-sm text-slate-600">{term.name}</span>
+                <span className="ml-2 text-sm text-slate-600">{localizeTermName(term.name, locale)}</span>
               </div>
               <span className="text-xs text-slate-500">
                 {formatDate(term.startsOn, locale)} – {formatDate(term.endsOn, locale)}
@@ -158,7 +158,7 @@ export function YearPanel({ year, terms, onSelectTerm, onCreated }: { year: numb
         </h3>
         <div className="grid gap-4 sm:grid-cols-2">
           <SelectField id="term-period" label={h.period} value={period} onChange={(event) => setPeriod(event.target.value)} options={periodOptions(t)} hint={h.termCode(code)} />
-          <TextField id="term-name" label={f.nameOptional} value={name} onChange={(e) => setName(e.target.value)} placeholder={period === '0' ? `Verano ${code}` : `Semestre ${code}`} error={errors.name} />
+          <TextField id="term-name" label={f.nameOptional} value={name} onChange={(e) => setName(e.target.value)} placeholder={localizeTermName(defaultTermName(code, period), locale)} error={errors.name} />
           <TextField id="term-starts" label={f.startsOn} type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} error={errors.startsOn} />
           <TextField id="term-ends" label={f.endsOn} type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} error={errors.endsOn} />
         </div>
@@ -193,7 +193,7 @@ export function TermPanel({
   const [endsOn, setEndsOn] = useState(term.endsOn);
   const [errors, setErrors] = useState<Errors>({});
   const edit = useCsrfAction();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const h = t.setup.hierarchy;
   const f = t.setup.fields;
 
@@ -215,7 +215,7 @@ export function TermPanel({
           <PanelHeader
             kicker={h.termKicker(term.academicYear)}
             title={term.code}
-            meta={term.name}
+            meta={localizeTermName(term.name, locale)}
             badge={<Badge tone="brand">{offeringCount === null ? '…' : h.offerings(offeringCount)}</Badge>}
           />
         </div>

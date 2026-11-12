@@ -22,6 +22,7 @@ import { communications } from './catalog/communications';
 import { messaging } from './catalog/messaging';
 import { forums } from './catalog/forums';
 import { groups } from './catalog/groups';
+import { preview } from './catalog/preview';
 
 export type Locale = 'en' | 'es';
 export const LOCALES: Locale[] = ['en', 'es'];
@@ -54,6 +55,11 @@ const en = {
     openMenu: 'Open navigation menu',
     closeMenu: 'Close navigation menu',
     showing: (shown: number, total: number) => `Showing ${shown} of ${total}`,
+    notFoundTitle: 'Page not found',
+    notFoundBody: 'The page you are looking for does not exist or is no longer available.',
+    goHome: 'Go to the home page',
+    errorTitle: 'Something went wrong',
+    errorBody: 'This page could not be displayed. Try again, or go back to the home page.',
   },
   roles: {
     administrator: 'Administrator',
@@ -302,6 +308,7 @@ const en = {
   messaging: messaging.en,
   forums: forums.en,
   groups: groups.en,
+  preview: preview.en,
   academics: {
     hierarchy: 'Hierarchy',
     treeLabel: 'Academic hierarchy',
@@ -527,6 +534,11 @@ const es: Messages = {
     openMenu: 'Abrir menú de navegación',
     closeMenu: 'Cerrar menú de navegación',
     showing: (shown: number, total: number) => `Mostrando ${shown} de ${total}`,
+    notFoundTitle: 'Página no encontrada',
+    notFoundBody: 'La página que buscas no existe o ya no está disponible.',
+    goHome: 'Ir a la página de inicio',
+    errorTitle: 'Algo salió mal',
+    errorBody: 'No se pudo mostrar esta página. Inténtalo de nuevo o vuelve a la página de inicio.',
   },
   roles: {
     administrator: 'Administrador',
@@ -775,6 +787,7 @@ const es: Messages = {
   messaging: messaging.es,
   forums: forums.es,
   groups: groups.es,
+  preview: preview.es,
   academics: {
     hierarchy: 'Jerarquía',
     treeLabel: 'Jerarquía académica',
@@ -976,6 +989,29 @@ export const MESSAGES: Record<Locale, Messages> = { en, es };
 export const isLocale = (value: unknown): value is Locale => value === 'en' || value === 'es';
 
 /** Dates for Peru (es-PE / en-US style), without time zone conversion surprises for plain dates. */
+/**
+ * Academic term names in the standard forms the system itself generates ("Semestre 2026-2", "Verano 2027-0") are
+ * system terminology, so they follow the interface language ("Semester 2026-2", "Summer term 2027-0"). The stored
+ * name is never rewritten, and any other term name is shown exactly as the administrator entered it. Also accepts
+ * the "… (2026)" form of certificate periods.
+ */
+const STANDARD_TERM_NAME = /^\s*(semestre|semester|verano|summer term)\s+(\d{4}-[0-9A-Za-z]{1,4})(\s+\(\d{4}\))?\s*$/i;
+const TERM_WORDS: Record<Locale, { semester: string; summer: string }> = {
+  en: { semester: 'Semester', summer: 'Summer term' },
+  es: { semester: 'Semestre', summer: 'Verano' },
+};
+export function localizeTermName(name: string, locale: Locale): string {
+  const match = STANDARD_TERM_NAME.exec(name);
+  if (!match) return name;
+  const kind = /^(verano|summer term)$/i.test(match[1]!) ? 'summer' : 'semester';
+  return `${TERM_WORDS[locale][kind]} ${match[2]}${match[3] ?? ''}`;
+}
+
+/** Name stored for a new term when the administrator leaves it empty (the institution's canonical Spanish form). */
+export function defaultTermName(code: string, period: string): string {
+  return period === '0' ? `Verano ${code}` : `Semestre ${code}`;
+}
+
 export function formatDate(value: string, locale: Locale): string {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
   return date.toLocaleDateString(locale === 'es' ? 'es-PE' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' });

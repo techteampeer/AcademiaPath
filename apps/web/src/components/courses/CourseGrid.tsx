@@ -1,4 +1,7 @@
+'use client';
+
 import type { ReactNode } from 'react';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { EmptyState } from '@/components/ui/EmptyState';
 import type { CourseSummary } from '@/types/course';
 import { CourseCard } from './CourseCard';
@@ -15,13 +18,20 @@ export type CourseGridProps = {
 /** Responsive grid of course cards: one column on mobile, two on tablet, three on wide screens. */
 export function CourseGrid({
   courses,
-  emptyTitle = 'No courses to show',
-  emptyDescription = 'Courses will appear here once they are available.',
+  emptyTitle,
+  emptyDescription,
   emptyAction,
   getCourseHref,
 }: CourseGridProps) {
+  const { t } = useLocale();
   if (courses.length === 0) {
-    return <EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} />;
+    return (
+      <EmptyState
+        title={emptyTitle ?? t.preview.noCourses}
+        description={emptyDescription ?? t.preview.noCoursesDescription}
+        action={emptyAction}
+      />
+    );
   }
 
   return (
