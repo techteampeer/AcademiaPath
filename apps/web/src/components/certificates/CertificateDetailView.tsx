@@ -12,7 +12,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
-import { formatDate, formatDateTime } from '@/lib/i18n/messages';
+import { formatDate, formatDateTime, localizeTermName } from '@/lib/i18n/messages';
 import type { Certificate } from '@/lib/api/types';
 import { CertificateStatusBadge, DownloadCertificateButton } from './certificateDisplay';
 
@@ -52,7 +52,7 @@ function Content({ certificateId }: { certificateId: string }) {
   const rows: Array<[string, string]> = [
     [c.verify.recipient, certificate.recipientName],
     [c.verify.course, `${certificate.courseTitle} (${certificate.courseCode})`],
-    [c.verify.period, [certificate.programName, c.period(certificate.termName, certificate.academicYear)].filter(Boolean).join(' · ')],
+    [c.verify.period, [certificate.programName, c.period(localizeTermName(certificate.termName, locale), certificate.academicYear)].filter(Boolean).join(' · ')],
     [c.verify.issuer, certificate.issuerName],
     [c.verify.issuedAt, formatDate(certificate.issuedAt, locale)],
     [c.number, certificate.certificateNumber],

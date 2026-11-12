@@ -43,6 +43,7 @@ const en = {
   manageCourse: 'Manage course',
   academicManagement: 'Academic management',
   studentProgress: 'Student progress',
+  notFound: 'Page not found',
   description: 'AcademiaPath — institutional learning platform for universities.',
 };
 
@@ -92,6 +93,7 @@ const es: MetaMessages = {
   manageCourse: 'Gestionar curso',
   academicManagement: 'Gestión académica',
   studentProgress: 'Avance de los estudiantes',
+  notFound: 'Página no encontrada',
   description: 'AcademiaPath — plataforma institucional de aprendizaje para universidades.',
 };
 

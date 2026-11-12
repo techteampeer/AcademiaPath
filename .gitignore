@@ -33,3 +33,6 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Browser regression suite: pinned Playwright installed on demand by e2e/run.sh
+e2e/.tools/

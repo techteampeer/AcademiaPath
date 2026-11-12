@@ -11,7 +11,7 @@ export type ActionResult = { tone: 'success' | 'error'; message: string } | null
 /**
  * User-facing description of a failed request. The API's RFC 9457 `detail` is safe and specific but
  * English, so it is shown as-is in English; in Spanish the localized description of the problem
- * `code` is shown (falling back to the API's detail for unknown codes).
+ * `code` is shown (or a generic Spanish message for a code without a description).
  */
 export function describeApiError(error: unknown, locale: Locale = 'en'): string {
   const t = MESSAGES[locale].errors;
@@ -19,7 +19,8 @@ export function describeApiError(error: unknown, locale: Locale = 'en'): string 
   if (isApiError(error, 403) && error.code === 'FORBIDDEN') return t.notAllowed;
   if (isApiError(error)) {
     if (locale === 'en') return error.message;
-    return (error.code ? t.codes[error.code] : undefined) ?? error.message;
+    // Never fall back to the English detail in Spanish: unknown codes get a generic localized message.
+    return (error.code ? t.codes[error.code] : undefined) ?? t.unexpected;
   }
   return t.network;
 }

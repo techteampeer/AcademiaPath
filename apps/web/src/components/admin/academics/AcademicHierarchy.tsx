@@ -14,6 +14,7 @@ import { Card } from '@/components/ui/Card';
 import { isApiError } from '@/lib/api/client';
 import { api, loadAll } from '@/lib/api/endpoints';
 import type { Course, CourseTemplate, Program, Term } from '@/lib/api/types';
+import { localizeTermName } from '@/lib/i18n/messages';
 import { ProgramPanel, SubjectPanel, TermPanel, YearPanel } from './AcademicPanels';
 
 type Data = { terms: Term[]; programs: Program[]; subjects: CourseTemplate[] };
@@ -226,7 +227,7 @@ function HierarchyContent() {
                           <TreeItem
                             depth={1}
                             label={tm.code}
-                            meta={tm.name}
+                            meta={localizeTermName(tm.name, locale)}
                             selected={tm.id === term?.id && !program}
                             expanded={tm.id === term?.id}
                             onSelect={() => navigate({ year: String(tm.academicYear), term: tm.id })}

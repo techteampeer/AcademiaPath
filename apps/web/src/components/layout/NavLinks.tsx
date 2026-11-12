@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link, { useLinkStatus } from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLocale } from '@/components/i18n/LocaleProvider';
 import { useSession } from '@/components/session/SessionProvider';
@@ -9,6 +9,14 @@ import { useUnreadSummary } from '@/components/messaging/polling';
 import { cn } from '@/lib/cn';
 import { Icon, navIconFor } from './Heritage';
 import { buildNavigation, isActivePath } from './navigation';
+
+/** Immediate feedback on the link just followed while its page loads (decorative; the page announces loading). */
+function NavPending() {
+  const { pending } = useLinkStatus();
+  return pending ? (
+    <span aria-hidden="true" data-nav-pending="" className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-gold-300" />
+  ) : null;
+}
 
 export function NavLinks({ idPrefix, onNavigate }: { idPrefix: string; onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -52,6 +60,7 @@ export function NavLinks({ idPrefix, onNavigate }: { idPrefix: string; onNavigat
                           <Icon name={navIconFor(item.href)} className={cn('h-[1.15rem] w-[1.15rem] shrink-0', active ? 'text-gold-200' : 'text-gold-300')} />
                           <span className="min-w-0 break-words">{item.label}</span>
                         </span>
+                        <NavPending />
                         {badges[item.href] ? (
                           <span className="rounded-full bg-gold-400 px-2 py-0.5 text-xs font-bold text-slate-900" data-nav-badge={item.href}>
                             {badges[item.href]}
