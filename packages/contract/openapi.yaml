@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.24.0
+  version: 0.25.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -4892,6 +4892,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CourseMessaging"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/email-recipients:
+    get:
+      operationId: getCourseEmailRecipients
+      summary: BCC recipients to compose an e-mail to the course's students in one's own e-mail application
+      description: |
+        AP-044. The course's students with an active enrollment and an active account, one entry per e-mail
+        address (compared without case), for an e-mail the caller writes and sends from their own e-mail
+        application (the web app opens it with the addresses in BCC). AcademiaPath never sends, queues, delivers
+        or tracks that e-mail. Addresses that are not valid e-mail addresses, and repeated addresses, are left out
+        and only counted in `excluded`.
+
+        Requires `students.email`: instructors of the course, and administrators. Non-editing instructors, the
+        design team and students get `403 FORBIDDEN`; a course the caller cannot access gets `404`. Each request is
+        audited as `course.email_recipients_listed` with counts only (never addresses). Responses are `no-store`.
+      tags: [Messaging]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: The recipients.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseEmailRecipients"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -11323,6 +11355,54 @@ components:
             $ref: "#/components/schemas/Conversation"
         nextCursor:
           type: [string, "null"]
+    CourseEmailRecipients:
+      type: object
+      description: AP-044. The BCC list for an e-mail composed in the caller's own e-mail application. Nothing is sent by AcademiaPath.
+      required: [course, recipientCount, recipients, excluded]
+      additionalProperties: false
+      properties:
+        course:
+          type: object
+          required: [id, code, title]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            code:
+              type: string
+            title:
+              type: string
+        recipientCount:
+          type: integer
+          minimum: 0
+          description: The number of entries in `recipients`.
+        recipients:
+          type: array
+          description: Active students with a valid, unique e-mail address, ordered by family name, given name and address.
+          items:
+            type: object
+            required: [name, email]
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+              email:
+                type: string
+        excluded:
+          type: object
+          description: Active students left out of `recipients`.
+          required: [invalidEmail, duplicateEmail]
+          additionalProperties: false
+          properties:
+            invalidEmail:
+              type: integer
+              minimum: 0
+              description: Students whose stored address is empty or not a valid e-mail address.
+            duplicateEmail:
+              type: integer
+              minimum: 0
+              description: Entries whose address repeats one already listed.
     CourseMessaging:
       type: object
       required: [course, role, courseConversation, directConversations, contacts]

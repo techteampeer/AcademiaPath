@@ -2725,6 +2725,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{id}/email-recipients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * BCC recipients to compose an e-mail to the course's students in one's own e-mail application
+         * @description AP-044. The course's students with an active enrollment and an active account, one entry per e-mail
+         *     address (compared without case), for an e-mail the caller writes and sends from their own e-mail
+         *     application (the web app opens it with the addresses in BCC). AcademiaPath never sends, queues, delivers
+         *     or tracks that e-mail. Addresses that are not valid e-mail addresses, and repeated addresses, are left out
+         *     and only counted in `excluded`.
+         *
+         *     Requires `students.email`: instructors of the course, and administrators. Non-editing instructors, the
+         *     design team and students get `403 FORBIDDEN`; a course the caller cannot access gets `404`. Each request is
+         *     audited as `course.email_recipients_listed` with counts only (never addresses). Responses are `no-store`.
+         */
+        get: operations["getCourseEmailRecipients"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{id}/conversations": {
         parameters: {
             query?: never;
@@ -5719,6 +5747,29 @@ export interface components {
         ConversationPage: {
             items: components["schemas"]["Conversation"][];
             nextCursor: string | null;
+        };
+        /** @description AP-044. The BCC list for an e-mail composed in the caller's own e-mail application. Nothing is sent by AcademiaPath. */
+        CourseEmailRecipients: {
+            course: {
+                /** Format: uuid */
+                id: string;
+                code: string;
+                title: string;
+            };
+            /** @description The number of entries in `recipients`. */
+            recipientCount: number;
+            /** @description Active students with a valid, unique e-mail address, ordered by family name, given name and address. */
+            recipients: {
+                name: string;
+                email: string;
+            }[];
+            /** @description Active students left out of `recipients`. */
+            excluded: {
+                /** @description Students whose stored address is empty or not a valid e-mail address. */
+                invalidEmail: number;
+                /** @description Entries whose address repeats one already listed. */
+                duplicateEmail: number;
+            };
         };
         CourseMessaging: {
             course: components["schemas"]["CourseRef"];
@@ -10333,6 +10384,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CourseMessaging"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getCourseEmailRecipients: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The recipients. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseEmailRecipients"];
                 };
             };
             401: components["responses"]["Unauthorized"];
