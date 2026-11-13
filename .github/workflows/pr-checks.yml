@@ -1,0 +1,107 @@
+name: PR checks
+
+# Quality gates for pull requests into main, so broken code is caught BEFORE a merge triggers deploy.yml.
+# Typecheck, OpenAPI and contract types, migration/schema checks, the production build, the API suite and the
+# Playwright browser suite, all against a throwaway PostgreSQL 16 on the runner with synthetic data.
+#
+# This workflow never deploys: read-only token, no secrets, no Google Cloud credentials or gcloud, and it cannot
+# start other workflows. Deployment stays in deploy.yml (push to main), which this file neither changes nor triggers.
+# It runs on the pull request's merge result. No path filters: a required check must report on every pull request.
+# See docs/release-quality-gates.md (what runs, approvals, and how to make "Quality gates" a required check).
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# A new push to the same pull request cancels the superseded run.
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gates:
+    name: Quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          # Disposable server reachable only from this job on the runner; no password exists to leak.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - name: Check out the pull request (merge result, no stored credentials)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm (version from packageManager in package.json)
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies (from the lockfile only)
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Validate OpenAPI
+        run: pnpm validate:openapi
+
+      - name: Contract types match openapi.yaml
+        run: |
+          pnpm contract:types
+          if ! git diff --exit-code -- packages/contract/generated/api.d.ts; then
+            echo "::error::packages/contract/generated/api.d.ts is out of date. Run pnpm contract:types and commit the result."
+            exit 1
+          fi
+
+      - name: Migration history valid and schema in sync with migrations
+        timeout-minutes: 5
+        run: |
+          pnpm db:check
+          pnpm db:generate < /dev/null
+          if [ -n "$(git status --porcelain -- apps/api/drizzle)" ]; then
+            git status --porcelain -- apps/api/drizzle
+            echo "::error::The Drizzle schema changed without a committed migration. Run pnpm db:generate, review the SQL and commit it."
+            exit 1
+          fi
+
+      - name: Production build
+        run: pnpm build
+
+      - name: API regression suite (PostgreSQL 16, every migration applied to fresh databases)
+        timeout-minutes: 15
+        env:
+          TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
+        run: pnpm test
+
+      - name: Install Playwright 1.63.0 with Chromium (kept out of the workspace and the images)
+        timeout-minutes: 10
+        run: |
+          npm install --no-save --no-package-lock --prefix e2e/.tools playwright@1.63.0
+          e2e/.tools/node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Browser regression suite (production build, fresh database, synthetic demo seed)
+        timeout-minutes: 15
+        env:
+          E2E_PG_ADMIN_URL: postgresql://postgres@127.0.0.1:5432/postgres
+          PLAYWRIGHT_NODE_MODULES: ${{ github.workspace }}/e2e/.tools/node_modules
+        run: pnpm test:e2e

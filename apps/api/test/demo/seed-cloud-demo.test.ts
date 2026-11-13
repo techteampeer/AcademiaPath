@@ -414,6 +414,14 @@ describe('cloud demo seed on PostgreSQL', { skip: testServerUrl ? false : 'TEST_
       assert.equal(code, EXIT.notReady, lines.join('\n'));
       assert.match(lines.join('\n'), /no migrations have been applied/);
     } finally {
+      // pg's pool.end() resolves before its connections have closed. Dropping WITH (FORCE) in that window terminates
+      // the seed's closing connection, whose late error crashed this test intermittently under load. Wait (at most
+      // 5 s) until no connection to the database remains, then drop it as before.
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        const { rows } = await admin.query<{ n: number }>('SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = $1', [name]);
+        if (rows[0]!.n === 0) break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
       await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
       await admin.end();
     }
