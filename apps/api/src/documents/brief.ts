@@ -62,6 +62,11 @@ export type StudyBrief = {
   keywords: string[];
   concepts: BriefConcept[];
   excerpts: BriefText[];
+  /**
+   * How many excerpts there were to choose from: `excerpts_only`, the text blocks of the processed text (only the
+   * first `excerpts.length` are shown); otherwise the distinct sentences the excerpts were selected from.
+   */
+  excerptsAvailable: number;
   reviewPoints: BriefReviewPoint[];
   limitations: BriefLimitation[];
   cleanup: { repeatedLinesRemoved: number; duplicateSentencesRemoved: number };
@@ -69,6 +74,9 @@ export type StudyBrief = {
 
 const reference = (segment: DocumentSegment): BriefReference => ({ segmentIndex: segment.index, kind: segment.kind, label: segment.label });
 const normalized = (text: string) => fold(text).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const collapse = (text: string) => text.replace(/\s+/g, ' ').trim();
+/** The rule by which `sentencesOf` joins a line to the line before it: no sentence end before, lower case after. */
+const continuesSentence = (previous: string, line: string) => previous !== '' && !/[.!?:;…]$/.test(previous) && /^[a-záéíóúüñ(]/.test(line);
 /** Page numbers and "Page 3 of 10" lines (running footers), in English or Spanish. */
 const PAGE_NUMBER = /^(?:(?:page|p[aá]gina|p[aá]g\.?|slide|diapositiva)\s*)?\d{1,4}(?:\s*(?:of|de|\/)\s*\d{1,4})?$/i;
 const SENTENCE_END = /[.!?;,…]$/;
@@ -117,12 +125,17 @@ function repeatedLines(format: DocumentFormat, segments: DocumentSegment[]): Set
   return repeated;
 }
 
-type Block = { segment: DocumentSegment; section: number; text: string };
+/**
+ * Consecutive text of one segment under one heading. `cutBefore`/`cutAfter`: a removed line (running header, footer
+ * or page number) interrupted a sentence at the block's start or end, so the text there is not a whole sentence.
+ */
+type Block = { segment: DocumentSegment; section: number; text: string; last: string; cutBefore: boolean; cutAfter: boolean };
 
 /**
  * Splits the text into blocks under detected headings. DOCX: a one-line, title-like paragraph followed by more text.
  * PPTX: a slide's first line when it is title-like. PDF: a title-like line that starts a paragraph and is followed by
  * text on the same page. The document's own title is recognised but not listed as a section.
+ * Linear in the number of lines: neighbouring lines are found in one pass each way, never by copying the line list.
  */
 function structure(input: BriefInput, segments: DocumentSegment[], removed: Set<string>) {
   const titles = new Set([normalized(input.title), normalized(input.fileName.replace(/\.(pdf|docx|pptx)$/i, ''))]);
@@ -142,44 +155,70 @@ function structure(input: BriefInput, segments: DocumentSegment[], removed: Set<
     return true;
   };
   const sectionIndex = () => headings.length - 1;
-  const append = (segment: DocumentSegment, line: string) => {
-    if (!current || current.segment !== segment || current.section !== sectionIndex()) {
-      current = { segment, section: sectionIndex(), text: '' };
-      blocks.push(current);
+  const newBlock = (segment: DocumentSegment, cutBefore: boolean): Block => {
+    const block: Block = { segment, section: sectionIndex(), text: '', last: '', cutBefore, cutAfter: false };
+    blocks.push(block);
+    return block;
+  };
+  /** `afterRemoved`: a removed line came right before this one. Text is never joined across it into one sentence. */
+  const append = (segment: DocumentSegment, line: string, afterRemoved: boolean) => {
+    if (!current || current.segment !== segment || current.section !== sectionIndex()) current = newBlock(segment, false);
+    else if (afterRemoved && continuesSentence(current.last, line)) {
+      current.cutAfter = true;
+      current = newBlock(segment, true);
     }
     current.text += `${line}\n`;
+    current.last = line;
   };
 
   segments.forEach((segment, position) => {
-    const lines = segment.text.split('\n').filter((line) => {
+    // Lines left after clean-up, each flagged when a removed line came directly before it.
+    const lines: string[] = [];
+    const afterRemoved: boolean[] = [];
+    let removedBefore = false;
+    for (const line of segment.text.split('\n')) {
       const key = normalized(line);
-      const drop = key !== '' && (removed.has(key) || PAGE_NUMBER.test(line.trim()));
-      if (drop) repeatedLinesRemoved += 1;
-      return !drop;
-    });
+      if (key !== '' && (removed.has(key) || PAGE_NUMBER.test(line.trim()))) {
+        repeatedLinesRemoved += 1;
+        removedBefore = true;
+        continue;
+      }
+      lines.push(line);
+      afterRemoved.push(removedBefore);
+      removedBefore = false;
+    }
     const first = position === 0;
     if (input.format === 'docx') {
       const content = lines.filter((line) => line.trim());
       const isHeading = content.length === 1 && headingLike(content[0]!) && position < segments.length - 1;
       if (isHeading) addHeading(content[0]!, segment, first);
-      else for (const line of lines) append(segment, line);
+      else lines.forEach((line, index) => append(segment, line, afterRemoved[index]!));
       return;
+    }
+    // The nearest non-empty line before and after each line: one pass each way (linear, no copies of the list).
+    const previous: string[] = new Array<string>(lines.length);
+    const next: string[] = new Array<string>(lines.length);
+    for (let index = 0, last = ''; index < lines.length; index += 1) {
+      previous[index] = last;
+      if (lines[index]!.trim()) last = lines[index]!;
+    }
+    for (let index = lines.length - 1, last = ''; index >= 0; index -= 1) {
+      next[index] = last;
+      if (lines[index]!.trim()) last = lines[index]!;
     }
     let seenText = false;
     lines.forEach((line, index) => {
       const trimmed = line.trim();
       if (!trimmed) {
-        if (current?.segment === segment) append(segment, '');
+        if (current?.segment === segment) append(segment, '', afterRemoved[index]!);
         return;
       }
-      const previous = lines.slice(0, index).reverse().find((value) => value.trim()) ?? '';
-      const next = lines.slice(index + 1).find((value) => value.trim()) ?? '';
-      const startsParagraph = !seenText || lines[index - 1]?.trim() === '' || /[.!?:;…]$/.test(previous.trim());
+      const startsParagraph = !seenText || lines[index - 1]?.trim() === '' || /[.!?:;…]$/.test(previous[index]!.trim());
       const isHeading =
         headingLike(trimmed) &&
-        (input.format === 'pptx' ? !seenText : startsParagraph && next !== '' && /^[\p{Lu}\d¿¡"“(]/u.test(next.trim()));
+        (input.format === 'pptx' ? !seenText : startsParagraph && next[index] !== '' && /^[\p{Lu}\d¿¡"“(]/u.test(next[index]!.trim()));
       if (isHeading) addHeading(trimmed, segment, first && !seenText);
-      else append(segment, line);
+      else append(segment, line, afterRemoved[index]!);
       seenText = true;
     });
   });
@@ -215,6 +254,7 @@ export function buildStudyBrief(input: BriefInput): StudyBrief {
     keywords: [],
     concepts: [],
     excerpts: [],
+    excerptsAvailable: 0,
     reviewPoints: [],
     limitations,
     cleanup: { repeatedLinesRemoved: 0, duplicateSentencesRemoved: 0 },
@@ -233,11 +273,16 @@ export function buildStudyBrief(input: BriefInput): StudyBrief {
   const { headings, blocks, repeatedLinesRemoved } = structure(input, kept, removed);
 
   // Original sentences in document order, without exact repetitions (repeated paragraphs, slides or sections).
+  // The two parts of a sentence that a removed line interrupted are not whole sentences, so neither is ever quoted.
   const sentences: Ranked[] = [];
   const seen = new Set<string>();
   let duplicateSentencesRemoved = 0;
   for (const block of blocks) {
-    for (const sentence of sentencesOf({ ...block.segment, text: block.text.trim() })) {
+    const found = sentencesOf({ ...block.segment, text: block.text.trim() });
+    const flat = block.cutBefore || block.cutAfter ? collapse(block.text) : '';
+    for (const [index, sentence] of found.entries()) {
+      const text = collapse(sentence.text);
+      if ((block.cutBefore && index === 0 && flat.startsWith(text)) || (block.cutAfter && index === found.length - 1 && flat.endsWith(text))) continue;
       const key = normalized(sentence.text);
       if (seen.has(key)) {
         duplicateSentencesRemoved += 1;
@@ -260,11 +305,15 @@ export function buildStudyBrief(input: BriefInput): StudyBrief {
   const body = blocks.map((block) => block.text).join('\n');
 
   if (sentences.length < BRIEF_LIMITS.minSentences || body.replace(/\s+/g, ' ').trim().length < BRIEF_LIMITS.minCharacters) {
-    // Too little sentence structure to select from reliably: the text itself, block by block, clearly marked.
-    const excerpts = blocks
-      .filter((block) => block.text.trim())
-      .slice(0, BRIEF_LIMITS.fallbackBlocks)
-      .map((block) => ({ ...shortened(block.text, BRIEF_LIMITS.fallbackChars), ref: reference(block.segment), language: languageOf(block.text) }));
+    // Too little sentence structure to select from reliably: the text itself, block by block, clearly marked. Only the
+    // first blocks are shown (`excerptsAvailable` says how many there are); a block that a removed line interrupted
+    // mid-sentence is marked "…" on that side, so the two parts are never shown as one continuous quote.
+    const textBlocks = blocks.filter((block) => block.text.trim());
+    const excerpts = textBlocks.slice(0, BRIEF_LIMITS.fallbackBlocks).map((block) => {
+      const short = shortened(block.text, BRIEF_LIMITS.fallbackChars);
+      const text = `${block.cutBefore ? '…' : ''}${short.text}${block.cutAfter && !short.shortened ? '…' : ''}`;
+      return { text, shortened: short.shortened || block.cutBefore || block.cutAfter, ref: reference(block.segment), language: languageOf(block.text) };
+    });
     if (!excerpts.length && !outline.length) return { ...empty('no_text', [...limitations, { code: 'no_text', processed: null, total: null }], kept.length, characters), cleanup };
     return {
       ...empty('excerpts_only', [...limitations, { code: 'few_sentences', processed: sentences.length, total: null }], kept.length, characters),
@@ -273,6 +322,7 @@ export function buildStudyBrief(input: BriefInput): StudyBrief {
       outlineTotal: headings.length,
       keywords: keyTerms(body, BRIEF_LIMITS.keywords, 2),
       excerpts,
+      excerptsAvailable: textBlocks.length,
       cleanup,
     };
   }
@@ -361,6 +411,7 @@ export function buildStudyBrief(input: BriefInput): StudyBrief {
     keywords: keyTerms(sentences.map((sentence) => sentence.text).join('\n'), BRIEF_LIMITS.keywords, 2),
     concepts,
     excerpts: excerpts.map(asText),
+    excerptsAvailable: sentences.length,
     reviewPoints: reviewPoints.slice(0, BRIEF_LIMITS.reviewPoints),
     limitations,
     cleanup,

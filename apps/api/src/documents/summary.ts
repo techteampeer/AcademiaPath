@@ -26,13 +26,16 @@ export type Sentence = { order: number; segmentIndex: number; label: string; tex
 /**
  * Sentence candidates of one segment. Line breaks inside a sentence (common in PDFs) are joined with a
  * space; nothing else in the text is changed, so every sentence is the original wording.
+ * The sentence-end test looks at the last line joined (which ends the unit), never at the growing unit,
+ * so a long run of joined lines stays linear.
  */
 export function sentencesOf(segment: DocumentSegment): Omit<Sentence, 'order'>[] {
   const units: string[] = [];
+  let last: string | undefined;
   for (const line of segment.text.split('\n')) {
-    const previous = units.at(-1);
-    if (previous !== undefined && !/[.!?:;…]$/.test(previous) && /^[a-záéíóúüñ(]/.test(line)) units[units.length - 1] = `${previous} ${line}`;
+    if (last !== undefined && !/[.!?:;…]$/.test(last) && /^[a-záéíóúüñ(]/.test(line)) units[units.length - 1] += ` ${line}`;
     else units.push(line);
+    last = line;
   }
   const out: Omit<Sentence, 'order'>[] = [];
   for (const unit of units) {

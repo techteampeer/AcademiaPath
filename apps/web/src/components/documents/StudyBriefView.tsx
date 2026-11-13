@@ -91,7 +91,7 @@ function BriefContent({ courseId, activityId }: { courseId: string; activityId: 
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(plainText(t, data, location));
+      await navigator.clipboard.writeText(plainText(t, locale, data, location));
       setCopyStatus('copied');
     } catch {
       setCopyStatus('failed');
@@ -171,6 +171,9 @@ function BriefContent({ courseId, activityId }: { courseId: string; activityId: 
               </h2>
               {brief.status === 'excerpts_only' ? (
                 <BriefSection id="brief-excerpts-only" title={b.excerptsOnly} note={`${b.limitations.few_sentences} ${b.excerptsOnlyNote}`}>
+                  <p id="brief-excerpts-shown" className="text-sm font-medium text-slate-700">
+                    {b.excerptsShown(brief.excerpts.length, brief.excerptsAvailable)}
+                  </p>
                   <Quotes items={brief.excerpts} location={location} href={sourceHref} t={t} />
                 </BriefSection>
               ) : (
@@ -291,13 +294,8 @@ function BriefContent({ courseId, activityId }: { courseId: string; activityId: 
         </h2>
         <p>{data.version === 'working' ? b.versionWorking : b.versionApproved}</p>
         {brief.status === 'complete' ? <p>{b.complete}</p> : null}
-        <p>
-          {b.coverage(
-            brief.coverage.processedSegments,
-            segmentCount(t, data.document.format, brief.coverage.totalSegments),
-            brief.coverage.processedCharacters.toLocaleString(locale === 'es' ? 'es-PE' : 'en-US'),
-          )}
-        </p>
+        <p>{coverageText(t, locale, data)}</p>
+        {brief.status === 'excerpts_only' ? <p>{b.excerptsShown(brief.excerpts.length, brief.excerptsAvailable)}</p> : null}
         {brief.cleanup.repeatedLinesRemoved || brief.cleanup.duplicateSentencesRemoved ? (
           <p>{b.cleanup(brief.cleanup.repeatedLinesRemoved, brief.cleanup.duplicateSentencesRemoved)}</p>
         ) : null}
@@ -366,12 +364,30 @@ function limitationText(t: Messages, locale: 'en' | 'es', item: Brief['limitatio
   }
 }
 
-/** The brief as plain text for the clipboard (labels in the interface language, document text as written). */
-function plainText(t: Messages, data: DocumentStudyBrief, location: (ref: StudyBriefReference) => string): string {
+/** What the brief inspected: segments and characters of extracted text (the same sentence on the page and when copied). */
+function coverageText(t: Messages, locale: 'en' | 'es', data: DocumentStudyBrief): string {
+  const { coverage } = data.brief;
+  return t.documents.brief.coverage(
+    coverage.processedSegments,
+    segmentCount(t, data.document.format, coverage.totalSegments),
+    coverage.processedCharacters.toLocaleString(locale === 'es' ? 'es-PE' : 'en-US'),
+  );
+}
+
+/**
+ * The brief as plain text for the clipboard (labels in the interface language, document text as written). It keeps
+ * what the page states about coverage: complete or partial, every limitation, what was inspected and, for text
+ * excerpts, how many are shown, so a copied brief never reads as covering more of the document than it does.
+ */
+function plainText(t: Messages, locale: 'en' | 'es', data: DocumentStudyBrief, location: (ref: StudyBriefReference) => string): string {
   const b = t.documents.brief;
   const { brief } = data;
   const quote = (item: { text: string; ref: StudyBriefReference }) => `“${item.text}” (${location(item.ref)})`;
-  const lines = [`${b.heading}: ${data.title}`, b.badge, ''];
+  const partial = brief.limitations.filter((item) => item.code !== 'few_sentences' && item.code !== 'no_text');
+  const lines = [`${b.heading}: ${data.title}`, b.badge, b.statusLine[brief.status === 'complete' || brief.status === 'excerpts_only' ? brief.status : 'partial']];
+  if (partial.length) lines.push(b.partialIntro, ...partial.map((item) => `- ${limitationText(t, locale, item)}`));
+  if (brief.status === 'excerpts_only') lines.push(b.excerptsShown(brief.excerpts.length, brief.excerptsAvailable));
+  lines.push(coverageText(t, locale, data), '');
   const block = (heading: string, items: string[]) => {
     if (items.length) lines.push(heading, ...items, '');
   };

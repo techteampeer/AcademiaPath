@@ -8,14 +8,14 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import type { Browser, Page } from 'playwright';
-import { makeDocx, makePdf } from '../apps/api/test/helpers/documents.ts';
+import { makeDocx, makePdf, makePptx } from '../apps/api/test/helpers/documents.ts';
 import { API, apiGet, BASE, context, launch, leaks, MESSAGES, session, settle, type Locale, type Role } from './support.ts';
 
 const EN = MESSAGES.en.documents.brief;
 const ES = MESSAGES.es.documents.brief;
 let browser: Browser;
 const courses = {} as Record<'itil' | 'pmf' | 'iai', string>;
-const docs = {} as Record<'itil' | 'pmf' | 'iai' | 'scanned' | 'markup', string>;
+const docs = {} as Record<'itil' | 'pmf' | 'iai' | 'scanned' | 'markup' | 'long' | 'deck', string>;
 
 async function open(role: Role, path: string, locale: Locale = 'en', width = 1440): Promise<Page> {
   const ctx = await context(browser, locale, role, { width });
@@ -70,6 +70,22 @@ before(async () => {
       'The service desk records every request and routes it to the responsible team as quickly as possible.',
     ]),
     'Markup check (draft)',
+  );
+  // Longer than the brief's 120,000-character limit, so the brief is partial.
+  docs.long = await upload(
+    courses.itil,
+    section,
+    'long-handout.docx',
+    makeDocx(Array.from({ length: 1_500 }, (_, n) => `Paragraph ${n} explains how the service desk records request ${n} and routes it to the right team.`)),
+    'Long handout (draft)',
+  );
+  // 30 slides of short bullets: shown as text excerpts, of which only the first 8 fit in the brief.
+  docs.deck = await upload(
+    courses.itil,
+    section,
+    'bullet-deck.pptx',
+    makePptx(Array.from({ length: 30 }, (_, n) => [`Topic ${n + 1}`, `Short bullet ${n + 1}`, `Another item ${n + 1}`])),
+    'Bullet deck (draft)',
   );
 });
 after(() => browser?.close());
@@ -190,5 +206,68 @@ describe('document study briefs (AP-031D)', () => {
     assert.equal(await page.locator('main h1').count(), 1);
     assert.deepEqual([...hosts].filter((host) => host !== new URL(BASE).host), []);
     await page.context().close();
+  });
+
+  type BriefData = {
+    brief: { limitations: Array<{ code: string; processed: number | null; total: number | null }>; coverage: { processedSegments: number; totalSegments: number; processedCharacters: number } };
+  };
+  const number = (value: number, locale: Locale) => value.toLocaleString(locale === 'es' ? 'es-PE' : 'en-US');
+  async function copyBrief(page: Page, locale: Locale): Promise<string> {
+    const M = MESSAGES[locale].documents.brief;
+    await page.getByRole('button', { name: M.copy }).click();
+    await page.getByRole('status').filter({ hasText: M.copied }).waitFor();
+    return page.evaluate(() => navigator.clipboard.readText());
+  }
+
+  it('copying keeps the coverage: a partial brief says partial, lists its limits and what was inspected (EN and ES)', async () => {
+    const data = await apiGet<BriefData>('instructor', `/courses/${courses.itil}/activities/${docs.long}/document/brief`);
+    const limit = data.brief.limitations.find((item) => item.code === 'brief_limit')!;
+    assert.ok(limit, JSON.stringify(data.brief.limitations));
+    for (const locale of ['en', 'es'] as const) {
+      const M = MESSAGES[locale].documents.brief;
+      const page = await open('instructor', briefPath(courses.itil, docs.long), locale);
+      const limitText = M.limitations.brief_limit(number(limit.processed!, locale), number(limit.total!, locale));
+      await page.getByText(M.partial, { exact: true }).waitFor();
+      await page.getByText(limitText).waitFor();
+      const { coverage: c } = data.brief;
+      const coverage = M.coverage(c.processedSegments, MESSAGES[locale].documents.segments.paragraph(c.totalSegments), number(c.processedCharacters, locale));
+      assert.ok(c.processedSegments < c.totalSegments, 'only part of the paragraphs fit in the brief');
+      assert.ok((await page.locator('section[aria-labelledby="brief-about"]').innerText()).includes(coverage));
+      const copied = await copyBrief(page, locale);
+      // The copied header states exactly what the page states: partial, why, and what was inspected.
+      assert.deepEqual(copied.split('\n\n')[0]!.split('\n'), [`${M.heading}: Long handout (draft)`, M.badge, M.statusLine.partial, M.partialIntro, `- ${limitText}`, coverage]);
+      assert.ok(!copied.includes(M.statusLine.complete) && !copied.includes(M.complete));
+      assert.deepEqual(await leaks(page, locale), []);
+      await page.context().close();
+    }
+    // A complete brief says so when copied, with what was inspected and no partial notice.
+    const page = await open('student', briefPath(courses.itil, docs.itil));
+    const copied = await copyBrief(page, 'en');
+    const head = copied.split('\n\n')[0]!.split('\n');
+    assert.equal(head[2], EN.statusLine.complete);
+    assert.match(head[3]!, /^Inspected 2 of 2 pages, [\d,]+ characters of extracted text\.$/);
+    assert.ok(!copied.includes(EN.partialIntro));
+    await page.context().close();
+  });
+
+  it('text excerpts of 30 slides: the page and the copied text say 8 of the 30 are shown, and what was inspected', async () => {
+    const data = await apiGet<BriefData>('instructor', `/courses/${courses.itil}/activities/${docs.deck}/document/brief`);
+    for (const locale of ['en', 'es'] as const) {
+      const M = MESSAGES[locale].documents.brief;
+      const inspected = M.coverage(30, MESSAGES[locale].documents.segments.slide(30), number(data.brief.coverage.processedCharacters, locale));
+      const page = await open('instructor', briefPath(courses.itil, docs.deck), locale);
+      const section = page.locator('section[aria-labelledby="brief-excerpts-only"]');
+      await section.waitFor();
+      assert.equal(await section.locator('blockquote').count(), 8);
+      assert.equal(await page.locator('#brief-excerpts-shown').innerText(), M.excerptsShown(8, 30));
+      const about = await page.locator('section[aria-labelledby="brief-about"]').innerText();
+      assert.ok(about.includes(inspected) && about.includes(M.excerptsShown(8, 30)), about);
+      assert.equal(await page.getByText(M.complete).count(), 0);
+      const copied = await copyBrief(page, locale);
+      assert.deepEqual(copied.split('\n\n')[0]!.split('\n'), [`${M.heading}: Bullet deck (draft)`, M.badge, M.statusLine.excerpts_only, M.excerptsShown(8, 30), inspected]);
+      assert.equal(copied.match(/^“.+” \(.+ \d+\)$/gm)?.length, 8);
+      assert.deepEqual(await leaks(page, locale), []);
+      await page.context().close();
+    }
   });
 });

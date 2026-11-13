@@ -43,7 +43,8 @@ function assertGrounded(result: StudyBrief, segments: DocumentSegment[]) {
     assert.equal(ref.kind, segment.kind);
     return collapse(segment.text);
   };
-  for (const item of [...result.overview, ...result.excerpts]) assert.ok(source(item.ref).includes(collapse(item.text.replace(/…$/, ''))), item.text);
+  // "…" marks only an omission (a shortened block, or one a removed line interrupted); the rest is contiguous source text.
+  for (const item of [...result.overview, ...result.excerpts]) assert.ok(source(item.ref).includes(collapse(item.text.replace(/^…|…$/g, ''))), item.text);
   for (const concept of result.concepts) {
     assert.ok(source(concept.ref).includes(collapse(concept.text)), concept.text);
     assert.ok(concept.text.includes(concept.term));
@@ -198,6 +199,92 @@ describe('study brief engine (unit)', () => {
     assert.deepEqual(result.outline.map((h) => h.text), ['Change enablement', 'Change schedule', 'Lessons']);
     assert.ok(result.excerpts.length > 0 && result.excerpts.length <= BRIEF_LIMITS.fallbackBlocks);
     assertGrounded(result, slides);
+  });
+
+  it('linear time: 60,000 short lines in one page or slide (the most the brief limit allows) build a correct brief', () => {
+    // Neighbouring lines used to be found by copying the line list for every line: about 14 s for this input. The
+    // bound below is ~30 times the linear engine's local time, to stay meaningful without depending on machine speed.
+    const shapes = [(n: number) => String.fromCharCode(97 + (n % 26)), (n: number) => `item${n}`, (n: number) => `Item ${n}`];
+    for (const [format, kind] of [['pdf', 'page'], ['pptx', 'slide']] as const) {
+      for (const shape of shapes) {
+        const segments = [seg(0, kind, Array.from({ length: 60_000 }, (_, n) => shape(n)).join('\n'))];
+        const started = performance.now();
+        const result = brief(format, segments);
+        const elapsed = performance.now() - started;
+        assert.ok(elapsed < 1_500, `${format} ${shape(1)}: ${elapsed.toFixed(0)} ms`);
+        assert.equal(result.status, 'excerpts_only');
+        assert.ok(result.coverage.processedCharacters <= BRIEF_LIMITS.characters);
+        // Beyond the character limit the brief says so; within it, nothing is claimed to be left out.
+        const overLimit = segments[0]!.text.length > BRIEF_LIMITS.characters;
+        assert.equal(result.limitations.some((l) => l.code === 'brief_limit'), overLimit);
+        assertGrounded(result, segments);
+      }
+    }
+  });
+
+  it('a running header or page number inside a sentence never joins its two parts into one quote', () => {
+    const header = 'ACME University Confidential';
+    const pages = [
+      'The incident management practice\nrestores normal service operation as quickly as possible after any disruption.',
+      'Problem management reduces the likelihood and impact of incidents by identifying actual causes.',
+      'Change enablement maximizes the number of successful service and product changes for customers.',
+      'Service level management sets clear business based targets for service levels and measures them.',
+    ].map((text, index) => seg(index, 'page', `${header}\n${text.replace('\n', `\n${header}\n`)}\n${index + 1}`));
+    const result = brief('pdf', pages);
+    const quoted = [...result.overview, ...result.excerpts, ...result.concepts].map((item) => item.text);
+    assert.ok(quoted.length >= 3, JSON.stringify(quoted));
+    // Neither the joined sentence nor either of its parts is quoted; every quote is contiguous on its page.
+    assert.ok(!quoted.some((text) => /incident management practice|^restores normal/.test(text)), JSON.stringify(quoted));
+    assert.equal(result.cleanup.repeatedLinesRemoved, 9); // 5 headers (two on page 1, inside the sentence) and 4 page numbers
+    assertGrounded(result, pages);
+
+    // A bare number on its own line is removed like a page number: "has 6 activities" must never become "has activities".
+    const docx = [
+      seg(0, 'paragraph', 'The service value chain has\n6\nactivities that work together to create value for customers.'),
+      seg(1, 'paragraph', 'Each activity transforms specific inputs into outputs for the organization and its consumers.'),
+      seg(2, 'paragraph', 'Value streams combine these activities in a specific order to respond to a particular demand.'),
+    ];
+    const numbers = brief('docx', docx);
+    const texts = [...numbers.overview, ...numbers.excerpts, ...numbers.concepts].map((item) => item.text);
+    assert.ok(texts.length >= 2 && !texts.some((text) => /has activities|^activities that/.test(text)), JSON.stringify(texts));
+    assertGrounded(numbers, docx);
+
+    // Text excerpts (little sentence structure): the two parts stay separate, each marked "…" where the line was removed.
+    const slides = ['Change enablement\nassess the risk of\nInternal training only\neach change', 'Change schedule\nplan and\nInternal training only\ncommunicate', 'Lessons\nreview often\nInternal training only'].map((text, index) =>
+      seg(index, 'slide', text),
+    );
+    const deck = brief('pptx', slides);
+    assert.equal(deck.status, 'excerpts_only');
+    assert.deepEqual(
+      deck.excerpts.map((item) => [item.ref.label, item.text, item.shortened]),
+      [
+        ['Slide 1', 'assess the risk of…', true],
+        ['Slide 1', '…each change', true],
+        ['Slide 2', 'plan and…', true],
+        ['Slide 2', '…communicate', true],
+        ['Slide 3', 'review often', false],
+      ],
+    );
+    assertGrounded(deck, slides);
+  });
+
+  it('text excerpts state how many blocks exist: 8 of 30 slides are shown, never implying every slide is in the brief', () => {
+    const slides = Array.from({ length: 30 }, (_, n) => seg(n, 'slide', `Topic ${n + 1}\nShort bullet ${n + 1}\nAnother item ${n + 1}`));
+    const result = brief('pptx', slides);
+    assert.equal(result.status, 'excerpts_only');
+    assert.equal(result.excerpts.length, BRIEF_LIMITS.fallbackBlocks);
+    assert.equal(result.excerptsAvailable, 30);
+    assert.equal(result.coverage.processedSegments, 30);
+    assert.deepEqual(
+      result.excerpts.map((item) => item.ref.label),
+      Array.from({ length: 8 }, (_, n) => `Slide ${n + 1}`),
+    );
+    assertGrounded(result, slides);
+    // A selection of sentences says how many distinct sentences it was chosen from.
+    const selected = brief('pdf', ITIL_PAGES.map((text, index) => seg(index, 'page', text)));
+    assert.equal(selected.status, 'complete');
+    assert.ok(selected.excerptsAvailable >= selected.overview.length + selected.excerpts.length, `${selected.excerptsAvailable}`);
+    assert.equal(brief('pdf', []).excerptsAvailable, 0);
   });
 
   it('20. markup in the document is returned as plain text, never interpreted or rewritten', () => {
@@ -528,5 +615,47 @@ describe('study brief API (PostgreSQL)', { skip: testServerUrl ? false : 'TEST_D
     assert.equal((await getBrief('student', ids.courseA, ids.slides)).brief.status, 'complete');
     await database.pool.query('DELETE FROM activities WHERE id = $1', [ids.slides]);
     problem(await call('student', 'GET', briefUrl(ids.courseA, ids.slides)), 404, 'NOT_FOUND');
+  });
+
+  // The uploads below stay unapproved drafts: staff read their briefs, students never can.
+
+  it('a slide of 60,000 short lines (an abnormal upload) gets its brief quickly through the real extraction', async () => {
+    const lines = Array.from({ length: 60_000 }, (_, n) => String.fromCharCode(97 + (n % 26)));
+    const dense = await upload(ids.courseA, ids.introA, 'dense.pptx', makePptx([lines]), 'Dense slide');
+    const started = performance.now();
+    const result = await getBrief('instructor', ids.courseA, dense);
+    const elapsed = performance.now() - started;
+    assert.ok(elapsed < 3_000, `${elapsed.toFixed(0)} ms`); // was about 14 s; the linear engine takes well under 100 ms
+    assert.equal(result.brief.status, 'excerpts_only');
+    assert.equal(result.brief.coverage.totalCharacters, lines.join('\n').length);
+    problem(await call('student', 'GET', briefUrl(ids.courseA, dense)), 404, 'NOT_FOUND');
+  });
+
+  it('a running header inside a sentence of a real PDF is never joined into one quote', async () => {
+    const header = 'ACME University Confidential';
+    const pages = [
+      ['The incident management practice', header, 'restores normal service operation as quickly as possible after any disruption.'],
+      ['Problem management reduces the likelihood and impact of incidents by identifying actual causes.'],
+      ['Change enablement maximizes the number of successful service and product changes for customers.'],
+      ['Service level management sets clear business based targets for service levels and measures them.'],
+    ].map((lines, index) => [header, ...lines, String(index + 1)]);
+    const handout = await upload(ids.courseA, ids.introA, 'headers.pdf', makePdf(pages), 'Handout with running headers');
+    const segments = (ok(await call('instructor', 'GET', `/courses/${ids.courseA}/activities/${handout}/document`)) as { document: { segments: DocumentSegment[] } }).document.segments;
+    assert.ok(segments[0]!.text.includes(`practice\n${header}\nrestores`), 'the extraction keeps the header inside the sentence');
+    const result = (await getBrief('instructor', ids.courseA, handout)).brief;
+    const quoted = [...result.overview, ...result.excerpts, ...result.concepts].map((item) => item.text);
+    assert.ok(quoted.length >= 3 && !quoted.some((text) => /incident management practice|^restores normal/.test(text)), JSON.stringify(quoted));
+    assertGrounded(result, segments);
+    problem(await call('student', 'GET', briefUrl(ids.courseA, handout)), 404, 'NOT_FOUND');
+  });
+
+  it('text excerpts of a 30-slide deck: the response says 8 of the 30 are shown, and what was inspected', async () => {
+    const deck = await upload(ids.courseA, ids.introA, 'bullets.pptx', makePptx(Array.from({ length: 30 }, (_, n) => [`Topic ${n + 1}`, `Short bullet ${n + 1}`, `Another item ${n + 1}`])), 'Bullet deck');
+    const result = (await getBrief('instructor', ids.courseA, deck)).brief;
+    assert.equal(result.status, 'excerpts_only');
+    assert.equal(result.excerpts.length, BRIEF_LIMITS.fallbackBlocks);
+    assert.equal(result.excerptsAvailable, 30);
+    assert.deepEqual([result.coverage.processedSegments, result.coverage.totalSegments], [30, 30]);
+    problem(await call('student', 'GET', briefUrl(ids.courseA, deck)), 404, 'NOT_FOUND');
   });
 });

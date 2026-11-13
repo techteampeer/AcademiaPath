@@ -96,7 +96,11 @@ const en = {
       no_text: 'No selectable text was found in this document, so no study brief can be made. Scanned pages and images are not read (OCR is not available).',
     },
     excerptsOnly: 'Text excerpts',
-    excerptsOnlyNote: 'Shortened excerpts end with “…”. Open the document to read them in full.',
+    excerptsOnlyNote: 'Shortened or interrupted excerpts are marked with “…”. Open the document to read them in full.',
+    excerptsShown: (shown: number, total: number) =>
+      shown < total
+        ? `Showing the first ${shown} of ${total} text blocks. The rest of the text is not shown in this brief; open the document to read it.`
+        : `All ${total} text ${total === 1 ? 'block is' : 'blocks are'} shown.`,
     noTextRecovery: 'Download the original file to read it. Teaching staff can upload a version with selectable text.',
     sourceLanguage: (language: string) => `This document is written in ${language}. Excerpts are shown as written, not translated.`,
     mixedLanguage: 'This document contains English and Spanish text. Excerpts are shown as written, not translated.',
@@ -129,7 +133,12 @@ const en = {
       'Open the original pages or slides for anything this brief marks as partial or shortened.',
     ],
     about: 'About this brief',
-    coverage: (processed: number, total: string, characters: string) => `Used ${processed} of ${total}, ${characters} characters of extracted text.`,
+    coverage: (processed: number, total: string, characters: string) => `Inspected ${processed} of ${total}, ${characters} characters of extracted text.`,
+    statusLine: {
+      complete: 'Status: complete — covers all of the document’s extracted text.',
+      partial: 'Status: partial — part of the document is not included in this brief.',
+      excerpts_only: 'Status: text excerpts only — the text has little sentence structure.',
+    },
     cleanup: (lines: number, sentences: number) => `Left out: ${lines} repeated header, footer or page-number ${lines === 1 ? 'line' : 'lines'} and ${sentences} repeated ${sentences === 1 ? 'sentence' : 'sentences'}.`,
     from: (location: string) => `From ${location}`,
     openLocation: (location: string) => `Open ${location} in the document`,
@@ -236,7 +245,13 @@ const es: DocumentMessages = {
       no_text: 'No se encontró texto seleccionable en este documento, así que no se puede crear una guía de estudio. No se leen páginas escaneadas ni imágenes (no hay OCR disponible).',
     },
     excerptsOnly: 'Fragmentos del texto',
-    excerptsOnlyNote: 'Los fragmentos acortados terminan en «…». Abre el documento para leerlos completos.',
+    excerptsOnlyNote: 'Los fragmentos acortados o interrumpidos se marcan con «…». Abre el documento para leerlos completos.',
+    excerptsShown: (shown: number, total: number) =>
+      shown < total
+        ? `Se muestran los primeros ${shown} de ${total} bloques de texto. El resto del texto no aparece en esta guía; abre el documento para leerlo.`
+        : total === 1
+          ? 'Se muestra el único bloque de texto.'
+          : `Se muestran los ${total} bloques de texto.`,
     noTextRecovery: 'Descarga el archivo original para leerlo. El personal docente puede subir una versión con texto seleccionable.',
     sourceLanguage: (language: string) => `Este documento está escrito en ${language}. Los fragmentos se muestran tal como fueron escritos, sin traducir.`,
     mixedLanguage: 'Este documento contiene texto en inglés y en español. Los fragmentos se muestran tal como fueron escritos, sin traducir.',
@@ -269,7 +284,12 @@ const es: DocumentMessages = {
       'Abre las páginas o diapositivas originales de todo lo que esta guía marque como parcial o acortado.',
     ],
     about: 'Acerca de esta guía',
-    coverage: (processed: number, total: string, characters: string) => `Se usaron ${processed} de ${total}, ${characters} caracteres de texto extraído.`,
+    coverage: (processed: number, total: string, characters: string) => `Se revisaron ${processed} de ${total}, ${characters} caracteres de texto extraído.`,
+    statusLine: {
+      complete: 'Estado: completa — abarca todo el texto extraído del documento.',
+      partial: 'Estado: parcial — parte del documento no está incluida en esta guía.',
+      excerpts_only: 'Estado: solo fragmentos del texto — el texto tiene poca estructura de oraciones.',
+    },
     cleanup: (lines: number, sentences: number) => `Se omitieron: ${lines} ${lines === 1 ? 'línea repetida' : 'líneas repetidas'} de encabezado, pie o número de página y ${sentences} ${sentences === 1 ? 'oración repetida' : 'oraciones repetidas'}.`,
     from: (location: string) => `De ${location}`,
     openLocation: (location: string) => `Abrir ${location} en el documento`,

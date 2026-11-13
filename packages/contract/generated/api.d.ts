@@ -1223,7 +1223,8 @@ export interface paths {
          *     `status`: `complete`; `partial` when only part of the document could be used (see `limitations`:
          *     extraction stopped at its size limit, the brief's own processing limit, or PDF pages without selectable
          *     text); `excerpts_only` when the text has too little sentence structure to select from reliably (the text
-         *     is shown block by block, shortened excerpts flagged); `no_text` when nothing could be extracted.
+         *     is shown block by block, at most 8 of `excerptsAvailable` blocks, shortened excerpts flagged); `no_text`
+         *     when nothing could be extracted.
          *     Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
          */
         get: operations["getDocumentStudyBrief"];
@@ -4186,7 +4187,7 @@ export interface components {
             text: string;
             ref: components["schemas"]["StudyBriefReference"];
             language: components["schemas"]["StudyBriefLanguage"];
-            /** @description True when the quoted text was cut (at a word boundary, ending with "…"). */
+            /** @description True when the quoted text is incomplete: cut at a word boundary (ending with "…"), or, for an `excerpts_only` block, interrupted where a running header, footer or page number was removed ("…" on that side). Sentences interrupted that way are never quoted as sentences. */
             shortened: boolean;
         };
         DocumentStudyBrief: {
@@ -4250,6 +4251,8 @@ export interface components {
                     language: components["schemas"]["StudyBriefLanguage"];
                 }[];
                 excerpts: components["schemas"]["StudyBriefText"][];
+                /** @description How many excerpts there were to choose from. For `excerpts_only`, the text blocks of the processed text, of which only the first `excerpts.length` are shown; otherwise the distinct sentences the key excerpts were selected from. */
+                excerptsAvailable: number;
                 /** @description Automatically selected review prompts (the client words them); `term` and `items` are quoted from the document. */
                 reviewPoints: {
                     /** @enum {string} */

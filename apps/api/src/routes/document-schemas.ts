@@ -152,7 +152,7 @@ export const studyBriefSchema = {
     },
     brief: {
       type: 'object',
-      required: ['status', 'language', 'coverage', 'overview', 'outline', 'outlineTotal', 'keywords', 'concepts', 'excerpts', 'reviewPoints', 'limitations', 'cleanup'],
+      required: ['status', 'language', 'coverage', 'overview', 'outline', 'outlineTotal', 'keywords', 'concepts', 'excerpts', 'excerptsAvailable', 'reviewPoints', 'limitations', 'cleanup'],
       additionalProperties: false,
       properties: {
         status: { type: 'string', enum: ['complete', 'partial', 'excerpts_only', 'no_text'] },
@@ -190,6 +190,7 @@ export const studyBriefSchema = {
           },
         },
         excerpts: { type: 'array', items: briefText },
+        excerptsAvailable: { type: 'integer', minimum: 0 },
         reviewPoints: {
           type: 'array',
           items: {
