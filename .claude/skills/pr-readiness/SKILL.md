@@ -22,7 +22,7 @@ Target: `$ARGUMENTS` (empty: the current branch compared with the default branch
 2. **Changed files:** `git diff --stat <base>...<head>`, grouped as app code, tests, migrations and schema, API contract, CI workflows, infrastructure and deployment, dependencies and lockfiles, docs. Flag unintended changes: unrelated files, generated files without their source, secrets, large binaries, deleted, skipped or commented-out tests.
 3. **CI:** every check run on the head SHA with its conclusion; checks that did not run, and whether they are required.
 4. **Tests:** new behavior and its failure modes covered? Suites run locally (with counts)? Skipped tests are not passes.
-5. **Security and compatibility:** authorization, validation and data exposure on changed routes (the user can run `/security-review` for a full review); API response and contract compatibility, version bump, generated client types.
+5. **Security and compatibility:** authorization, validation and data exposure on changed routes (the user can run `/team-security-review` for a full review); API response and contract compatibility, version bump, generated client types.
 6. **Database:** new migrations additive or destructive, locks on large tables, backfills, reversibility; schema and migrations in sync; behavior on existing data.
 7. **Infrastructure and deployment:** which workflows run on merge (read their triggers); whether merging deploys; new environment variables, secrets, services, permissions or cost; rollback path.
 8. **Demo and seed data:** do seed scripts, fixtures and existing demo records still work (schema changes, renamed fields, newly required data)?

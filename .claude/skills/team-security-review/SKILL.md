@@ -1,5 +1,5 @@
 ---
-name: security-review
+name: team-security-review
 description: Structured, evidence-based security review of a branch, diff or path. Reports confirmed vulnerabilities separately from speculative risks, each tied to real files and lines. Read-only; never edits code, pushes, merges or deploys.
 argument-hint: "[base..head | path | PR number] (default: current branch vs the default branch)"
 disable-model-invocation: true

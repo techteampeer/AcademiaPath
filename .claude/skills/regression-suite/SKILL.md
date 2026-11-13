@@ -39,7 +39,7 @@ Map each gate to the repository's actual command (for `fast`, steps 1–5 only):
 6. Full API or integration suite against the disposable database.
 7. Browser suite through the repository's runner (production build, its own database and seed).
 8. Localization checks (catalog parity, hardcoded-text guards, locale tests) if configured.
-9. Accessibility checks only if configured (e.g. axe tests). If none exist, report `not configured`; do not add one.
+9. Accessibility checks only if a committed suite runs them (e.g. axe tests run by the repository's scripts or CI). Otherwise report `not configured`: checks run ad hoc or in scratch files, or only mentioned in PR descriptions, are not coverage. Do not add a suite.
 
 Run every gate even after a failure, unless the user asked to stop at the first. Afterwards confirm that no test databases or servers are left and tracked files are unchanged.
 
