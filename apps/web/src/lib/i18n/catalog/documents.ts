@@ -9,7 +9,7 @@ const en = {
   segmentLabel: { page: (n: string) => `Page ${n}`, paragraph: (n: string) => `Paragraph ${n}`, slide: (n: string) => `Slide ${n}` },
   library: {
     heading: 'Document library',
-    staffIntro: 'PDF, Word and PowerPoint documents with extracted text and a mock AI summary. Students see a document only after it is approved.',
+    staffIntro: 'PDF, Word and PowerPoint documents with extracted text and an extractive summary (sentences quoted from the document; no generative AI). Students see a document only after it is approved.',
     studentIntro: 'Approved course documents with their extracted text and summary.',
     listLabel: 'Documents',
     empty: 'No documents yet.',
@@ -21,7 +21,7 @@ const en = {
     file: 'File',
     fileHint:
       'PDF, Word (.docx) or PowerPoint (.pptx), up to 10 MB unless configured otherwise. Encrypted and macro-enabled files are refused; scanned pages have no extractable text (no OCR).',
-    notice: 'Local demonstration: files are stored privately on this server and no malware scanning service is connected. Upload only synthetic or trusted test documents.',
+    notice: 'Files are stored privately and are not scanned for malware: no malware scanning service is connected. Upload only documents from trusted sources.',
     uploading: 'Uploading…',
     upload: 'Upload and extract text',
     progress: 'Uploading, validating and extracting text…',
@@ -49,11 +49,11 @@ const en = {
     partialPdf: 'Some pages have no selectable text; they may be scanned images (OCR is not available).',
     slidesOnly: 'Slide text only (speaker notes, charts and images are not extracted).',
     summary: 'Summary',
-    mockLabel: 'Mock AI summary — local demonstration',
+    mockLabel: 'Extractive summary — no generative AI',
     refreshing: 'Refreshing…',
     refresh: 'Refresh summary',
     explanation:
-      'Simulated, extractive summary: each point is a sentence quoted from the document, with where it comes from. No AI model or external service is used, and nothing is added that is not in the document.',
+      'Extractive summary: each point is a sentence quoted from the document, with where it comes from. No AI model or external service is used, and nothing is added that is not in the document.',
     refreshedLive: (revision: number, live: number) =>
       `Summary revision ${revision} created. Students keep seeing approved revision ${live} until this revision is approved.`,
     refreshed: (revision: number) => `Summary revision ${revision} created.`,
@@ -158,7 +158,7 @@ const es: DocumentMessages = {
   segmentLabel: { page: (n: string) => `Página ${n}`, paragraph: (n: string) => `Párrafo ${n}`, slide: (n: string) => `Diapositiva ${n}` },
   library: {
     heading: 'Biblioteca de documentos',
-    staffIntro: 'Documentos PDF, Word y PowerPoint con su texto extraído y un resumen de IA simulado. Los estudiantes ven un documento solo después de que se aprueba.',
+    staffIntro: 'Documentos PDF, Word y PowerPoint con su texto extraído y un resumen extractivo (oraciones citadas del documento; sin IA generativa). Los estudiantes ven un documento solo después de que se aprueba.',
     studentIntro: 'Documentos aprobados del curso con su texto extraído y resumen.',
     listLabel: 'Documentos',
     empty: 'Aún no hay documentos.',
@@ -170,7 +170,7 @@ const es: DocumentMessages = {
     file: 'Archivo',
     fileHint:
       'PDF, Word (.docx) o PowerPoint (.pptx), hasta 10 MB salvo otra configuración. Se rechazan los archivos cifrados y con macros; las páginas escaneadas no tienen texto extraíble (sin OCR).',
-    notice: 'Demostración local: los archivos se guardan de forma privada en este servidor y no hay un servicio de detección de malware conectado. Sube solo documentos de prueba sintéticos o de confianza.',
+    notice: 'Los archivos se guardan de forma privada y no se analizan en busca de malware: no hay un servicio de detección de malware conectado. Sube solo documentos de fuentes de confianza.',
     uploading: 'Subiendo…',
     upload: 'Subir y extraer texto',
     progress: 'Subiendo, validando y extrayendo el texto…',
@@ -198,11 +198,11 @@ const es: DocumentMessages = {
     partialPdf: 'Algunas páginas no tienen texto seleccionable; pueden ser imágenes escaneadas (no hay OCR disponible).',
     slidesOnly: 'Solo el texto de las diapositivas (no se extraen notas del orador, gráficos ni imágenes).',
     summary: 'Resumen',
-    mockLabel: 'Resumen de IA simulado — demostración local',
+    mockLabel: 'Resumen extractivo — sin IA generativa',
     refreshing: 'Actualizando…',
     refresh: 'Actualizar resumen',
     explanation:
-      'Resumen extractivo simulado: cada punto es una oración citada del documento, con su ubicación. No se usa ningún modelo de IA ni servicio externo, y no se agrega nada que no esté en el documento.',
+      'Resumen extractivo: cada punto es una oración citada del documento, con su ubicación. No se usa ningún modelo de IA ni servicio externo, y no se agrega nada que no esté en el documento.',
     refreshedLive: (revision: number, live: number) =>
       `Se creó la revisión ${revision} del resumen. Los estudiantes siguen viendo la revisión aprobada ${live} hasta que se apruebe esta revisión.`,
     refreshed: (revision: number) => `Se creó la revisión ${revision} del resumen.`,

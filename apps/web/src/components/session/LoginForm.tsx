@@ -94,7 +94,7 @@ export function LoginForm() {
           <div aria-hidden="true" className="heritage-rule mt-3 w-28" />
           <p className="mt-4 font-serif text-xl leading-relaxed text-ivory">{t.login.pitch}</p>
         </div>
-        <p className="text-xs text-gold-200">{t.common.devPreview}</p>
+        <div aria-hidden="true" />
       </section>
       <div className="p-6 sm:p-10">
         <div className="flex items-center gap-2 md:hidden">

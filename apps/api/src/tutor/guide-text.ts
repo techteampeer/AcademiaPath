@@ -7,8 +7,8 @@ import type { TutorLanguage } from './provider.js';
  * Study tips are general advice, always labelled as not coming from the course.
  */
 const en = {
-  label: 'Guided demo tutor — not live AI',
-  greeting: (course: string) => `Hello! I am the guided demo tutor for ${course}. I answer only with this course's approved material and fixed study guidance; I am not a live AI model.`,
+  label: 'Guided study assistant — rule-based, no generative AI',
+  greeting: (course: string) => `Hello! I am the guided study assistant for ${course}. I answer only with this course's approved material and fixed study guidance; no generative AI model is used.`,
   lessonContext: (title: string) => `You are studying “${title}”. Choose what you would like to do:`,
   courseContext: 'Choose a lesson to focus on, or pick one of these actions:',
   noMaterial: 'This course has no approved material I can use yet, so I cannot guide you through it. Check back when your instructor has published lessons.',
@@ -52,15 +52,15 @@ const en = {
   quizNone: 'This course has no published quiz you can take yet. Practice questions from the lessons are still a good way to prepare.',
   quizTip: 'Study tip (general advice, not from the course): before a quiz, re-read the lessons of its section, answer practice questions without looking, and note any term you could not explain.',
   unsupported:
-    'I am a guided demo tutor: I can only answer from this course’s approved material, and I could not find that topic in it. Try one of the suggested actions, or ask about one of these lessons:',
+    'I am a rule-based study assistant: I can only answer from this course’s approved material, and I could not find that topic in it. Try one of the suggested actions, or ask about one of these lessons:',
   notFoundTopic: 'I could not find that topic in this course’s approved material. Here are the lessons I can help with:',
 };
 
 export type GuideText = typeof en;
 
 const es: GuideText = {
-  label: 'Tutor guiado de demostración — no es IA en vivo',
-  greeting: (course: string) => `¡Hola! Soy el tutor guiado de demostración de ${course}. Respondo solo con el material aprobado de este curso y con orientaciones de estudio fijas; no soy un modelo de IA en vivo.`,
+  label: 'Asistente de estudio guiado — basado en reglas, sin IA generativa',
+  greeting: (course: string) => `¡Hola! Soy el asistente de estudio guiado de ${course}. Respondo solo con el material aprobado de este curso y con orientaciones de estudio fijas; no se usa ningún modelo de IA generativa.`,
   lessonContext: (title: string) => `Estás estudiando «${title}». Elige qué quieres hacer:`,
   courseContext: 'Elige una lección para enfocarte o una de estas acciones:',
   noMaterial: 'Este curso aún no tiene material aprobado que pueda usar, así que no puedo guiarte. Vuelve cuando tu docente haya publicado lecciones.',
@@ -104,7 +104,7 @@ const es: GuideText = {
   quizNone: 'Este curso aún no tiene un cuestionario publicado que puedas rendir. Las preguntas de práctica de las lecciones siguen siendo una buena forma de prepararte.',
   quizTip: 'Consejo de estudio (orientación general, no proviene del curso): antes de un cuestionario, vuelve a leer las lecciones de su sección, responde preguntas de práctica sin mirar y anota los términos que no pudiste explicar.',
   unsupported:
-    'Soy un tutor guiado de demostración: solo puedo responder con el material aprobado de este curso y no encontré ese tema en él. Prueba una de las acciones sugeridas o pregunta sobre una de estas lecciones:',
+    'Soy un asistente de estudio basado en reglas: solo puedo responder con el material aprobado de este curso y no encontré ese tema en él. Prueba una de las acciones sugeridas o pregunta sobre una de estas lecciones:',
   notFoundTopic: 'No encontré ese tema en el material aprobado de este curso. Estas son las lecciones con las que puedo ayudarte:',
 };
 

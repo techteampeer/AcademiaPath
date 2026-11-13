@@ -75,13 +75,20 @@ describe('guided tutor text rules (unit)', () => {
     assert.deepEqual(resolveQuestion('Tell me about photosynthesis'), { intent: null, topicTerms: ['photosynthesis'] });
   });
 
-  it('English and Spanish tutor wording has the same shape and is identified as a guided demo, not live AI', () => {
+  it('English and Spanish tutor wording has the same shape and states that no generative AI is used (AP-042)', () => {
     assert.deepEqual(Object.keys(GUIDE_TEXT.es).sort(), Object.keys(GUIDE_TEXT.en).sort());
     for (const key of Object.keys(GUIDE_TEXT.en) as Array<keyof typeof GUIDE_TEXT.en>) {
       assert.equal(typeof GUIDE_TEXT.es[key], typeof GUIDE_TEXT.en[key], key);
     }
-    assert.match(GUIDE_TEXT.en.label, /not live AI/);
-    assert.match(GUIDE_TEXT.es.label, /no es IA en vivo/);
+    assert.match(GUIDE_TEXT.en.label, /rule-based, no generative AI/);
+    assert.match(GUIDE_TEXT.es.label, /basado en reglas, sin IA generativa/);
+    assert.match(GUIDE_TEXT.en.greeting('X'), /no generative AI model is used/);
+    assert.match(GUIDE_TEXT.es.greeting('X'), /no se usa ningún modelo de IA generativa/);
+    // Production wording: an honest capability statement, without development or demonstration branding.
+    for (const lang of ['en', 'es'] as const) {
+      const wording = [GUIDE_TEXT[lang].label, GUIDE_TEXT[lang].greeting('X'), GUIDE_TEXT[lang].unsupported].join(' ');
+      assert.doesNotMatch(wording, /demo|demostraci|mock|simulad|live AI|IA en vivo/i, lang);
+    }
     assert.match(GUIDE_TEXT.en.exampleTip, /not from the course/);
     assert.match(GUIDE_TEXT.es.quizTip, /no proviene del curso/);
   });
@@ -170,7 +177,7 @@ describe('guided demo tutor (PostgreSQL, demo dataset)', { skip: testServerUrl ?
   it('1. course-aware start: greeting with the course, the lesson context, suggestions and the readable materials only', async () => {
     const course = await guide('student', ITIL, { action: 'start' });
     assert.equal(course.provider.mode, 'guided_demo');
-    assert.match(texts(course)[0]!, /guided demo tutor for ITIL 4 Foundation/);
+    assert.match(texts(course)[0]!, /guided study assistant for ITIL 4 Foundation\b.*no generative AI model is used/);
     assert.deepEqual(course.followUps, ['review', 'summarize', 'practice', 'next', 'material', 'quiz_prep']);
     const titles = course.materials.map((m) => m.title);
     assert.deepEqual(titles, ['Value, outcomes, costs and risks', 'The four dimensions of service management', 'Guiding principles in practice', 'Service value chain overview', 'Incident and problem management']);
@@ -221,7 +228,7 @@ describe('guided demo tutor (PostgreSQL, demo dataset)', { skip: testServerUrl ?
     const explain = await guide('student', IAI, { action: 'explain', activityId: lesson.supervised, language: 'es' });
     assert.equal(texts(explain)[0], 'Así lo explica «Aprendizaje supervisado y no supervisado»:');
     assert.match(quotes(explain)[0]!, /^En el aprendizaje supervisado el modelo aprende a partir de ejemplos etiquetados/);
-    assert.equal(explain.provider.label, 'Tutor guiado de demostración — no es IA en vivo');
+    assert.equal(explain.provider.label, 'Asistente de estudio guiado — basado en reglas, sin IA generativa');
     assert.ok(explain.references.every((r) => r.matchesRequestedLanguage));
     const asked = await guide('student', IAI, { action: 'ask', question: '¿Qué es el aprendizaje supervisado?', language: 'es' });
     assert.deepEqual([asked.intent, asked.grounding, asked.focus?.title], ['explain', 'grounded', 'Aprendizaje supervisado y no supervisado']);
@@ -261,7 +268,7 @@ describe('guided demo tutor (PostgreSQL, demo dataset)', { skip: testServerUrl ?
       assert.ok(response.references.every((r) => r.type === 'page' || r.type === 'file'));
     }
     const spanish = await guide('student', ITIL, { action: 'ask', question: '¿Cuál es la capital de Francia?', language: 'es' });
-    assert.match(texts(spanish)[0]!, /^No encontré ese tema|^Soy un tutor guiado/);
+    assert.match(texts(spanish)[0]!, /^No encontré ese tema|^Soy un asistente de estudio basado en reglas/);
   });
 
   it('10–11. practice: a question from a lesson sentence; correct and incorrect answers get feedback with the source', async () => {
