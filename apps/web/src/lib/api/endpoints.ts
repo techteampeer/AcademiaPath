@@ -27,6 +27,7 @@ import type {
   CourseTemplateVersion,
   CsrfTokenResponse,
   DocumentDetail,
+  DocumentStudyBrief,
   Enrollment,
   EnrollmentCreate,
   EnrollmentImportResult,
@@ -466,6 +467,8 @@ export const api = {
     return apiUpload<DocumentDetail>(`${course(courseId)}/sections/${encodeURIComponent(sectionId)}/documents`, form, csrfToken);
   },
   getDocument: (courseId: string, activityId: string) => apiRequest<DocumentDetail>('GET', `${activity(courseId, activityId)}/document`),
+  /** AP-031D: extractive study brief of the readable document version (computed on the API; nothing stored). */
+  getDocumentStudyBrief: (courseId: string, activityId: string) => apiRequest<DocumentStudyBrief>('GET', `${activity(courseId, activityId)}/document/brief`),
   refreshDocumentSummary: (courseId: string, activityId: string, csrfToken: string) =>
     apiRequest<DocumentDetail>('POST', `${activity(courseId, activityId)}/document/summaries`, { csrfToken }),
   /** Same-origin download link; the API checks the session and course access before sending the file. */

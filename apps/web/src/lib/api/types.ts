@@ -112,6 +112,9 @@ export type TutorPracticeCheckResponse = Schemas['TutorPracticeCheckResponse'];
 export type DocumentFormat = Schemas['DocumentFormat'];
 export type DocumentContent = Schemas['DocumentContent'];
 export type DocumentDetail = Schemas['DocumentDetail'];
+export type DocumentStudyBrief = Schemas['DocumentStudyBrief'];
+export type StudyBriefText = Schemas['StudyBriefText'];
+export type StudyBriefReference = Schemas['StudyBriefReference'];
 export type DocumentSegment = Schemas['DocumentSegment'];
 export type DocumentSummary = Schemas['DocumentSummary'];
 

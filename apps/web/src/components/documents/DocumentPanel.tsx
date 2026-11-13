@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
 import { useSession } from '@/components/session/SessionProvider';
@@ -54,6 +55,16 @@ export function DocumentPanel({ courseId, activity, canRefresh, onChanged }: { c
     void load();
   }, [load]);
 
+  // A study-brief location (#segment-N) opens the extracted text at that page, slide or paragraph once it is loaded.
+  useEffect(() => {
+    if (state.status !== 'ready') return;
+    const target = /^#segment-(\d+)$/.exec(window.location.hash) ? window.document.getElementById(window.location.hash.slice(1)) : null;
+    if (target) {
+      target.scrollIntoView({ block: 'center' });
+      target.focus({ preventScroll: true });
+    }
+  }, [state.status]);
+
   const refresh = async () => {
     const detail = await run(
       (csrf) => api.refreshDocumentSummary(courseId, activity.id, csrf),
@@ -102,11 +113,19 @@ export function DocumentPanel({ courseId, activity, canRefresh, onChanged }: { c
               {document.fileName} · {t.documents.formats[document.format]} · {formatBytes(document.byteSize, locale)}
             </p>
           </div>
-          <a href={api.documentFileHref(courseId, activity.id)} download className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
-            {p.download}
-            <span className="sr-only"> ({document.fileName})</span>
-          </a>
+          <div className="flex flex-wrap gap-2">
+            <Link href={`/courses/${courseId}/activities/${activity.id}/brief`} className={buttonClasses({ size: 'sm' })} aria-describedby="study-brief-hint">
+              {t.documents.brief.create}
+            </Link>
+            <a href={api.documentFileHref(courseId, activity.id)} download className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
+              {p.download}
+              <span className="sr-only"> ({document.fileName})</span>
+            </a>
+          </div>
         </div>
+        <p id="study-brief-hint" className="text-xs text-slate-500">
+          {t.documents.brief.createHint}
+        </p>
         <div className="flex flex-wrap items-center gap-2">
           {document.extraction.status === 'extracted' ? (
             <Badge tone="success">{p.textExtracted(segmentCount(t, document.format, document.extraction.segmentCount))}</Badge>
@@ -157,7 +176,7 @@ export function DocumentPanel({ courseId, activity, canRefresh, onChanged }: { c
         {document.segments.length ? (
           <div tabIndex={0} aria-labelledby="extracted-heading" className="max-h-[32rem] space-y-4 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-4">
             {document.segments.map((segment) => (
-              <div key={segment.index}>
+              <div key={segment.index} id={`segment-${segment.index}`} tabIndex={-1} className="scroll-mt-24 rounded focus:bg-gold-100/50">
                 <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">{segmentLabel(t, segment.kind, segment.label)}</p>
                 <p className="mt-1 text-sm break-words whitespace-pre-wrap text-slate-800">{segment.text}</p>
               </div>

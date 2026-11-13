@@ -20,18 +20,22 @@ export interface DocumentSummaryProvider {
 
 export const SUMMARY_LIMITS = { minSentenceWords: 6, minSentenceChars: 40, maxSentenceChars: 500, pointChars: 200, maxPoints: 5, minPoints: 3 } as const;
 
-type Sentence = { order: number; segmentIndex: number; label: string; text: string; terms: Set<string>; first: boolean };
+/** One original sentence of a document segment, with its significant terms (shared with the AP-031D study brief). */
+export type Sentence = { order: number; segmentIndex: number; label: string; text: string; terms: Set<string>; first: boolean };
 
 /**
  * Sentence candidates of one segment. Line breaks inside a sentence (common in PDFs) are joined with a
  * space; nothing else in the text is changed, so every sentence is the original wording.
+ * The sentence-end test looks at the last line joined (which ends the unit), never at the growing unit,
+ * so a long run of joined lines stays linear.
  */
-function sentencesOf(segment: DocumentSegment): Omit<Sentence, 'order'>[] {
+export function sentencesOf(segment: DocumentSegment): Omit<Sentence, 'order'>[] {
   const units: string[] = [];
+  let last: string | undefined;
   for (const line of segment.text.split('\n')) {
-    const previous = units.at(-1);
-    if (previous !== undefined && !/[.!?:;…]$/.test(previous) && /^[a-záéíóúüñ(]/.test(line)) units[units.length - 1] = `${previous} ${line}`;
+    if (last !== undefined && !/[.!?:;…]$/.test(last) && /^[a-záéíóúüñ(]/.test(line)) units[units.length - 1] += ` ${line}`;
     else units.push(line);
+    last = line;
   }
   const out: Omit<Sentence, 'order'>[] = [];
   for (const unit of units) {
@@ -54,11 +58,32 @@ function shorten(text: string): string {
   return `${text.slice(0, cut > 60 ? cut : SUMMARY_LIMITS.pointChars - 1).trimEnd()}…`;
 }
 
-const overlap = (a: Set<string>, b: Set<string>) => {
+/** Share of significant terms two sentences have in common (1 = one sentence's terms are all in the other). */
+export const overlap = (a: Set<string>, b: Set<string>) => {
   let shared = 0;
   for (const term of a) if (b.has(term)) shared += 1;
   return shared / Math.max(1, Math.min(a.size, b.size));
 };
+
+/**
+ * Sentence importance: how often its significant words occur across the document, normalized by length, with a
+ * small bonus for the first sentence of a segment. Deterministic; used by the summary and the study brief.
+ */
+export function sentenceScorer(sentences: Sentence[]): (sentence: Sentence) => number {
+  const frequency = new Map<string, number>();
+  for (const sentence of sentences) for (const term of sentence.terms) frequency.set(term, (frequency.get(term) ?? 0) + 1);
+  const scores = new Map<Sentence, number>();
+  return (sentence) => {
+    let value = scores.get(sentence);
+    if (value === undefined) {
+      let total = 0;
+      for (const term of sentence.terms) total += frequency.get(term) ?? 0;
+      value = (total / Math.sqrt(sentence.terms.size + 1)) * (sentence.first ? 1.1 : 1);
+      scores.set(sentence, value);
+    }
+    return value;
+  };
+}
 
 /**
  * Deterministic extractive summary (no language model). Sentences are scored by how often their
@@ -78,13 +103,7 @@ export const mockSummaryProvider: DocumentSummaryProvider = {
     const characters = segments.reduce((total, segment) => total + segment.text.length, 0);
     if (sentences.length < 2 || characters < 150) return { status: 'insufficient_text', strategy, points: [] };
 
-    const frequency = new Map<string, number>();
-    for (const sentence of sentences) for (const term of sentence.terms) frequency.set(term, (frequency.get(term) ?? 0) + 1);
-    const score = (sentence: Sentence) => {
-      let total = 0;
-      for (const term of sentence.terms) total += frequency.get(term) ?? 0;
-      return (total / Math.sqrt(sentence.terms.size + 1)) * (sentence.first ? 1.1 : 1);
-    };
+    const score = sentenceScorer(sentences);
     const byScore = (a: Sentence, b: Sentence) => score(b) - score(a) || a.order - b.order;
     const target = Math.min(SUMMARY_LIMITS.maxPoints, Math.max(SUMMARY_LIMITS.minPoints, Math.ceil(sentences.length / 6)), sentences.length);
 

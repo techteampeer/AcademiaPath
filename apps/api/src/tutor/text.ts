@@ -130,8 +130,8 @@ export function excerpt(passage: string, terms: string[]): string {
   return `${start > 0 ? '…' : ''}${passage.slice(start, end).trim()}${end < passage.length ? '…' : ''}`;
 }
 
-/** Up to three distinctive words as they appear in the source (for key-term practice prompts). */
-export function keyTerms(passage: string): string[] {
+/** The most frequent distinctive words (three by default) as they appear in the source: key-term prompts and study-brief keywords. */
+export function keyTerms(passage: string, limit = 3, minCount = 1): string[] {
   const counts = new Map<string, { word: string; count: number; first: number }>();
   const original = passage.match(/[\p{L}\p{N}]+/gu) ?? [];
   original.forEach((word, index) => {
@@ -142,7 +142,8 @@ export function keyTerms(passage: string): string[] {
     else counts.set(key, { word, count: 1, first: index });
   });
   return [...counts.values()]
+    .filter((entry) => entry.count >= minCount)
     .sort((a, b) => b.count - a.count || b.word.length - a.word.length || a.first - b.first)
-    .slice(0, 3)
+    .slice(0, limit)
     .map((entry) => entry.word);
 }
