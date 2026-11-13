@@ -140,6 +140,12 @@ function LessonContent({ courseId, activityId, user }: { courseId: string; activ
           <h1 className="text-[1.75rem] leading-tight font-semibold break-words text-brand-600 sm:text-[2.1rem]">{activity.title}</h1>
           {activity.review ? <ReviewStatusBadge status={activity.review.status} /> : null}
         </div>
+        {/* The guided tutor studies the approved version of lessons and documents (the API enforces access). */}
+        {abilities.tutor && (activity.type === 'page' || activity.type === 'file') && (activity.review === null || activity.review.status === 'approved' || activity.liveVersion !== null) ? (
+          <Link href={`/courses/${courseId}/tutor?activity=${activity.id}`} className={buttonClasses({ variant: 'secondary', size: 'sm', className: 'mt-3' })}>
+            {t.tutor.askAboutLesson}
+          </Link>
+        ) : null}
       </div>
 
       {activity.review ? (

@@ -8,11 +8,18 @@ import { ApiProblem, sendError } from '../http/errors.js';
 import { mockTutorProvider, type TutorLanguage, type TutorProvider } from '../tutor/provider.js';
 import { firstApprovedLessons, openingSources, searchApprovedLessons, selectSources, type TutorScope, type TutorSource } from '../tutor/retrieval.js';
 import { searchTerms } from '../tutor/text.js';
-import { lockedSectionsFor } from '../progress/model.js';
+import { learnerProgress, lockedSectionsFor } from '../progress/model.js';
+import { answerQuestion, checkPractice, guide, resolveQuestion, type GuideResult, type NextStep, type SuggestedAction } from '../tutor/guide.js';
+import { GUIDE_TEXT } from '../tutor/guide-text.js';
+import { loadMaterials, loadQuizzes, type Material } from '../tutor/materials.js';
 import {
+  tutorGuideResponseSchema,
+  tutorGuideSchema,
   tutorMessageResponseSchema,
   tutorMessageSchema,
   tutorParamsSchema,
+  tutorPracticeCheckResponseSchema,
+  tutorPracticeCheckSchema,
   tutorPracticeResponseSchema,
   tutorPracticeSchema,
   tutorUsageResponseSchema,
@@ -21,6 +28,10 @@ import {
 type Params = { id: string };
 type Executor = Pick<Database, 'select' | 'insert'>;
 type Kind = 'message' | 'practice';
+type GuideBody = { action: GuideResult['action']; language: TutorLanguage; activityId?: string; question?: string; variant?: number };
+
+/** Guided responses are computed, not generated: a generous per-person limit only guards the server. */
+const GUIDE_RATE_LIMIT = { max: 120, timeWindow: 60_000 } as const;
 
 const notFound = (what: string) => new ApiProblem(404, 'NOT_FOUND', `${what} not found.`);
 
@@ -186,6 +197,91 @@ export const tutorRoutes: FastifyPluginAsync = async (app) => {
         prompts: outcome.result,
         usage: outcome.usage,
       };
+    },
+  );
+
+  // ---- AP-030D guided demo tutor: read-only, deterministic, nothing stored, no model or network calls ----
+
+  const guidedRateLimit = {
+    rateLimit: {
+      ...GUIDE_RATE_LIMIT,
+      // After authentication, so the limit is per person (the session is resolved by then).
+      hook: 'preHandler' as const,
+      keyGenerator: (request: FastifyRequest) => `tutor-guide:${request.auth?.user.id ?? request.ip}`,
+    },
+  };
+  const guidedProvider = (language: TutorLanguage) => ({ mode: 'guided_demo' as const, label: GUIDE_TEXT[language].label });
+
+  /** What to study next: the student's own progress (first open activity), or the course order for staff. */
+  async function nextStep(access: CourseAccess, userId: string, materials: Material[], lesson: Material | null): Promise<NextStep> {
+    if (canAsCourseRole(access, 'progress.own')) {
+      const progress = await learnerProgress(db, access.course.id, userId);
+      const next = progress.continueAt;
+      const lockedSections = progress.sections.some((section) => section.locked);
+      if (!next) return { kind: 'done', lockedSections };
+      const section = progress.sections.find((item) => item.id === next.sectionId);
+      return { kind: 'activity', activityId: next.activityId, sectionId: next.sectionId, sectionTitle: section?.title ?? '', title: next.title, type: next.type };
+    }
+    const after = lesson ? materials.find((m) => m.order > lesson.order) : materials[0];
+    return after ? { kind: 'activity', activityId: after.activityId, sectionId: after.sectionId, sectionTitle: after.sectionTitle, title: after.title, type: after.type } : { kind: 'end' };
+  }
+
+  app.post<{ Params: Params; Body: GuideBody }>(
+    '/courses/:id/tutor/guide',
+    { ...authenticatedWrite, config: guidedRateLimit, schema: { params: tutorParamsSchema, body: tutorGuideSchema, response: { 200: tutorGuideResponseSchema } } },
+    async (request) => {
+      const access = await tutorAccess(request, request.params.id);
+      const { user } = getAuth(request);
+      const { action, language, activityId, question } = request.body;
+      const variant = request.body.variant ?? 0;
+      if (action === 'ask' && !question?.trim()) throw new ApiProblem(400, 'VALIDATION_ERROR', 'Ask needs a question.');
+      const scope = await scopeOf(db, access);
+      const materials = await loadMaterials(db, scope);
+      // A lesson the caller may not read (draft, hidden, locked, another course, guessed id) is simply not found.
+      const lesson = activityId ? (materials.find((m) => m.activityId === activityId) ?? null) : null;
+      if (activityId && !lesson) throw notFound('Lesson');
+
+      const resolved: SuggestedAction | 'start' | null = action === 'ask' ? resolveQuestion(question!).intent : action;
+      const quizzes = resolved === 'start' || resolved === 'quiz_prep' ? await loadQuizzes(db, scope) : undefined;
+      const next = resolved === 'next' ? await nextStep(access, user.id, materials, lesson) : undefined;
+      const base = { language, courseTitle: access.course.title, materials, lesson, variant, quizzes, next, isStudent: canAsCourseRole(access, 'progress.own') };
+      const outcome =
+        action === 'ask' ? answerQuestion(question!, base) : { ...guide({ ...base, action, topicTerms: [] }), intent: null };
+      return {
+        provider: guidedProvider(language),
+        language,
+        action,
+        intent: action === 'ask' ? outcome.intent : null,
+        grounding: outcome.grounding,
+        variant: outcome.variant,
+        context: {
+          courseId: access.course.id,
+          courseTitle: access.course.title,
+          lesson: lesson
+            ? { activityId: lesson.activityId, sectionId: lesson.sectionId, sectionTitle: lesson.sectionTitle, title: lesson.title, type: lesson.type, sourceLanguage: lesson.language }
+            : null,
+        },
+        focus: outcome.focus,
+        blocks: outcome.blocks,
+        references: outcome.references,
+        practice: outcome.practice,
+        followUps: outcome.followUps,
+        materials: action === 'start' ? materials.map(({ activityId: id, sectionId, sectionTitle, title, type }) => ({ activityId: id, sectionId, sectionTitle, title, type })) : [],
+      };
+    },
+  );
+
+  app.post<{ Params: Params; Body: { questionId: string; optionId: string; language: TutorLanguage } }>(
+    '/courses/:id/tutor/practice/check',
+    { ...authenticatedWrite, config: guidedRateLimit, schema: { params: tutorParamsSchema, body: tutorPracticeCheckSchema, response: { 200: tutorPracticeCheckResponseSchema } } },
+    async (request) => {
+      const access = await tutorAccess(request, request.params.id);
+      const { questionId, optionId, language } = request.body;
+      // The question is rebuilt from the material the caller may read now; another course's or a hidden lesson's
+      // question is simply unavailable. Nothing about the answer is stored.
+      const materials = await loadMaterials(db, await scopeOf(db, access));
+      const outcome = checkPractice(questionId, optionId, language, materials);
+      return { provider: guidedProvider(language), language, ...outcome };
     },
   );
 

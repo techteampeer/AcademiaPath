@@ -1,0 +1,111 @@
+import type { TutorLanguage } from './provider.js';
+
+/**
+ * Wording of the guided demo tutor (AP-030D), in English and Spanish. Like the mock provider's wording, it is the
+ * tutor's own voice: it frames, introduces and labels material; it never states course facts itself. Every
+ * course-specific statement in a response is a verbatim quote of approved material, with its reference.
+ * Study tips are general advice, always labelled as not coming from the course.
+ */
+const en = {
+  label: 'Guided demo tutor — not live AI',
+  greeting: (course: string) => `Hello! I am the guided demo tutor for ${course}. I answer only with this course's approved material and fixed study guidance; I am not a live AI model.`,
+  lessonContext: (title: string) => `You are studying “${title}”. Choose what you would like to do:`,
+  courseContext: 'Choose a lesson to focus on, or pick one of these actions:',
+  noMaterial: 'This course has no approved material I can use yet, so I cannot guide you through it. Check back when your instructor has published lessons.',
+  canDo: 'What I can do: explain a topic, summarize a lesson, show it more simply, find an example, review key concepts, ask practice questions, suggest what to study next and help you prepare for a quiz.',
+  sourceLanguage: (language: 'en' | 'es') => `The course material is in ${language === 'es' ? 'Spanish' : 'English'}; it is shown exactly as written, not translated.`,
+  explain: (title: string) => `Here is how “${title}” explains it:`,
+  explainAgain: (title: string) => `Here is another part of “${title}”:`,
+  explainTopic: 'This is the most relevant passage I found in the course material:',
+  summarize: (title: string) => `The key sentences of “${title}”, quoted from the material (not rewritten):`,
+  summarizeCourse: (course: string) => `An overview of ${course}: the opening sentence of each lesson.`,
+  simpler: 'In fewer words — the central sentence:',
+  simplerList: (n: number) => `It names ${n} parts:`,
+  keyTerms: 'Words to remember:',
+  example: (title: string) => `An example from “${title}”:`,
+  exampleElsewhere: (title: string) => `This lesson has no worked example, but “${title}” has a related one:`,
+  noExample: 'I could not find a worked example in the approved material for this topic.',
+  exampleTip: 'Study tip (general advice, not from the course): think of a service, project or system at your university and write down where this idea appears in it. Then compare your example with the lesson.',
+  detail: (title: string) => `The full explanation in “${title}”:`,
+  review: (title: string) => `Key concepts in “${title}” (the definitions as the material states them):`,
+  reviewCourse: (course: string) => `Key concepts across ${course}, one definition per lesson:`,
+  reviewNone: 'The material does not state formal definitions here; these are its central sentences:',
+  nextStudent: (title: string, section: string) => `Next in your course: “${title}” (${section}).`,
+  nextStaff: (title: string, section: string) => `Next in the course order: “${title}” (${section}).`,
+  nextDone: 'You have completed every activity available to you in this course. Well done! Reviewing the key concepts or practising is a good way to keep it fresh.',
+  nextLocked: 'Some sections open only after you complete the sections they require.',
+  nextNone: 'There is nothing else to study after this lesson in the course order.',
+  practiceTerm: (title: string) => `Which term completes this sentence from “${title}”?`,
+  practiceSource: 'Which lesson does this sentence come from?',
+  practiceNote: 'Practice only — not graded and not recorded.',
+  practiceNone: 'I could not build a practice question from the approved material yet.',
+  correct: 'Correct! That is exactly what the material says:',
+  incorrect: (choice: string) => `Not quite — you chose “${choice}”. The material says:`,
+  reviewLesson: (title: string) => `Review “${title}” to reinforce it.`,
+  practiceUnavailable: 'This practice question is no longer available, because its material changed or is no longer accessible. Try a new one.',
+  material: 'Learning material for this topic, as published in your course:',
+  materialTopic: 'Material in this course that matches your question:',
+  quizIntro: 'Quizzes in this course (their questions are only shown when you take them):',
+  quizFacts: (title: string, questions: number, attempts: number, minutes: number | null, passing: number | null) =>
+    `“${title}”: ${questions} ${questions === 1 ? 'question' : 'questions'}, ${attempts} ${attempts === 1 ? 'attempt' : 'attempts'}${minutes ? `, ${minutes} minutes` : ''}${passing ? `, passing score ${passing}%` : ''}.`,
+  quizLessons: (title: string) => `Lessons to review before “${title}”:`,
+  quizNone: 'This course has no published quiz you can take yet. Practice questions from the lessons are still a good way to prepare.',
+  quizTip: 'Study tip (general advice, not from the course): before a quiz, re-read the lessons of its section, answer practice questions without looking, and note any term you could not explain.',
+  unsupported:
+    'I am a guided demo tutor: I can only answer from this course’s approved material, and I could not find that topic in it. Try one of the suggested actions, or ask about one of these lessons:',
+  notFoundTopic: 'I could not find that topic in this course’s approved material. Here are the lessons I can help with:',
+};
+
+export type GuideText = typeof en;
+
+const es: GuideText = {
+  label: 'Tutor guiado de demostración — no es IA en vivo',
+  greeting: (course: string) => `¡Hola! Soy el tutor guiado de demostración de ${course}. Respondo solo con el material aprobado de este curso y con orientaciones de estudio fijas; no soy un modelo de IA en vivo.`,
+  lessonContext: (title: string) => `Estás estudiando «${title}». Elige qué quieres hacer:`,
+  courseContext: 'Elige una lección para enfocarte o una de estas acciones:',
+  noMaterial: 'Este curso aún no tiene material aprobado que pueda usar, así que no puedo guiarte. Vuelve cuando tu docente haya publicado lecciones.',
+  canDo: 'Puedo: explicar un tema, resumir una lección, mostrarla de forma más sencilla, buscar un ejemplo, repasar conceptos clave, hacerte preguntas de práctica, sugerirte qué estudiar después y ayudarte a preparar un cuestionario.',
+  sourceLanguage: (language: 'en' | 'es') => `El material del curso está en ${language === 'es' ? 'español' : 'inglés'}; se muestra tal como fue escrito, sin traducir.`,
+  explain: (title: string) => `Así lo explica «${title}»:`,
+  explainAgain: (title: string) => `Esta es otra parte de «${title}»:`,
+  explainTopic: 'Este es el pasaje más relevante que encontré en el material del curso:',
+  summarize: (title: string) => `Las oraciones clave de «${title}», citadas del material (sin reescribir):`,
+  summarizeCourse: (course: string) => `Un panorama de ${course}: la oración inicial de cada lección.`,
+  simpler: 'En menos palabras — la oración central:',
+  simplerList: (n: number) => `Menciona ${n} partes:`,
+  keyTerms: 'Palabras para recordar:',
+  example: (title: string) => `Un ejemplo de «${title}»:`,
+  exampleElsewhere: (title: string) => `Esta lección no tiene un ejemplo desarrollado, pero «${title}» tiene uno relacionado:`,
+  noExample: 'No encontré un ejemplo desarrollado en el material aprobado sobre este tema.',
+  exampleTip: 'Consejo de estudio (orientación general, no proviene del curso): piensa en un servicio, proyecto o sistema de tu universidad y anota dónde aparece esta idea. Luego compara tu ejemplo con la lección.',
+  detail: (title: string) => `La explicación completa en «${title}»:`,
+  review: (title: string) => `Conceptos clave de «${title}» (las definiciones tal como las presenta el material):`,
+  reviewCourse: (course: string) => `Conceptos clave de ${course}, una definición por lección:`,
+  reviewNone: 'El material no presenta definiciones formales aquí; estas son sus oraciones centrales:',
+  nextStudent: (title: string, section: string) => `Lo siguiente en tu curso: «${title}» (${section}).`,
+  nextStaff: (title: string, section: string) => `Lo siguiente en el orden del curso: «${title}» (${section}).`,
+  nextDone: 'Completaste todas las actividades disponibles para ti en este curso. ¡Bien hecho! Repasar los conceptos clave o practicar es una buena forma de mantenerlos frescos.',
+  nextLocked: 'Algunas secciones se abren solo después de completar las secciones que requieren.',
+  nextNone: 'No hay nada más para estudiar después de esta lección en el orden del curso.',
+  practiceTerm: (title: string) => `¿Qué término completa esta oración de «${title}»?`,
+  practiceSource: '¿De qué lección proviene esta oración?',
+  practiceNote: 'Solo práctica: no se califica ni se registra.',
+  practiceNone: 'Aún no pude preparar una pregunta de práctica a partir del material aprobado.',
+  correct: '¡Correcto! Es exactamente lo que dice el material:',
+  incorrect: (choice: string) => `No exactamente: elegiste «${choice}». El material dice:`,
+  reviewLesson: (title: string) => `Repasa «${title}» para reforzarlo.`,
+  practiceUnavailable: 'Esta pregunta de práctica ya no está disponible porque su material cambió o ya no es accesible. Prueba con una nueva.',
+  material: 'Material de aprendizaje sobre este tema, tal como está publicado en tu curso:',
+  materialTopic: 'Material de este curso que coincide con tu pregunta:',
+  quizIntro: 'Cuestionarios de este curso (sus preguntas solo se muestran al rendirlos):',
+  quizFacts: (title: string, questions: number, attempts: number, minutes: number | null, passing: number | null) =>
+    `«${title}»: ${questions} ${questions === 1 ? 'pregunta' : 'preguntas'}, ${attempts} ${attempts === 1 ? 'intento' : 'intentos'}${minutes ? `, ${minutes} minutos` : ''}${passing ? `, nota mínima ${passing} %` : ''}.`,
+  quizLessons: (title: string) => `Lecciones para repasar antes de «${title}»:`,
+  quizNone: 'Este curso aún no tiene un cuestionario publicado que puedas rendir. Las preguntas de práctica de las lecciones siguen siendo una buena forma de prepararte.',
+  quizTip: 'Consejo de estudio (orientación general, no proviene del curso): antes de un cuestionario, vuelve a leer las lecciones de su sección, responde preguntas de práctica sin mirar y anota los términos que no pudiste explicar.',
+  unsupported:
+    'Soy un tutor guiado de demostración: solo puedo responder con el material aprobado de este curso y no encontré ese tema en él. Prueba una de las acciones sugeridas o pregunta sobre una de estas lecciones:',
+  notFoundTopic: 'No encontré ese tema en el material aprobado de este curso. Estas son las lecciones con las que puedo ayudarte:',
+};
+
+export const GUIDE_TEXT: Record<TutorLanguage, GuideText> = { en, es };

@@ -117,10 +117,10 @@ import type {
   StudentProgressPage,
   StudentQuizAttempt,
   StudentQuizAttemptSummary,
+  TutorGuideAction,
+  TutorGuideResponse,
   TutorLanguage,
-  TutorMessageResponse,
-  TutorPracticeResponse,
-  TutorUsage,
+  TutorPracticeCheckResponse,
   Term,
   TermCreate,
   TermPage,
@@ -471,12 +471,14 @@ export const api = {
   /** Same-origin download link; the API checks the session and course access before sending the file. */
   documentFileHref: (courseId: string, activityId: string) => `${API_BASE}${activity(courseId, activityId)}/document/file`,
 
-  // Course tutor (local mock provider on the API; nothing is sent to external services).
-  askTutor: (courseId: string, question: string, language: TutorLanguage, csrfToken: string) =>
-    apiRequest<TutorMessageResponse>('POST', `${course(courseId)}/tutor/messages`, { body: { question, language }, csrfToken }),
-  tutorPractice: (courseId: string, language: TutorLanguage, topic: string | null, csrfToken: string) =>
-    apiRequest<TutorPracticeResponse>('POST', `${course(courseId)}/tutor/practice`, { body: { language, ...(topic ? { topic } : {}) }, csrfToken }),
-  tutorUsage: (courseId: string) => apiRequest<TutorUsage>('GET', `${course(courseId)}/tutor/usage`),
+  // Guided demo tutor (deterministic, on the API; nothing is sent to external services, nothing is stored).
+  guideTutor: (
+    courseId: string,
+    body: { action: TutorGuideAction; language: TutorLanguage; activityId?: string; question?: string; variant?: number },
+    csrfToken: string,
+  ) => apiRequest<TutorGuideResponse>('POST', `${course(courseId)}/tutor/guide`, { body, csrfToken }),
+  checkTutorPractice: (courseId: string, questionId: string, optionId: string, language: TutorLanguage, csrfToken: string) =>
+    apiRequest<TutorPracticeCheckResponse>('POST', `${course(courseId)}/tutor/practice/check`, { body: { questionId, optionId, language }, csrfToken }),
 
   // Learning progress: every figure is calculated by the API from stored records (never in the browser).
   myProgress: () => apiRequest<MyProgressList>('GET', '/me/progress'),
