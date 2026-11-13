@@ -4,7 +4,9 @@
  * generated only from the stored certificate record (its immutable snapshot), so the PDF always matches
  * what verification shows. It never contains e-mail addresses, grades or any other private data.
  */
-import type { CertificateRecord } from '../db/schema/index.js';
+import type { CertificateRecord, CertificateSignatory } from '../db/schema/index.js';
+import { snapshotSignatories } from './signatories.js';
+import { winAnsiBytes } from './winansi.js';
 
 // Advance widths (1/1000 em) of the standard Helvetica fonts for printable ASCII (32–126).
 const WIDTHS: Record<'regular' | 'bold', number[]> = {
@@ -26,19 +28,6 @@ const BRAND: Color = [0.114, 0.306, 0.847];
 const INK: Color = [0.059, 0.09, 0.165];
 const MUTED: Color = [0.278, 0.333, 0.412];
 const PAGE = { width: 842, height: 595 };
-
-/** WinAnsi (cp1252) bytes: Latin-1 maps directly; a few typographic characters are mapped; anything else is "?". */
-const CP1252: Record<string, number> = { '€': 0x80, '…': 0x85, '‘': 0x91, '’': 0x92, '“': 0x93, '”': 0x94, '•': 0x95, '–': 0x96, '—': 0x97 };
-function winAnsiBytes(text: string): number[] {
-  const bytes: number[] = [];
-  for (const char of text.replace(/[\u0000-\u001f\u007f]/g, ' ')) {
-    const code = char.codePointAt(0)!;
-    if (code >= 32 && code <= 126) bytes.push(code);
-    else if (code >= 160 && code <= 255) bytes.push(code);
-    else bytes.push(CP1252[char] ?? 63);
-  }
-  return bytes;
-}
 
 /** Width in points; accented letters take the width of their base letter, as in the Helvetica metrics. */
 export function textWidth(text: string, font: Font, size: number): number {
@@ -72,6 +61,14 @@ function wrap(text: string, font: Font, size: number, maxWidth: number, maxLines
   return kept;
 }
 
+/** The text itself when it fits `maxWidth`, otherwise shortened with "…" so that it does. */
+function clip(text: string, font: Font, size: number, maxWidth: number): string {
+  if (textWidth(text, font, size) <= maxWidth) return text;
+  let kept = text;
+  while (kept.length > 1 && textWidth(`${kept}…`, font, size) > maxWidth) kept = kept.slice(0, -1).trimEnd();
+  return `${kept}…`;
+}
+
 /** The largest size (down to `min`) at which the text fits on one line. */
 function fit(text: string, font: Font, size: number, min: number, maxWidth: number): number {
   let current = size;
@@ -98,6 +95,68 @@ class Canvas {
   }
 }
 
+export type PlacedText = { text: string; x: number; y: number; font: Font; size: number };
+export type SignatoryBlock = { line: { x1: number; x2: number; y: number }; texts: PlacedText[]; column: { left: number; right: number } };
+
+/** Signatory block geometry (AP-043): the signature line, then the printed name and title below it. */
+export const SIGNATORY_LAYOUT = { lineY: 214, nameSize: 10, minNameSize: 8, titleSize: 8.5, minTitleSize: 7.5 } as const;
+/** Baselines of the issue date and certificate number row, and its rule: the original ones, and with signatories. */
+const DATE_ROW = { label: 170, value: 154, english: 139, rule: 122 } as const;
+export const SIGNED_DATE_ROW = { label: 153, value: 139, english: 126, rule: 117 } as const;
+/** The lowest baseline of the text above the signatories (the course period, after a two-line course title). */
+const SIGNED_SHIFT = 22;
+export const SIGNED_TEXT_FLOOR = 232 + SIGNED_SHIFT;
+const COLUMNS: Record<number, { centers: number[]; textWidth: number; lineWidth: number }> = {
+  1: { centers: [421], textWidth: 300, lineWidth: 220 },
+  2: { centers: [281, 561], textWidth: 240, lineWidth: 200 },
+  3: { centers: [181, 421, 661], textWidth: 200, lineWidth: 180 },
+};
+
+/** Lines of `text` at `size` within `maxWidth`, or null when more than `maxLines` would be needed. */
+function linesWithin(text: string, font: Font, size: number, maxWidth: number, maxLines: number): string[] | null {
+  const lines = wrap(text, font, size, maxWidth, Number.POSITIVE_INFINITY);
+  return lines.length <= maxLines && lines.every((line) => textWidth(line, font, size) <= maxWidth) ? lines : null;
+}
+
+/**
+ * Places one to three signatories side by side, left to right in policy order: a signature line for a
+ * handwritten signature on the printed copy, the printed name (bold, one or two lines) and the official
+ * title (one or two lines). Text shrinks to a minimum size, then wraps; anything still too long (only
+ * possible for unusual input) is shortened with "…", so nothing ever overlaps a neighbour or the page.
+ */
+export function layoutSignatories(signatories: readonly CertificateSignatory[]): SignatoryBlock[] {
+  const columns = COLUMNS[Math.min(signatories.length, 3)];
+  if (!columns) return [];
+  const { lineY, nameSize, minNameSize, titleSize, minTitleSize } = SIGNATORY_LAYOUT;
+  return signatories.slice(0, 3).map((signatory, index) => {
+    const center = columns.centers[index]!;
+    const max = columns.textWidth;
+    const texts: PlacedText[] = [];
+    const place = (text: string, y: number, font: Font, size: number) => texts.push({ text, x: center - textWidth(text, font, size) / 2, y, font, size });
+
+    let y = lineY - 13;
+    const oneLineSize = fit(signatory.name, 'bold', nameSize, minNameSize, max);
+    const nameLines =
+      textWidth(signatory.name, 'bold', oneLineSize) <= max ? { lines: [signatory.name], size: oneLineSize } : { lines: wrap(signatory.name, 'bold', minNameSize, max, 2), size: minNameSize };
+    for (const line of nameLines.lines) {
+      place(clip(line, 'bold', nameLines.size, max), y, 'bold', nameLines.size);
+      y -= 10;
+    }
+    y -= 1.5;
+    const regular = linesWithin(signatory.title, 'regular', titleSize, max, 2);
+    const titleLines = regular ? { lines: regular, size: titleSize } : { lines: linesWithin(signatory.title, 'regular', minTitleSize, max, 2) ?? wrap(signatory.title, 'regular', minTitleSize, max, 2), size: minTitleSize };
+    for (const line of titleLines.lines) {
+      place(clip(line, 'regular', titleLines.size, max), y, 'regular', titleLines.size);
+      y -= 9;
+    }
+    return {
+      line: { x1: center - columns.lineWidth / 2, x2: center + columns.lineWidth / 2, y: lineY },
+      texts,
+      column: { left: center - max / 2, right: center + max / 2 },
+    };
+  });
+}
+
 const dateIn = (locale: string, date: Date) => new Intl.DateTimeFormat(locale, { dateStyle: 'long', timeZone: 'America/Lima' }).format(date);
 const pdfDate = (date: Date) => `D:${date.toISOString().replace(/[-:T]/g, '').slice(0, 14)}Z`;
 
@@ -108,28 +167,38 @@ export const verificationPath = (token: string) => `/verify/${token}`;
 export function certificatePdf(certificate: CertificateRecord): Buffer {
   const canvas = new Canvas();
   const width = 700;
+  // Without signatories (every certificate issued before AP-043) the layout is exactly the original one.
+  // With signatories, the text moves up (`up`) and the date row moves down to make room for them.
+  const signatories = snapshotSignatories(certificate.policySnapshot);
+  const up = signatories.length ? SIGNED_SHIFT : 0;
+  const rows = signatories.length ? SIGNED_DATE_ROW : DATE_ROW;
   canvas.rect(24, 24, PAGE.width - 48, PAGE.height - 48, 3, BRAND);
   canvas.rect(34, 34, PAGE.width - 68, PAGE.height - 68, 0.75, BRAND);
 
-  canvas.centered(certificate.issuerName.toUpperCase(), 520, 'bold', fit(certificate.issuerName.toUpperCase(), 'bold', 14, 9, width), BRAND);
-  canvas.centered('CERTIFICADO DE FINALIZACIÓN', 465, 'bold', 30);
-  canvas.centered('Certificate of Completion', 438, 'regular', 16, MUTED);
-  canvas.centered('Se otorga a  ·  This certifies that', 398, 'regular', 12, MUTED);
-  canvas.centered(certificate.recipientName, 360, 'bold', fit(certificate.recipientName, 'bold', 28, 14, width));
-  canvas.line(221, 348, 621, 348, 0.75, MUTED);
-  canvas.centered('por haber completado el curso  ·  for completing the course', 322, 'regular', 12, MUTED);
+  canvas.centered(certificate.issuerName.toUpperCase(), 520 + (up ? 8 : 0), 'bold', fit(certificate.issuerName.toUpperCase(), 'bold', 14, 9, width), BRAND);
+  canvas.centered('CERTIFICADO DE FINALIZACIÓN', 465 + up, 'bold', 30);
+  canvas.centered('Certificate of Completion', 438 + up, 'regular', 16, MUTED);
+  canvas.centered('Se otorga a  ·  This certifies that', 398 + up, 'regular', 12, MUTED);
+  canvas.centered(certificate.recipientName, 360 + up, 'bold', fit(certificate.recipientName, 'bold', 28, 14, width));
+  canvas.line(221, 348 + up, 621, 348 + up, 0.75, MUTED);
+  canvas.centered('por haber completado el curso  ·  for completing the course', 322 + up, 'regular', 12, MUTED);
   const titleLines = wrap(certificate.courseTitle, 'bold', 20, width, 2);
-  titleLines.forEach((line, index) => canvas.centered(line, 290 - index * 24, 'bold', 20, BRAND));
+  titleLines.forEach((line, index) => canvas.centered(line, 290 + up - index * 24, 'bold', 20, BRAND));
   const period = [certificate.courseCode, certificate.programName, `${certificate.termName} (${certificate.academicYear})`].filter(Boolean).join('  ·  ');
-  canvas.centered(period, titleLines.length > 1 ? 232 : 256, 'regular', fit(period, 'regular', 11, 7, width), MUTED);
+  canvas.centered(period, (titleLines.length > 1 ? 232 : 256) + up, 'regular', fit(period, 'regular', 11, 7, width), MUTED);
 
-  canvas.text('Fecha de emisión · Issue date', 80, 170, 'regular', 9, MUTED);
-  canvas.text(dateIn('es-PE', certificate.issuedAt), 80, 154, 'bold', 12);
-  canvas.text(dateIn('en-GB', certificate.issuedAt), 80, 139, 'regular', 10, MUTED);
+  for (const block of layoutSignatories(signatories)) {
+    canvas.line(block.line.x1, block.line.y, block.line.x2, block.line.y, 0.75, INK);
+    for (const item of block.texts) canvas.text(item.text, item.x, item.y, item.font, item.size, item.font === 'bold' ? INK : MUTED);
+  }
+
+  canvas.text('Fecha de emisión · Issue date', 80, rows.label, 'regular', 9, MUTED);
+  canvas.text(dateIn('es-PE', certificate.issuedAt), 80, rows.value, 'bold', 12);
+  canvas.text(dateIn('en-GB', certificate.issuedAt), 80, rows.english, 'regular', 10, MUTED);
   const label = 'N.º de certificado · Certificate No.';
-  canvas.text(label, PAGE.width - 80 - textWidth(label, 'regular', 9), 170, 'regular', 9, MUTED);
-  canvas.text(certificate.certificateNumber, PAGE.width - 80 - textWidth(certificate.certificateNumber, 'bold', 12), 154, 'bold', 12);
-  canvas.line(80, 122, PAGE.width - 80, 122, 0.5, MUTED);
+  canvas.text(label, PAGE.width - 80 - textWidth(label, 'regular', 9), rows.label, 'regular', 9, MUTED);
+  canvas.text(certificate.certificateNumber, PAGE.width - 80 - textWidth(certificate.certificateNumber, 'bold', 12), rows.value, 'bold', 12);
+  canvas.line(80, rows.rule, PAGE.width - 80, rows.rule, 0.5, MUTED);
 
   canvas.centered('Verifique la autenticidad de este certificado  ·  Verify the authenticity of this certificate', 100, 'regular', 9, MUTED);
   canvas.centered(verificationPath(certificate.verificationToken), 84, 'bold', 9.5, INK);

@@ -56,6 +56,7 @@ export function policySnapshot(policy: CertificatePolicyRecord): CertificatePoli
     requireFinalGrade: policy.requireFinalGrade,
     minimumGradePercent: policy.minimumGradePercent,
     issuerName: policy.issuerName,
+    signatories: policy.signatories.map(({ name, title }) => ({ name, title })),
   };
 }
 

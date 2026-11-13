@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.24.0
+  version: 0.25.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -3435,6 +3435,12 @@ paths:
         minimum grade needs a final grade (`422 CERTIFICATE_POLICY_INVALID`). `expectedVersion` is the version
         the edit was based on (0 when none exists; otherwise `409 CERTIFICATE_POLICY_CONFLICT`). Certificates
         already issued keep the policy version they were issued under. Audited as `certificate_policy.updated`.
+
+        AP-043: `signatories` (optional, 0–3, in print order) replaces the saved list; when it is left out the
+        saved signatories are kept. Names and titles are tidied (spacing collapsed, trimmed) and must print
+        exactly on the certificate (Latin letters, including Spanish accents); each person appears once
+        (case, accents and spacing ignored). Otherwise `422 CERTIFICATE_SIGNATORIES_INVALID`. Signatories are
+        printed names and titles only: no handwritten, scanned, electronic or cryptographic signature.
       tags: [Certificates]
       security:
         - sessionCookie: []
@@ -9206,12 +9212,40 @@ components:
           maxLength: 120
           pattern: "\\S"
           description: The issuing institution printed on certificates (for example "AcademiaPath").
+    CertificateSignatory:
+      type: object
+      description: |
+        AP-043. A person whose printed name and official title appear on certificates, under a signature line.
+        Text only: not linked to a user account, and no electronic or cryptographic signature is produced.
+      required: [name, title]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+          pattern: "\\S"
+          description: Full printed name (for example "María Fernanda Quispe Huamán").
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: "\\S"
+          description: Official title (for example "Decana de la Facultad de Ingeniería").
+    CertificateSignatories:
+      type: array
+      description: AP-043. Up to three signatories, in print order (left to right). Empty when there are none.
+      maxItems: 3
+      items:
+        $ref: "#/components/schemas/CertificateSignatory"
     CertificatePolicy:
       allOf:
         - $ref: "#/components/schemas/CertificatePolicyRules"
         - type: object
-          required: [configured, version, updatedAt]
+          required: [configured, version, updatedAt, signatories]
           properties:
+            signatories:
+              $ref: "#/components/schemas/CertificateSignatories"
             configured:
               type: boolean
             version:
@@ -9229,6 +9263,9 @@ components:
             expectedVersion:
               type: integer
               minimum: 0
+            signatories:
+              description: Optional; when left out, the saved signatories are kept.
+              $ref: "#/components/schemas/CertificateSignatories"
     CertificateRequirement:
       type: object
       required: [key, met, reason]
@@ -9305,7 +9342,7 @@ components:
     Certificate:
       type: object
       description: A certificate exactly as issued (snapshot). `history` is included for staff and administrators only.
-      required: [id, certificateNumber, status, courseId, userId, recipientName, courseTitle, courseCode, programName, termName, academicYear, issuerName, issuedAt, policyVersion, policy, verificationPath, revokedAt, revocationReason]
+      required: [id, certificateNumber, status, courseId, userId, recipientName, courseTitle, courseCode, programName, termName, academicYear, issuerName, signatories, issuedAt, policyVersion, policy, verificationPath, revokedAt, revocationReason]
       additionalProperties: false
       properties:
         id:
@@ -9337,6 +9374,9 @@ components:
           type: integer
         issuerName:
           type: string
+        signatories:
+          description: The signatories saved when the certificate was issued (empty for certificates issued before AP-043), never the current policy's.
+          $ref: "#/components/schemas/CertificateSignatories"
         issuedAt:
           type: string
           format: date-time
@@ -9486,7 +9526,7 @@ components:
     CertificateVerification:
       type: object
       description: The public verification record. Nothing else about the student or the course is revealed.
-      required: [status, certificateNumber, recipientName, courseTitle, academicPeriod, issuerName, issuedAt, revokedAt]
+      required: [status, certificateNumber, recipientName, courseTitle, academicPeriod, issuerName, signatories, issuedAt, revokedAt]
       additionalProperties: false
       properties:
         status:
@@ -9502,6 +9542,9 @@ components:
           type: string
         issuerName:
           type: string
+        signatories:
+          description: AP-043. The printed names and titles saved at issue time (empty before AP-043); nothing else about them.
+          $ref: "#/components/schemas/CertificateSignatories"
         issuedAt:
           type: string
           format: date-time
