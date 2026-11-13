@@ -2553,6 +2553,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{id}/tutor/guide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Guided demo tutor action (AP-030D)
+         * @description Deterministic, course-aware guided tutoring over the approved material the caller may read (approved lessons
+         *     and approved documents; students only visible ones outside sections a prerequisite still locks). No model,
+         *     no external service and no network request is involved, and nothing is stored: the endpoint is read-only.
+         *
+         *     Actions: `start` (greeting, suggested actions and the materials to choose from), `explain`, `again` (another
+         *     passage), `summarize`, `simpler`, `example`, `detail`, `review`, `next` (the student's own progress, or the
+         *     course order for staff), `practice` (a question built from a lesson sentence; check it with
+         *     `/tutor/practice/check`), `material`, `quiz_prep` (quiz facts only, never questions or answers) and `ask`
+         *     (free text: a fixed English/Spanish keyword match to one of the actions and a topic search; otherwise a clear
+         *     limitation with the supported actions).
+         *
+         *     Every course statement in a response is a verbatim quote with a reference; the tutor's own wording (in the
+         *     requested language) only frames it, and study tips are labelled as general advice. Material is never
+         *     translated. Same access as the other tutor endpoints (students, instructors and non-editing instructors of the
+         *     course); a lesson the caller may not read is 404. Limited per person (120 requests per minute).
+         */
+        post: operations["guideTutor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/tutor/practice/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check a guided practice answer (AP-030D)
+         * @description Rebuilds the practice question from the approved material the caller may read now and reports whether the
+         *     chosen option is correct, quoting the sentence it came from. Nothing is stored or graded. A question whose
+         *     material changed or is not readable by the caller is `unavailable`.
+         */
+        post: operations["checkTutorPractice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{id}/tutor/usage": {
         parameters: {
             query?: never;
@@ -5003,6 +5059,136 @@ export interface components {
             sourceActivityIds: string[];
             /** Format: date-time */
             createdAt: string;
+        };
+        /** @enum {string} */
+        TutorGuideAction: "start" | "explain" | "again" | "summarize" | "simpler" | "example" | "detail" | "review" | "next" | "practice" | "material" | "quiz_prep" | "ask";
+        /**
+         * @description An action offered as a suggestion or follow-up button.
+         * @enum {string}
+         */
+        TutorSuggestedAction: "explain" | "again" | "summarize" | "simpler" | "example" | "detail" | "review" | "next" | "practice" | "material" | "quiz_prep";
+        TutorGuideRequest: {
+            action: components["schemas"]["TutorGuideAction"];
+            language: components["schemas"]["Locale"];
+            /**
+             * Format: uuid
+             * @description The approved lesson or document being studied.
+             */
+            activityId?: string;
+            /** @description Free text, for `ask` only. Never stored. */
+            question?: string;
+            /** @description Which passage or practice question to use; follow-ups send the next one. For `start`, a non-zero value continues a conversation (a different lesson was chosen), so the greeting is left out. */
+            variant?: number;
+        };
+        /**
+         * @description `quote` and `list` items are verbatim course material (with `ref` when from one material); `text` is the
+         *     tutor's own framing in the requested language; `tip` is general study advice, not from the course.
+         */
+        TutorGuideBlock: {
+            /** @enum {string} */
+            kind: "text" | "quote" | "list" | "tip";
+            text: string | null;
+            items: string[];
+            ref: number | null;
+            /** @enum {string|null} */
+            sourceLanguage: "en" | "es" | "unknown" | null;
+        };
+        TutorGuideReference: {
+            ref: number;
+            /** Format: uuid */
+            activityId: string;
+            /** Format: uuid */
+            sectionId: string;
+            sectionTitle: string;
+            title: string;
+            /** @enum {string} */
+            type: "page" | "file" | "link" | "quiz" | "assignment";
+            /** @enum {string|null} */
+            sourceLanguage: "en" | "es" | "unknown" | null;
+            matchesRequestedLanguage: boolean;
+        };
+        TutorFocus: {
+            /** Format: uuid */
+            activityId: string;
+            title: string;
+        } | null;
+        TutorGuidedProvider: {
+            /** @enum {string} */
+            mode: "guided_demo";
+            label: string;
+        };
+        TutorGuideResponse: {
+            provider: components["schemas"]["TutorGuidedProvider"];
+            language: components["schemas"]["Locale"];
+            action: components["schemas"]["TutorGuideAction"];
+            /** @description For `ask`, the recognised request (or null). */
+            intent: components["schemas"]["TutorSuggestedAction"] | null;
+            /** @enum {string} */
+            grounding: "grounded" | "guidance" | "insufficient_material";
+            variant: number;
+            context: {
+                /** Format: uuid */
+                courseId: string;
+                courseTitle: string;
+                lesson: {
+                    /** Format: uuid */
+                    activityId: string;
+                    /** Format: uuid */
+                    sectionId: string;
+                    sectionTitle: string;
+                    title: string;
+                    /** @enum {string} */
+                    type: "page" | "file";
+                    /** @enum {string|null} */
+                    sourceLanguage: "en" | "es" | "unknown" | null;
+                } | null;
+            };
+            focus: components["schemas"]["TutorFocus"];
+            blocks: components["schemas"]["TutorGuideBlock"][];
+            references: components["schemas"]["TutorGuideReference"][];
+            practice: {
+                questionId: string;
+                /** @enum {string} */
+                kind: "term" | "source";
+                prompt: string;
+                /** @description The lesson sentence, verbatim (a defined term replaced by "_____" for `term`). */
+                statement: string;
+                options: {
+                    id: string;
+                    text: string;
+                }[];
+                ref: number;
+            } | null;
+            followUps: components["schemas"]["TutorSuggestedAction"][];
+            /** @description Only for `start`; the approved materials the caller may study. */
+            materials: {
+                /** Format: uuid */
+                activityId: string;
+                /** Format: uuid */
+                sectionId: string;
+                sectionTitle: string;
+                title: string;
+                /** @enum {string} */
+                type: "page" | "file";
+            }[];
+        };
+        TutorPracticeCheckRequest: {
+            /** @description As returned with the practice question. It identifies the lesson sentence and a fingerprint of what was shown; a question whose material changed since is reported as `unavailable`. */
+            questionId: string;
+            /** @enum {string} */
+            optionId: "a" | "b" | "c" | "d";
+            language: components["schemas"]["Locale"];
+        };
+        TutorPracticeCheckResponse: {
+            provider: components["schemas"]["TutorGuidedProvider"];
+            language: components["schemas"]["Locale"];
+            /** @enum {string} */
+            status: "correct" | "incorrect" | "unavailable";
+            correctOptionId: string | null;
+            focus: components["schemas"]["TutorFocus"];
+            blocks: components["schemas"]["TutorGuideBlock"][];
+            references: components["schemas"]["TutorGuideReference"][];
+            followUps: components["schemas"]["TutorSuggestedAction"][];
         };
         TutorUsage: {
             limit: number;
@@ -9814,6 +10000,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TutorPracticeResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    guideTutor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TutorGuideRequest"];
+            };
+        };
+        responses: {
+            /** @description The guided response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorGuideResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    checkTutorPractice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TutorPracticeCheckRequest"];
+            };
+        };
+        responses: {
+            /** @description Feedback on the answer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorPracticeCheckResponse"];
                 };
             };
             400: components["responses"]["ValidationError"];

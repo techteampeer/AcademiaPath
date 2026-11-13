@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, notInArray, sql } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import { activities, sections } from '../db/schema/index.js';
 import { detectLanguage, excerpt, keyTerms, matchedTerms, splitPassages, TUTOR_LIMITS, type SourceLanguage } from './text.js';
@@ -34,12 +34,13 @@ const approvedBody = sql<string>`coalesce(${activities.approvedConfig} ->> 'body
  * considered, and only their approved title and text. Draft, submitted and returned working copies,
  * quizzes (and answer keys), assignments, submissions, grades, review comments and audit entries
  * are stored in other columns or tables and are never read here. Students see visible lessons in
- * visible sections only.
+ * visible sections only. AP-030D: the guided tutor also reads approved documents (`file`), whose approved
+ * version points at one immutable extracted text.
  */
-function approvedLessons(scope: TutorScope) {
+export function approvedLessons(scope: TutorScope, types: ReadonlyArray<'page' | 'file'> = ['page']) {
   return and(
     eq(sections.courseId, scope.courseId),
-    eq(activities.type, 'page'),
+    types.length === 1 ? eq(activities.type, types[0]!) : inArray(activities.type, [...types]),
     isNotNull(activities.approvedConfig),
     isNotNull(activities.approvedTitle),
     isNotNull(activities.approvedAt),

@@ -102,10 +102,12 @@ export type CalendarDueDate = Schemas['CalendarDueDate'];
 export type Calendar = Schemas['Calendar'];
 
 export type TutorLanguage = Schemas['TutorLanguage'];
-export type TutorCitation = Schemas['TutorCitation'];
-export type TutorMessageResponse = Schemas['TutorMessageResponse'];
-export type TutorPracticeResponse = Schemas['TutorPracticeResponse'];
-export type TutorUsage = Schemas['TutorUsage'];
+export type TutorGuideAction = Schemas['TutorGuideAction'];
+export type TutorSuggestedAction = Schemas['TutorSuggestedAction'];
+export type TutorGuideBlock = Schemas['TutorGuideBlock'];
+export type TutorGuideReference = Schemas['TutorGuideReference'];
+export type TutorGuideResponse = Schemas['TutorGuideResponse'];
+export type TutorPracticeCheckResponse = Schemas['TutorPracticeCheckResponse'];
 
 export type DocumentFormat = Schemas['DocumentFormat'];
 export type DocumentContent = Schemas['DocumentContent'];
