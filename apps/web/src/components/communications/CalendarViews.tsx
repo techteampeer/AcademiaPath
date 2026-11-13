@@ -10,14 +10,14 @@ import { useWorkspace } from '@/components/session/WorkspaceProvider';
 import { describeApiError, useCsrfAction } from '@/components/session/useCsrfAction';
 import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
+import { Button, buttonClasses } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
-import type { Calendar, CalendarDueDate, CalendarEvent, CalendarEventInput, Course, CurrentUser } from '@/lib/api/types';
+import type { Calendar, CalendarDueDate, CalendarEvent, CalendarEventInput, Course, CurrentUser, TeachingSessionMode } from '@/lib/api/types';
 import {
   DEFAULT_TIME_ZONE,
   EventStatusBadge,
@@ -137,6 +137,7 @@ export function Agenda({
                   <li key={entry.event.id} className="rounded-lg border border-slate-200 p-3" data-event={entry.event.title} data-event-state={entry.event.status}>
                     <div className="flex flex-wrap items-center gap-2">
                       {showCourse ? <span className="text-xs font-medium text-slate-500">{entry.event.course?.code ?? c.institution}</span> : null}
+                      {entry.event.session ? <SessionBadges session={entry.event.session} /> : null}
                       {entry.event.allDay ? <Badge tone="brand">{c.allDay}</Badge> : null}
                       {entry.event.status !== 'published' ? <EventStatusBadge status={entry.event.status} /> : null}
                     </div>
@@ -145,6 +146,7 @@ export function Agenda({
                       {formatEventWhen(entry.event, locale, c.allDay)}
                     </p>
                     {entry.event.description ? <PlainText text={entry.event.description} className="mt-1 text-sm text-slate-700" /> : null}
+                    <SessionDetails event={entry.event} />
                     {renderActions ? renderActions(entry.event) : null}
                   </li>
                 ) : (
@@ -174,6 +176,155 @@ export function Agenda({
       ))}
     </ol>
   );
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// AP-045 hybrid teaching sessions: course events with a session number, a delivery mode, units and links
+
+const SESSION_MODES: TeachingSessionMode[] = ['live_online', 'asynchronous', 'presentation'];
+type SessionView = NonNullable<CalendarEvent['session']>;
+
+function SessionBadges({ session }: { session: SessionView }) {
+  const { t } = useLocale();
+  const s = t.communications.calendar.session;
+  return (
+    <>
+      <span data-session-number={session.number}>
+        <Badge tone="gold">{s.number(session.number)}</Badge>
+      </span>
+      <span data-session-mode={session.deliveryMode}>
+        <Badge tone="neutral">{s.modes[session.deliveryMode]}</Badge>
+      </span>
+    </>
+  );
+}
+
+/** Units (links to the course outline), the linked activity and the external classroom link of a session. */
+function SessionDetails({ event }: { event: CalendarEvent }) {
+  const { t } = useLocale();
+  const s = t.communications.calendar.session;
+  const session = event.session;
+  if (!session) return null;
+  const courseId = event.course?.id;
+  const joinUrl = session.joinUrl && session.joinUrl.startsWith('https://') && event.status !== 'cancelled' ? session.joinUrl : null;
+  return (
+    <div className="mt-2 space-y-2 text-sm" data-session-details={session.number}>
+      {session.units.length > 0 ? (
+        <p className="break-words text-slate-700" data-session-units>
+          <span className="font-medium text-slate-800">{s.units}:</span>{' '}
+          {session.units.map((unit, index) => (
+            <span key={unit.id}>
+              {index > 0 ? ', ' : ''}
+              {courseId ? (
+                <Link href={`/courses/${courseId}#section-${unit.id}`} className="text-brand-700 hover:underline">
+                  {unit.title}
+                </Link>
+              ) : (
+                unit.title
+              )}
+            </span>
+          ))}
+        </p>
+      ) : null}
+      {session.activity && courseId ? (
+        <p className="break-words text-slate-700" data-session-activity>
+          <span className="font-medium text-slate-800">{s.activity}:</span>{' '}
+          <Link href={`/courses/${courseId}/activities/${session.activity.id}`} className="text-brand-700 hover:underline">
+            {session.activity.title}
+          </Link>
+        </p>
+      ) : null}
+      {joinUrl ? (
+        <a href={joinUrl} target="_blank" rel="noopener noreferrer" className={buttonClasses({ size: 'sm' })} data-join-class>
+          {s.join}
+          <span className="sr-only"> {s.external}</span>
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+const PLAN_PAST_DAYS = 180;
+const PLAN_FUTURE_DAYS = 219;
+
+/** The course's teaching sessions in number order, with their units (one calendar request over a wide window). */
+function SessionPlan({ courseId, version }: { courseId: string; version: number }) {
+  const { t, locale } = useLocale();
+  const c = t.communications.calendar;
+  const s = c.session;
+  const range = useMemo(() => {
+    const today = todayIn(DEFAULT_TIME_ZONE);
+    return { from: wallTimeToInstant(addDays(today, -PLAN_PAST_DAYS), '00:00', DEFAULT_TIME_ZONE), to: wallTimeToInstant(addDays(today, PLAN_FUTURE_DAYS), '00:00', DEFAULT_TIME_ZONE) };
+  }, []);
+  const fetcher = useCallback(() => {
+    void version;
+    return api.courseCalendar(courseId, range);
+  }, [courseId, range, version]);
+  const { state } = useLoader<Calendar>(fetcher);
+  const sessions =
+    state.status === 'ready'
+      ? state.data.events.filter((event) => event.session).sort((a, b) => a.session!.number - b.session!.number || a.startsAt.localeCompare(b.startsAt))
+      : [];
+  return (
+    <Card as="section" aria-labelledby="session-plan-heading" className="space-y-3" data-session-plan={sessions.length}>
+      <h2 id="session-plan-heading" className="font-semibold text-brand-600">
+        {s.planHeading}
+      </h2>
+      <p className="text-sm text-slate-600">{s.planIntro}</p>
+      {state.status === 'loading' ? (
+        <p className="text-sm text-slate-600">{s.planLoading}</p>
+      ) : state.status !== 'ready' ? (
+        <Alert tone="error">{state.status === 'error' ? state.message : t.common.loadError}</Alert>
+      ) : sessions.length === 0 ? (
+        <p className="text-sm text-slate-600" data-session-plan-empty>
+          {s.planNone}
+        </p>
+      ) : (
+        <ol className="divide-y divide-slate-100">
+          {sessions.map((event) => (
+            <li key={event.id} className="grid gap-1 py-3 sm:grid-cols-[minmax(0,16rem)_minmax(0,1fr)] sm:gap-4" data-plan-session={event.session!.number}>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <SessionBadges session={event.session!} />
+                  {event.status !== 'published' ? <EventStatusBadge status={event.status} /> : null}
+                </div>
+                <p className="mt-1 text-sm text-slate-600">{formatEventWhen(event, locale, c.allDay)}</p>
+              </div>
+              <div className="min-w-0">
+                <p className={`font-medium break-words text-slate-900 ${event.status === 'cancelled' ? 'line-through' : ''}`}>{event.title}</p>
+                <p className="text-sm break-words text-slate-600" data-plan-units>
+                  {event.session!.units.length ? event.session!.units.map((unit) => unit.title).join(', ') : s.noUnits}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+      <p className="text-xs text-slate-500">{s.planRange}</p>
+    </Card>
+  );
+}
+
+type SessionOptions = { status: 'idle' | 'loading' | 'error' } | { status: 'ready'; units: Array<{ id: string; title: string }>; activities: Array<{ id: string; label: string }> };
+
+/** The course's units and activities for the session form, loaded only when a session is being configured. */
+function useSessionOptions(courseId: string | null, enabled: boolean): SessionOptions {
+  const [options, setOptions] = useState<SessionOptions>({ status: 'idle' });
+  useEffect(() => {
+    if (!courseId || !enabled || options.status !== 'idle') return;
+    setOptions({ status: 'loading' });
+    void (async () => {
+      try {
+        const units = (await api.listSections(courseId, { limit: 100 })).items.map((section) => ({ id: section.id, title: section.title }));
+        const pages = await Promise.all(units.map((unit) => api.listActivities(courseId, unit.id, { limit: 100 })));
+        const activities = pages.flatMap((page, index) => page.items.map((activity) => ({ id: activity.id, label: `${units[index]!.title} · ${activity.title}` })));
+        setOptions({ status: 'ready', units, activities });
+      } catch {
+        setOptions({ status: 'error' });
+      }
+    })();
+  }, [courseId, enabled, options.status]);
+  return options;
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -278,10 +429,15 @@ export function EventCalendar({ target, staff, canManage }: { target: EventTarge
     [courseId, range],
   );
   const { state, load } = useLoader<Calendar>(fetcher);
+  const [version, setVersion] = useState(0);
+  const reload = () => {
+    void load();
+    setVersion((value) => value + 1);
+  };
   const prefix = courseId ? 'course' : 'institution';
   return (
     <div className="space-y-6">
-      {canManage ? <EventForm prefix={prefix} target={target} onSaved={() => void load()} /> : staff ? <Alert tone="info">{c.manage.readOnly}</Alert> : null}
+      {canManage ? <EventForm prefix={prefix} target={target} onSaved={reload} /> : staff ? <Alert tone="info">{c.manage.readOnly}</Alert> : null}
       <Card as="section" aria-labelledby={`${prefix}-calendar-heading`} className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <h2 id={`${prefix}-calendar-heading`} className="font-semibold text-brand-600">
@@ -301,11 +457,12 @@ export function EventCalendar({ target, staff, canManage }: { target: EventTarge
               dueDates={state.data.dueDates}
               zone={state.data.timeZone}
               showCourse={false}
-              renderActions={canManage ? (event) => <EventActions prefix={prefix} target={target} event={event} onChanged={() => void load()} /> : undefined}
+              renderActions={canManage ? (event) => <EventActions prefix={prefix} target={target} event={event} onChanged={reload} /> : undefined}
             />
           </>
         )}
       </Card>
+      {courseId ? <SessionPlan courseId={courseId} version={version} /> : null}
     </div>
   );
 }
@@ -411,10 +568,39 @@ function EventForm({ prefix, target, event, onSaved, onClose }: { prefix: string
   const [status, setStatus] = useState<'hidden' | 'published'>(event?.status === 'published' ? 'published' : 'hidden');
   const [error, setError] = useState<string | null>(null);
   const zones = TIME_ZONES.includes(zone) ? TIME_ZONES : [zone, ...TIME_ZONES];
+  // AP-045: optional teaching session details (course events only).
+  const sf = t.communications.calendar.session.form;
+  const sessionModes = t.communications.calendar.session.modes;
+  const courseId = target.kind === 'course' ? target.courseId : null;
+  const [isSession, setIsSession] = useState(Boolean(event?.session));
+  const [sessionNumber, setSessionNumber] = useState(event?.session ? String(event.session.number) : '');
+  const [mode, setMode] = useState<TeachingSessionMode>(event?.session?.deliveryMode ?? 'live_online');
+  const [joinUrl, setJoinUrl] = useState(event?.session?.joinUrl ?? '');
+  const [unitIds, setUnitIds] = useState<string[]>(event?.session?.units.map((unit) => unit.id) ?? []);
+  const [activityId, setActivityId] = useState(event?.session?.activity?.id ?? '');
+  const options = useSessionOptions(courseId, isSession);
+  const sessionField = (): CalendarEventInput['session'] | 'invalid-number' | 'invalid-url' | undefined => {
+    if (!courseId) return undefined;
+    if (!isSession) return event?.session ? null : undefined;
+    const number = Number(sessionNumber.trim());
+    if (!/^\d+$/.test(sessionNumber.trim()) || number < 1 || number > 999) return 'invalid-number';
+    const link = mode === 'asynchronous' ? '' : joinUrl.trim();
+    if (link) {
+      try {
+        if (new URL(link).protocol !== 'https:') return 'invalid-url';
+      } catch {
+        return 'invalid-url';
+      }
+    }
+    return { number, deliveryMode: mode, joinUrl: link || null, unitIds, activityId: activityId || null };
+  };
 
   const submit = async () => {
     if (!title.trim()) return setError(m.titleRequired);
     if (!startDate || !endDate || (!allDay && (!startTime || !endTime))) return setError(m.datesRequired);
+    const session = sessionField();
+    if (session === 'invalid-number') return setError(sf.numberRange);
+    if (session === 'invalid-url') return setError(sf.joinUrlInvalid);
     let body: CalendarEventInput;
     if (allDay) {
       if (endDate < startDate) return setError(m.endBeforeStart);
@@ -425,6 +611,7 @@ function EventForm({ prefix, target, event, onSaved, onClose }: { prefix: string
       if (Date.parse(endsAt) <= Date.parse(startsAt)) return setError(m.endBeforeStart);
       body = { title: title.trim(), description: description.trim() || null, allDay: false, startsAt, endsAt, timeZone: zone, status };
     }
+    if (session !== undefined) body = { ...body, session };
     setError(null);
     const saved = await run(
       (csrf) =>
@@ -438,6 +625,12 @@ function EventForm({ prefix, target, event, onSaved, onClose }: { prefix: string
     if (saved && !event) {
       setTitle('');
       setDescription('');
+      // Ready for the next session: the following number, same mode and link, no units or activity.
+      if (session) {
+        setSessionNumber(String(Math.min(session.number + 1, 999)));
+        setUnitIds([]);
+        setActivityId('');
+      }
     }
     if (saved) onSaved();
   };
@@ -479,6 +672,70 @@ function EventForm({ prefix, target, event, onSaved, onClose }: { prefix: string
           ]}
         />
       </div>
+      {courseId ? (
+        <fieldset className="space-y-3 rounded-lg border border-slate-200 p-3" data-session-form>
+          <legend className="px-1 text-sm font-semibold text-slate-800">{sf.heading}</legend>
+          <label className="flex items-center gap-2 text-sm text-slate-800">
+            <input id={`${prefix}-session-toggle`} type="checkbox" checked={isSession} onChange={(e) => setIsSession(e.target.checked)} />
+            {sf.toggle}
+          </label>
+          {isSession ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextField id={`${prefix}-session-number`} inputMode="numeric" label={sf.number} maxLength={3} value={sessionNumber} onChange={(e) => setSessionNumber(e.target.value)} />
+                <SelectField
+                  id={`${prefix}-session-mode`}
+                  label={sf.mode}
+                  value={mode}
+                  onChange={(e) => setMode(e.target.value as TeachingSessionMode)}
+                  options={SESSION_MODES.map((value) => ({ value, label: sessionModes[value] }))}
+                />
+              </div>
+              {mode === 'asynchronous' ? (
+                <p className="text-sm text-slate-600">{sf.asyncNote}</p>
+              ) : (
+                <TextField id={`${prefix}-session-join`} inputMode="url" label={sf.joinUrl} hint={sf.joinUrlHint} maxLength={2000} value={joinUrl} onChange={(e) => setJoinUrl(e.target.value)} />
+              )}
+              {options.status === 'ready' ? (
+                <>
+                  <fieldset className="space-y-2">
+                    <legend className="text-sm font-medium text-slate-800">{sf.units}</legend>
+                    <p className="text-xs text-slate-500">{sf.unitsHint}</p>
+                    {options.units.length === 0 ? (
+                      <p className="text-sm text-slate-600">{sf.noUnitsAvailable}</p>
+                    ) : (
+                      <div className="grid gap-1 sm:grid-cols-2">
+                        {options.units.map((unit) => (
+                          <label key={unit.id} className="flex items-start gap-2 text-sm text-slate-800">
+                            <input
+                              type="checkbox"
+                              className="mt-1"
+                              checked={unitIds.includes(unit.id)}
+                              onChange={(e) => setUnitIds((current) => (e.target.checked ? [...current, unit.id] : current.filter((id) => id !== unit.id)))}
+                            />
+                            <span className="break-words">{unit.title}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </fieldset>
+                  <SelectField
+                    id={`${prefix}-session-activity`}
+                    label={sf.activity}
+                    value={activityId}
+                    onChange={(e) => setActivityId(e.target.value)}
+                    options={[{ value: '', label: sf.activityNone }, ...options.activities.map((activity) => ({ value: activity.id, label: activity.label }))]}
+                  />
+                </>
+              ) : options.status === 'error' ? (
+                <Alert tone="error">{sf.loadFailed}</Alert>
+              ) : (
+                <p className="text-sm text-slate-600">{sf.loading}</p>
+              )}
+            </>
+          ) : null}
+        </fieldset>
+      ) : null}
       {error ? <Alert tone="error">{error}</Alert> : null}
       {result ? <Alert tone={result.tone}>{result.message}</Alert> : null}
       <div className="flex flex-wrap gap-2">

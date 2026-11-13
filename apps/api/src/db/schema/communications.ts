@@ -1,8 +1,9 @@
 import { sql } from 'drizzle-orm';
-import { boolean, check, date, index, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, date, foreignKey, index, integer, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { primaryId, timestamps } from './columns.js';
 import { courses } from './courses.js';
-import { announcementStatusEnum, calendarEventStatusEnum, communicationScopeEnum } from './enums.js';
+import { activities, sections } from './content.js';
+import { announcementStatusEnum, calendarEventStatusEnum, communicationScopeEnum, teachingSessionModeEnum } from './enums.js';
 import { users } from './users.js';
 
 /**
@@ -62,6 +63,12 @@ export const announcementReads = pgTable(
  * (`starts_at` inclusive, `ends_at` exclusive) together with the IANA time zone they are shown in. All-day
  * events also keep their calendar dates (`start_date`..`end_date`, inclusive); their instants are the
  * midnights of those dates in the event's time zone, so range queries treat both kinds alike.
+ *
+ * AP-045: a course event can also be a teaching session: a session number and a delivery mode (both or
+ * neither), optionally an external HTTPS link to a virtual classroom (live or presentation sessions only; not
+ * hosted by AcademiaPath), one course activity to open, and the course units (sections) it covers
+ * (`calendar_event_units`). Units and sessions are independent: a unit can span several sessions and a session
+ * several units, or none. Ordinary events have no session details.
  */
 export const calendarEvents = pgTable(
   'calendar_events',
@@ -80,6 +87,10 @@ export const calendarEvents = pgTable(
     status: calendarEventStatusEnum('status').notNull().default('hidden'),
     publishedAt: timestamp('published_at', { withTimezone: true }),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    sessionNumber: integer('session_number'),
+    sessionMode: teachingSessionModeEnum('session_mode'),
+    joinUrl: text('join_url'),
+    sessionActivityId: uuid('session_activity_id').references(() => activities.id, { onDelete: 'set null' }),
     createdByUserId: uuid('created_by_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
@@ -102,5 +113,40 @@ export const calendarEvents = pgTable(
     ),
     check('calendar_events_time_zone_check', sql`char_length(${t.timeZone}) BETWEEN 1 AND 64`),
     check('calendar_events_cancelled_check', sql`(${t.status} = 'cancelled') = (${t.cancelledAt} IS NOT NULL)`),
+    // AP-045 teaching sessions.
+    check('calendar_events_session_check', sql`(${t.sessionNumber} IS NULL) = (${t.sessionMode} IS NULL)`),
+    check('calendar_events_session_scope_check', sql`${t.sessionMode} IS NULL OR ${t.scope} = 'course'`),
+    check('calendar_events_session_number_check', sql`${t.sessionNumber} IS NULL OR ${t.sessionNumber} BETWEEN 1 AND 999`),
+    check(
+      'calendar_events_join_url_check',
+      sql`${t.joinUrl} IS NULL OR (${t.sessionMode} IN ('live_online', 'presentation') AND ${t.joinUrl} LIKE 'https://%' AND char_length(${t.joinUrl}) <= 2000)`,
+    ),
+    check('calendar_events_session_activity_check', sql`${t.sessionActivityId} IS NULL OR ${t.sessionMode} IS NOT NULL`),
+    // One session per number in a course, among events that are not cancelled (a cancelled session frees it).
+    uniqueIndex('calendar_events_session_number_unique')
+      .on(t.courseId, t.sessionNumber)
+      .where(sql`${t.sessionNumber} IS NOT NULL AND ${t.status} <> 'cancelled'`),
+    // Target of the composite foreign key that keeps session units inside the event's course.
+    unique('calendar_events_id_course_id_unique').on(t.id, t.courseId),
+  ],
+);
+
+/**
+ * AP-045: the course units (sections) a teaching session covers. Both composite foreign keys share `course_id`,
+ * so a unit of another course can never be linked. Removing a unit or deleting a (never published) event
+ * removes its links.
+ */
+export const calendarEventUnits = pgTable(
+  'calendar_event_units',
+  {
+    eventId: uuid('event_id').notNull(),
+    courseId: uuid('course_id').notNull(),
+    sectionId: uuid('section_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.eventId, t.sectionId] }),
+    index('calendar_event_units_section_idx').on(t.sectionId),
+    foreignKey({ name: 'calendar_event_units_event_fk', columns: [t.eventId, t.courseId], foreignColumns: [calendarEvents.id, calendarEvents.courseId] }).onDelete('cascade'),
+    foreignKey({ name: 'calendar_event_units_section_fk', columns: [t.sectionId, t.courseId], foreignColumns: [sections.id, sections.courseId] }).onDelete('cascade'),
   ],
 );

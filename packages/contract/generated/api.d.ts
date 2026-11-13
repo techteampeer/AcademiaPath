@@ -2280,6 +2280,12 @@ export interface paths {
          *     with explicit offsets; all-day events send `startDate`/`endDate` (inclusive). `timeZone` defaults to the
          *     institution's. The end must follow the start (`422 EVENT_TIME_INVALID`); unknown zones are
          *     `422 INVALID_TIME_ZONE`. Audited as `calendar_event.created`.
+         *
+         *     AP-045: optional `session` makes the event a teaching session (number and delivery mode; an external
+         *     HTTPS classroom link for live and presentation sessions only; units and one activity of this course).
+         *     `422 SESSION_JOIN_URL_INVALID`, `422 SESSION_UNIT_INVALID` (a unit not of this course),
+         *     `422 SESSION_ACTIVITY_INVALID`, `409 SESSION_NUMBER_TAKEN` (another session of the course that is not
+         *     cancelled has this number).
          */
         post: operations["createCourseEvent"];
         delete?: never;
@@ -2351,6 +2357,10 @@ export interface paths {
          * Edit, publish or hide an event
          * @description Requires `calendar.manage` for the course (administrators for institution-wide events). Replaces the
          *     event's fields; cancelled events cannot change (`409 EVENT_CANCELLED`). Audited.
+         *
+         *     AP-045: `session` left out keeps the event's session details (so publishing or hiding never drops them);
+         *     `null` removes them; an object replaces them, with the same checks as on creation. Institution-wide events
+         *     cannot be sessions (`422 SESSION_NOT_ALLOWED`).
          */
         put: operations["updateCalendarEvent"];
         post?: never;
@@ -4915,7 +4925,55 @@ export interface components {
             timeZone?: string;
             /** @enum {string} */
             status: "hidden" | "published";
+            session?: components["schemas"]["TeachingSessionInput"];
         };
+        /**
+         * @description AP-045. How a teaching session is delivered.
+         * @enum {string}
+         */
+        TeachingSessionMode: "live_online" | "asynchronous" | "presentation";
+        /**
+         * @description AP-045. Makes a course event a teaching session. Units and sessions are independent: a unit may span
+         *     several sessions, a session may cover several units, and a presentation session may cover none.
+         */
+        TeachingSessionInput: {
+            /** @description Unique among the course's sessions that are not cancelled. */
+            number: number;
+            deliveryMode: components["schemas"]["TeachingSessionMode"];
+            /**
+             * @description External virtual classroom link (https:// only, no embedded credentials), for live_online and
+             *     presentation sessions. AcademiaPath does not host or check the meeting.
+             */
+            joinUrl?: string | null;
+            /** @description Units (course sections) of the same course. */
+            unitIds?: string[];
+            /**
+             * Format: uuid
+             * @description One activity of the same course to open (for example the material of an asynchronous session).
+             */
+            activityId?: string | null;
+        } | null;
+        /**
+         * @description AP-045. Session details as the caller may see them: students see only visible units, only activities they
+         *     can open, and the classroom link of published sessions only. Null for ordinary events.
+         */
+        TeachingSession: {
+            number: number;
+            deliveryMode: components["schemas"]["TeachingSessionMode"];
+            joinUrl: string | null;
+            /** @description In course order. */
+            units: {
+                /** Format: uuid */
+                id: string;
+                title: string;
+            }[];
+            activity: {
+                /** Format: uuid */
+                id: string;
+                title: string;
+                type: string;
+            } | null;
+        } | null;
         CalendarEvent: {
             /** Format: uuid */
             id: string;
@@ -4944,6 +5002,7 @@ export interface components {
             publishedAt: string | null;
             /** Format: date-time */
             cancelledAt: string | null;
+            session: components["schemas"]["TeachingSession"];
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
