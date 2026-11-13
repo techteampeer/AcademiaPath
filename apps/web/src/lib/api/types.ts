@@ -79,6 +79,7 @@ export type GradeSelectionRelease = Schemas['GradeSelectionRelease'];
 export type GradeSelectionReleaseResult = Schemas['GradeSelectionReleaseResult'];
 export type CertificatePolicy = Schemas['CertificatePolicy'];
 export type CertificatePolicyInput = Schemas['CertificatePolicyInput'];
+export type CertificateSignatory = Schemas['CertificateSignatory'];
 export type CertificateEligibility = Schemas['CertificateEligibility'];
 export type CertificateRequirement = Schemas['CertificateRequirement'];
 export type Certificate = Schemas['Certificate'];

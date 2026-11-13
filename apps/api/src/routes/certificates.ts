@@ -6,6 +6,7 @@ import { canAsCourseRole, canInCourse, getCourseAccess, type CourseAccess, type 
 import { getAuth } from '../auth/hooks.js';
 import { eligibilityContext, evaluateEligibility, loadCertificatePolicy, policySnapshot, type CertificatePolicyRecord } from '../certificates/eligibility.js';
 import { certificatePdf, verificationPath } from '../certificates/pdf.js';
+import { checkSignatories, snapshotSignatories } from '../certificates/signatories.js';
 import { newCertificateNumber, newVerificationToken, VERIFICATION_TOKEN_PATTERN } from '../certificates/tokens.js';
 import type { Database } from '../db/client.js';
 import { getPgError } from '../db/errors.js';
@@ -19,6 +20,7 @@ import {
   terms,
   users,
   type CertificateRecord,
+  type CertificateSignatory,
 } from '../db/schema/index.js';
 import { ApiProblem } from '../http/errors.js';
 import { decodeCursor, toPage } from '../http/pagination.js';
@@ -41,7 +43,16 @@ import {
 } from './certificate-schemas.js';
 import { courseParamsSchema } from './grading-schemas.js';
 
-type PolicyBody = { expectedVersion: number; enabled: boolean; requireCompletion: boolean; requireFinalGrade: boolean; minimumGradePercent: number | null; issuerName: string };
+type PolicyBody = {
+  expectedVersion: number;
+  enabled: boolean;
+  requireCompletion: boolean;
+  requireFinalGrade: boolean;
+  minimumGradePercent: number | null;
+  issuerName: string;
+  /** AP-043: optional; when left out, the signatories already saved are kept. */
+  signatories?: CertificateSignatory[];
+};
 type HistoryEvent = { action: 'certificate.issued' | 'certificate.revoked'; at: Date; actor: { id: string; name: string } | null; reason: string | null };
 
 const notFound = (what: string) => new ApiProblem(404, 'NOT_FOUND', `${what} not found.`);
@@ -55,7 +66,7 @@ const studentColumns = { id: users.id, email: users.email, givenName: users.give
 /** The policy as returned by the API (defaults while the course has none: no certificates can be issued). */
 function policyView(policy: CertificatePolicyRecord | null) {
   if (!policy) {
-    return { configured: false, enabled: false, requireCompletion: true, requireFinalGrade: true, minimumGradePercent: null, issuerName: DEFAULT_ISSUER, version: 0, updatedAt: null };
+    return { configured: false, enabled: false, requireCompletion: true, requireFinalGrade: true, minimumGradePercent: null, issuerName: DEFAULT_ISSUER, signatories: [], version: 0, updatedAt: null };
   }
   return {
     configured: true,
@@ -64,6 +75,7 @@ function policyView(policy: CertificatePolicyRecord | null) {
     requireFinalGrade: policy.requireFinalGrade,
     minimumGradePercent: policy.minimumGradePercent,
     issuerName: policy.issuerName,
+    signatories: policy.signatories,
     version: policy.version,
     updatedAt: policy.updatedAt,
   };
@@ -84,6 +96,8 @@ function certificateView(certificate: CertificateRecord, history?: HistoryEvent[
     termName: certificate.termName,
     academicYear: certificate.academicYear,
     issuerName: certificate.issuerName,
+    // AP-043: the signatories saved when it was issued (none before AP-043), never the current policy's.
+    signatories: snapshotSignatories(certificate.policySnapshot),
     issuedAt: certificate.issuedAt,
     policyVersion: certificate.policyVersion,
     policy: {
@@ -177,6 +191,8 @@ export const certificateRoutes: FastifyPluginAsync = async (app) => {
       if (body.minimumGradePercent !== null && !body.requireFinalGrade) {
         throw new ApiProblem(422, 'CERTIFICATE_POLICY_INVALID', 'A minimum course grade can only be checked against a final released grade: also require a final grade.');
       }
+      const signatories = body.signatories === undefined ? undefined : checkSignatories(body.signatories);
+      if (signatories && !signatories.ok) throw new ApiProblem(422, 'CERTIFICATE_SIGNATORIES_INVALID', signatories.detail);
       const { user } = getAuth(request);
       const values = {
         enabled: body.enabled,
@@ -191,13 +207,14 @@ export const certificateRoutes: FastifyPluginAsync = async (app) => {
           // The row lock serializes saves (and issuance reads it with a share lock); the version rejects stale edits.
           const before = await loadCertificatePolicy(tx, access.course.id, 'update');
           if ((before?.version ?? 0) !== body.expectedVersion) throw policyConflict();
+          const saving = { ...values, signatories: signatories ? signatories.signatories : (before?.signatories ?? []) };
           const [row] = before
             ? await tx
                 .update(courseCertificatePolicies)
-                .set({ ...values, version: sql`${courseCertificatePolicies.version} + 1` })
+                .set({ ...saving, version: sql`${courseCertificatePolicies.version} + 1` })
                 .where(eq(courseCertificatePolicies.courseId, access.course.id))
                 .returning()
-            : await tx.insert(courseCertificatePolicies).values({ courseId: access.course.id, ...values }).onConflictDoNothing().returning();
+            : await tx.insert(courseCertificatePolicies).values({ courseId: access.course.id, ...saving }).onConflictDoNothing().returning();
           if (!row) throw policyConflict();
           await recordAudit(tx, request, {
             action: 'certificate_policy.updated',
@@ -523,6 +540,8 @@ export const certificateRoutes: FastifyPluginAsync = async (app) => {
         courseTitle: certificate.courseTitle,
         academicPeriod: `${certificate.termName} (${certificate.academicYear})`,
         issuerName: certificate.issuerName,
+        // AP-043: only the printed names and titles saved at issue time (no account or contact details).
+        signatories: snapshotSignatories(certificate.policySnapshot),
         issuedAt: certificate.issuedAt,
         revokedAt: certificate.revokedAt,
       };

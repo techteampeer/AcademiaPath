@@ -1827,6 +1827,12 @@ export interface paths {
          *     minimum grade needs a final grade (`422 CERTIFICATE_POLICY_INVALID`). `expectedVersion` is the version
          *     the edit was based on (0 when none exists; otherwise `409 CERTIFICATE_POLICY_CONFLICT`). Certificates
          *     already issued keep the policy version they were issued under. Audited as `certificate_policy.updated`.
+         *
+         *     AP-043: `signatories` (optional, 0–3, in print order) replaces the saved list; when it is left out the
+         *     saved signatories are kept. Names and titles are tidied (spacing collapsed, trimmed) and must print
+         *     exactly on the certificate (Latin letters, including Spanish accents); each person appears once
+         *     (case, accents and spacing ignored). Otherwise `422 CERTIFICATE_SIGNATORIES_INVALID`. Signatories are
+         *     printed names and titles only: no handwritten, scanned, electronic or cryptographic signature.
          */
         put: operations["saveCertificatePolicy"];
         post?: never;
@@ -4704,7 +4710,20 @@ export interface components {
             /** @description The issuing institution printed on certificates (for example "AcademiaPath"). */
             issuerName: string;
         };
+        /**
+         * @description AP-043. A person whose printed name and official title appear on certificates, under a signature line.
+         *     Text only: not linked to a user account, and no electronic or cryptographic signature is produced.
+         */
+        CertificateSignatory: {
+            /** @description Full printed name (for example "María Fernanda Quispe Huamán"). */
+            name: string;
+            /** @description Official title (for example "Decana de la Facultad de Ingeniería"). */
+            title: string;
+        };
+        /** @description AP-043. Up to three signatories, in print order (left to right). Empty when there are none. */
+        CertificateSignatories: components["schemas"]["CertificateSignatory"][];
         CertificatePolicy: components["schemas"]["CertificatePolicyRules"] & {
+            signatories: components["schemas"]["CertificateSignatories"];
             configured: boolean;
             version: number;
             /** Format: date-time */
@@ -4712,6 +4731,8 @@ export interface components {
         };
         CertificatePolicyInput: components["schemas"]["CertificatePolicyRules"] & {
             expectedVersion: number;
+            /** @description Optional; when left out, the saved signatories are kept. */
+            signatories?: components["schemas"]["CertificateSignatories"];
         };
         CertificateRequirement: {
             /** @enum {string} */
@@ -4768,6 +4789,8 @@ export interface components {
             termName: string;
             academicYear: number;
             issuerName: string;
+            /** @description The signatories saved when the certificate was issued (empty for certificates issued before AP-043), never the current policy's. */
+            signatories: components["schemas"]["CertificateSignatories"];
             /** Format: date-time */
             issuedAt: string;
             policyVersion: number;
@@ -4840,6 +4863,8 @@ export interface components {
             courseTitle: string;
             academicPeriod: string;
             issuerName: string;
+            /** @description AP-043. The printed names and titles saved at issue time (empty before AP-043); nothing else about them. */
+            signatories: components["schemas"]["CertificateSignatories"];
             /** Format: date-time */
             issuedAt: string;
             /** Format: date-time */
