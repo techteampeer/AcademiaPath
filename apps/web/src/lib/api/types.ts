@@ -8,6 +8,7 @@ type Schemas = components['schemas'];
 
 export type ProblemDetails = Schemas['ProblemDetails'];
 export type CurrentUser = Schemas['CurrentUser'];
+export type CourseEmailRecipients = Schemas['CourseEmailRecipients'];
 export type LoginRequest = Schemas['LoginRequest'];
 export type LoginResponse = Schemas['LoginResponse'];
 export type MeResponse = Schemas['MeResponse'];
