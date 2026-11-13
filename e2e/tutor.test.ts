@@ -69,7 +69,7 @@ describe('guided demo tutor (AP-030D)', () => {
     await ready(page);
     assert.equal(await page.locator('main h1').innerText(), EN.heading);
     await page.getByText(EN.badge, { exact: true }).waitFor();
-    assert.match(await turns(page).first().innerText(), /guided demo tutor for ITIL 4 Foundation/);
+    assert.match(await turns(page).first().innerText(), /guided study assistant for ITIL 4 Foundation\b.*no generative AI model is used/);
     for (const action of ['review', 'summarize', 'practice', 'next', 'material', 'quiz_prep'] as const) {
       assert.equal(await chip(page, EN.actions[action]).isVisible(), true, action);
     }

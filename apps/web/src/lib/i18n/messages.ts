@@ -50,8 +50,7 @@ const en = {
     unavailable: 'Not available in this version',
     language: 'Language',
     skipToContent: 'Skip to main content',
-    devPreview: 'Development preview',
-    footer: 'AcademiaPath · Development preview · Synthetic data only',
+    footer: 'AcademiaPath · Learning management system',
     breadcrumb: 'Breadcrumb',
     openMenu: 'Open navigation menu',
     closeMenu: 'Close navigation menu',
@@ -503,7 +502,6 @@ const en = {
     goToSignIn: 'Go to sign in',
     rateLimited: 'Too many attempts. Please wait a few minutes and try again.',
     failed: 'Activation failed. Check your connection and try again.',
-    demoNote: 'Development preview: activation links are only issued for synthetic demonstration accounts.',
   },
 };
 
@@ -530,8 +528,7 @@ const es: Messages = {
     unavailable: 'No disponible en esta versión',
     language: 'Idioma',
     skipToContent: 'Saltar al contenido principal',
-    devPreview: 'Versión de desarrollo',
-    footer: 'AcademiaPath · Versión de desarrollo · Solo datos sintéticos',
+    footer: 'AcademiaPath · Sistema de gestión del aprendizaje',
     breadcrumb: 'Ruta de navegación',
     openMenu: 'Abrir menú de navegación',
     closeMenu: 'Cerrar menú de navegación',
@@ -983,7 +980,6 @@ const es: Messages = {
     goToSignIn: 'Ir a iniciar sesión',
     rateLimited: 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.',
     failed: 'La activación falló. Revisa tu conexión e inténtalo de nuevo.',
-    demoNote: 'Versión de desarrollo: los enlaces de activación solo se emiten para cuentas de demostración sintéticas.',
   },
 };
 

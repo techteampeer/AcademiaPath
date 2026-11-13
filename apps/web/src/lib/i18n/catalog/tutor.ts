@@ -4,7 +4,7 @@
  */
 const en = {
   heading: 'Guided tutor',
-  badge: 'Guided demo — not live AI',
+  badge: 'Guided study assistant — rule-based, no generative AI',
   note: 'This tutor answers only from this course’s approved lessons and documents, quoting them exactly, and labels any general study tip. It follows fixed rules: no language model or external service is used, and nothing you type is stored.',
   loading: 'Loading tutor…',
   unavailable: 'The tutor is not available to you in this course.',
@@ -58,7 +58,7 @@ export type TutorMessages = typeof en;
 
 const es: TutorMessages = {
   heading: 'Tutor guiado',
-  badge: 'Demostración guiada — no es IA en vivo',
+  badge: 'Asistente de estudio guiado — basado en reglas, sin IA generativa',
   note: 'Este tutor responde solo con las lecciones y documentos aprobados de este curso, citándolos tal cual, e identifica cualquier consejo de estudio general. Sigue reglas fijas: no usa un modelo de lenguaje ni servicios externos, y no guarda nada de lo que escribes.',
   loading: 'Cargando tutor…',
   unavailable: 'El tutor no está disponible para ti en este curso.',

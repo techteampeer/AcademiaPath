@@ -51,7 +51,6 @@ export function Header() {
           <span className="hidden font-serif text-xl font-semibold tracking-wide text-ivory min-[440px]:inline">AcademiaPath</span>
         </Link>
         <div className="flex items-center gap-1.5 sm:gap-3">
-          <span className="hidden rounded-full border border-gold-400/60 px-2.5 py-0.5 text-xs font-medium text-gold-200 xl:block">{t.common.devPreview}</span>
           <LanguageSwitcher />
           <NotificationBell />
           <SessionControls />

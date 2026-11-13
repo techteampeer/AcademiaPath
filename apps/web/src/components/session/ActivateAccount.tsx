@@ -156,7 +156,6 @@ export function ActivateAccount() {
           {pending ? t.activation.submitting : t.activation.submit}
         </Button>
       </form>
-      <p className="text-xs text-slate-500">{t.activation.demoNote}</p>
     </Card>,
   );
 }

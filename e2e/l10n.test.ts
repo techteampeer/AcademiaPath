@@ -139,3 +139,25 @@ describe('interface language', () => {
     await page.context().close();
   });
 });
+
+describe('production presentation (AP-042)', () => {
+  const BRANDING = /Development preview|Versión de desarrollo|Synthetic data only|Solo datos sintéticos|Mock AI|IA simulada|demonstration|demostración/i;
+  it('login, header and footer carry no development branding, for all five roles, in English and Spanish', async () => {
+    for (const locale of ['en', 'es'] as const) {
+      const footerText = MESSAGES[locale].common.footer;
+      const login = await open(locale, null, '/login');
+      const loginText = await login.locator('body').innerText();
+      assert.ok(loginText.includes(footerText), `${locale} login shows the institutional line`);
+      assert.doesNotMatch(loginText, BRANDING, `${locale} login`);
+      await login.context().close();
+      for (const role of ['admin', 'instructor', 'reviewer', 'ta', 'student'] as const) {
+        const page = await open(locale, role, '/dashboard');
+        const header = await page.locator('header').first().innerText();
+        const footer = await page.locator('footer').first().innerText();
+        assert.ok(footer.includes(footerText), `${locale} ${role} footer`);
+        assert.doesNotMatch(`${header}\n${footer}`, BRANDING, `${locale} ${role} header and footer`);
+        await page.context().close();
+      }
+    }
+  });
+});
