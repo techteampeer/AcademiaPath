@@ -3,6 +3,7 @@ import type { CourseAccess } from '../auth/authorization.js';
 import type { Database } from '../db/client.js';
 import { activities, courseDocuments, documentSummaries, quizQuestions, sectionPrerequisites, sections } from '../db/schema/index.js';
 import { readDocumentConfig } from '../documents/model.js';
+import { ApiProblem } from '../http/errors.js';
 import { CONTENT_TYPES } from '../routes/activity-schemas.js';
 import {
   checkActivity,
@@ -17,16 +18,26 @@ import {
 
 type Executor = Pick<Database, 'select'>;
 
-/** Upper bound of activities inspected in one course report (far above real courses); see `limited`. */
+/**
+ * Most activities one course report inspects (far above real courses). A larger course gets an explicit
+ * QUALITY_REPORT_TOO_LARGE refusal, never a partial report: a partial one could read as "no issues" and its
+ * course-level findings (empty sections, prerequisites) would be wrong. Activity reports, and the submit and approve
+ * guards that use them, always inspect their one activity in full whatever the course size.
+ */
 export const QUALITY_ACTIVITY_LIMIT = 1000;
+
+export const reportTooLarge = () =>
+  new ApiProblem(
+    422,
+    'QUALITY_REPORT_TOO_LARGE',
+    `This course has more than ${QUALITY_ACTIVITY_LIMIT} activities, too many to check in one course report. Check activities one at a time from their pages; submitting and approving still check each activity in full.`,
+  );
 
 export type QualityReport = {
   courseId: string;
   scope: 'course' | 'activity';
   activityId: string | null;
   checkedAt: string;
-  /** True when the course has more activities than one report inspects. */
-  limited: boolean;
   summary: { blocking: number; warnings: number; sections: number; activities: number; questions: number };
   /** Authored titles, so findings can be labelled and linked without further requests. */
   sections: Array<{ id: string; title: string; position: number; isVisible: boolean }>;
@@ -69,8 +80,9 @@ export async function buildQualityReport(executor: Executor, access: CourseAcces
     )
     .orderBy(asc(sections.position), asc(sections.id), asc(activities.position), asc(activities.id))
     .limit(scopedToActivity ? 1 : QUALITY_ACTIVITY_LIMIT + 1);
-  const limited = activityRows.length > QUALITY_ACTIVITY_LIMIT;
-  const inspected: ActivityInput[] = activityRows.slice(0, QUALITY_ACTIVITY_LIMIT).map((row) => ({
+  // One row past the limit is enough to know the course is too large: refuse instead of reporting on a part of it.
+  if (!scopedToActivity && activityRows.length > QUALITY_ACTIVITY_LIMIT) throw reportTooLarge();
+  const inspected: ActivityInput[] = activityRows.map((row) => ({
     id: row.id,
     sectionId: row.sectionId,
     type: row.type as ActivityInput['type'],
@@ -124,7 +136,7 @@ export async function buildQualityReport(executor: Executor, access: CourseAcces
   // In-app links are checked against the course's activities: the loaded set for a course report, otherwise a
   // single lookup of just the ids the activity's texts mention.
   let courseActivityIds: Set<string>;
-  if (!scopedToActivity && !limited) {
+  if (!scopedToActivity) {
     courseActivityIds = new Set(inspected.map((activity) => activity.id));
   } else {
     const mentioned = [...new Set(inspected.flatMap((activity) => linkedTexts(activity).flatMap((text) => internalLinks(text).map((link) => link.activityId))))];
@@ -169,7 +181,6 @@ export async function buildQualityReport(executor: Executor, access: CourseAcces
     scope: scopedToActivity ? 'activity' : 'course',
     activityId: activityId ?? null,
     checkedAt: now.toISOString(),
-    limited,
     summary: {
       blocking: findings.filter((finding) => finding.severity === 'blocking').length,
       warnings: findings.filter((finding) => finding.severity === 'warning').length,

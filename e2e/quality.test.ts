@@ -160,12 +160,38 @@ describe('content quality checks (AP-029)', () => {
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ courseId, scope: 'course', activityId: null, checkedAt: new Date().toISOString(), limited: false, summary: { blocking: 0, warnings: 0, sections: 0, activities: 0, questions: 0 }, sections: [], activities: [], findings: [] }),
+        body: JSON.stringify({ courseId, scope: 'course', activityId: null, checkedAt: new Date().toISOString(), summary: { blocking: 0, warnings: 0, sections: 0, activities: 0, questions: 0 }, sections: [], activities: [], findings: [] }),
       }),
     );
     await runButton(page).click();
     await card(page).getByText(MESSAGES.en.quality.nothingToCheck).waitFor();
     await page.context().close();
+  });
+
+  it('a course too large for one report gets an actionable message, never a partial "no issues" result', async () => {
+    const detail =
+      'This course has more than 1000 activities, too many to check in one course report. Check activities one at a time from their pages; submitting and approving still check each activity in full.';
+    for (const locale of ['en', 'es'] as const) {
+      const page = await open('instructor', `/courses/${courseId}`, locale);
+      // A first, complete check (the demo course is small) …
+      await runButton(page).click();
+      await card(page).locator('[data-quality-report]').waitFor();
+      // … then the course grows beyond what one report covers: the API refuses (the real response shape).
+      await page.route('**/api/v1/courses/*/quality', (route) =>
+        route.fulfill({ status: 422, contentType: 'application/problem+json', body: JSON.stringify({ type: 'about:blank', title: 'Unprocessable Entity', status: 422, detail, code: 'QUALITY_REPORT_TOO_LARGE' }) }),
+      );
+      await runButton(page).click();
+      const alert = card(page).getByRole('alert');
+      await alert.waitFor();
+      const text = await alert.innerText();
+      assert.ok(text.startsWith(MESSAGES[locale].quality.failed), text);
+      // English shows the API's plain-language detail; Spanish the catalog's description of the code.
+      assert.ok(text.includes(locale === 'en' ? detail : MESSAGES.es.errors.codes.QUALITY_REPORT_TOO_LARGE), text);
+      // No earlier result is left on screen that could read as "no issues".
+      assert.equal(await card(page).locator('[data-quality-report], [data-quality-clear]').count(), 0);
+      assert.deepEqual(await leaks(page, locale), []);
+      await page.context().close();
+    }
   });
 
   it('works at phone width without horizontal scrolling', async () => {

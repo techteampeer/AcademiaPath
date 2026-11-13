@@ -33,14 +33,13 @@ const findingSchema = {
 
 export const qualityReportSchema = {
   type: 'object',
-  required: ['courseId', 'scope', 'activityId', 'checkedAt', 'limited', 'summary', 'sections', 'activities', 'findings'],
+  required: ['courseId', 'scope', 'activityId', 'checkedAt', 'summary', 'sections', 'activities', 'findings'],
   additionalProperties: false,
   properties: {
     courseId: uuid,
     scope: { type: 'string', enum: ['course', 'activity'] },
     activityId: nullableUuid,
     checkedAt: { type: 'string', format: 'date-time' },
-    limited: { type: 'boolean' },
     summary: {
       type: 'object',
       required: ['blocking', 'warnings', 'sections', 'activities', 'questions'],

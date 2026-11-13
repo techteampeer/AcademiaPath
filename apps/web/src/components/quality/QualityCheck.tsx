@@ -135,7 +135,6 @@ function Results({ report, stale, courseId, activityScope }: { report: QualityRe
         {activityScope ? null : `${q.scope(report.summary.sections, report.summary.activities)} · `}
         {q.checkedAt(formatDateTime(report.checkedAt, locale))}
       </p>
-      {report.limited ? <Alert tone="info">{q.limited}</Alert> : null}
       {blocking.length ? <FindingGroup kind="blocking" findings={blocking} report={report} courseId={courseId} activityScope={activityScope} /> : null}
       {warnings.length ? <FindingGroup kind="warning" findings={warnings} report={report} courseId={courseId} activityScope={activityScope} /> : null}
     </div>

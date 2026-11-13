@@ -2249,6 +2249,10 @@ paths:
         correction guidance from the code. `blocking` findings are states the editors already refuse to save, or
         broken references; content with a blocking finding cannot be submitted or approved
         (`QUALITY_CHECK_BLOCKED`). `warning` findings never block anything.
+
+        A course with more than 1000 activities is refused with 422 `QUALITY_REPORT_TOO_LARGE` instead of
+        returning a partial report (which could read as "no issues"). Check its activities one at a time; the
+        activity report and the submit and approve guards always inspect their activity in full.
       tags:
         - Content
       security:
@@ -2257,7 +2261,7 @@ paths:
         - $ref: "#/components/parameters/CourseId"
       responses:
         "200":
-          description: The course's quality report.
+          description: The course's quality report (always complete).
           content:
             application/json:
               schema:
@@ -2270,6 +2274,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
   /api/v1/courses/{id}/activities/{activityId}/quality:
     get:
       operationId: getActivityQualityReport
@@ -6188,7 +6194,8 @@ components:
         `TEMPLATE_VERSION_NOT_FOUND`, `TEMPLATE_PROGRAM_MISMATCH`, `USER_NOT_FOUND`, `USER_INACTIVE`,
         `INVALID_URL`, `CONTENT_TYPE_MISMATCH`, `REVIEW_COMMENT_REQUIRED`, `QUIZ_HAS_NO_QUESTIONS`,
         `INVALID_ANSWER_KEY`, `INVALID_ANSWER`, `INVALID_DUE_DATE`, `INVALID_RUBRIC_SCORES` or
-        `QUALITY_CHECK_BLOCKED` (content with a blocking quality finding is neither submitted nor approved); or a refused
+        `QUALITY_CHECK_BLOCKED` (content with a blocking quality finding is neither submitted nor approved) or
+        `QUALITY_REPORT_TOO_LARGE` (a course too large for one quality report); or a refused
         document upload: `FILE_SIGNATURE_MISMATCH` (content does not match the extension),
         `DOCUMENT_ENCRYPTED`, `DOCUMENT_MALFORMED`, `DOCUMENT_LIMITS_EXCEEDED` (decompressed size,
         processing time or memory) or `MALWARE_DETECTED`; or an account or enrollment rule:
@@ -6384,6 +6391,7 @@ components:
             - REVIEW_COMMENT_REQUIRED
             - QUIZ_HAS_NO_QUESTIONS
             - QUALITY_CHECK_BLOCKED
+            - QUALITY_REPORT_TOO_LARGE
             - QUIZ_QUESTION_LIMIT
             - INVALID_ANSWER_KEY
             - INVALID_ANSWER
@@ -7705,7 +7713,7 @@ components:
     QualityReport:
       type: object
       additionalProperties: false
-      required: [courseId, scope, activityId, checkedAt, limited, summary, sections, activities, findings]
+      required: [courseId, scope, activityId, checkedAt, summary, sections, activities, findings]
       properties:
         courseId:
           type: string
@@ -7719,9 +7727,6 @@ components:
         checkedAt:
           type: string
           format: date-time
-        limited:
-          type: boolean
-          description: True when the course has more activities than one report inspects (1000).
         summary:
           type: object
           additionalProperties: false

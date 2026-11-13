@@ -37,7 +37,6 @@ type Report = {
   scope: string;
   activityId: string | null;
   checkedAt: string;
-  limited: boolean;
   summary: { blocking: number; warnings: number; sections: number; activities: number; questions: number };
   sections: Array<{ id: string; title: string }>;
   activities: Array<{ id: string; title: string; reviewStatus: string }>;
@@ -140,7 +139,8 @@ describe('content quality checks (PostgreSQL, demo dataset)', { skip: testServer
       assert.ok((QUALITY_CODES as readonly string[]).includes(finding.code));
       assert.equal(finding.severity, severityOf(finding.code as (typeof QUALITY_CODES)[number]));
     }
-    assert.deepEqual([full.scope, full.courseId, full.limited], ['course', C(), false]);
+    assert.deepEqual([full.scope, full.courseId], ['course', C()]);
+    assert.ok(!('limited' in full), 'reports are complete or refused, never partial');
     assert.ok(full.activities.some((activity) => activity.id === lesson.id) && full.sections.some((section) => section.id === ids.section));
   });
 
