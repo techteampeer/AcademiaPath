@@ -96,6 +96,7 @@ describe('database migrations (PostgreSQL)', { skip: testServerUrl ? false : 'TE
         'assignment_criterion_scores',
         'assignment_submissions',
         'audit_log',
+        'calendar_event_units',
         'calendar_events',
         'conversation_reads',
         'conversations',

@@ -99,6 +99,7 @@ export type AnnouncementStatus = Announcement['status'];
 export type UnreadCount = Schemas['UnreadCount'];
 export type CalendarEvent = Schemas['CalendarEvent'];
 export type CalendarEventInput = Schemas['CalendarEventInput'];
+export type TeachingSessionMode = Schemas['TeachingSessionMode'];
 export type CalendarEventList = Schemas['CalendarEventList'];
 export type CalendarDueDate = Schemas['CalendarDueDate'];
 export type Calendar = Schemas['Calendar'];

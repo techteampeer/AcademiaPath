@@ -91,6 +91,38 @@ export const unreadCountSchema = {
 
 // ---- Calendar ----
 
+const sessionModes = ['live_online', 'asynchronous', 'presentation'] as const;
+/** AP-045: teaching session details of a course event (the server checks the link, the units and the activity). */
+const sessionInput = {
+  type: ['object', 'null'],
+  required: ['number', 'deliveryMode'],
+  additionalProperties: false,
+  properties: {
+    number: { type: 'integer', minimum: 1, maximum: 999 },
+    deliveryMode: { type: 'string', enum: sessionModes },
+    joinUrl: { type: ['string', 'null'], maxLength: 2000 },
+    unitIds: { type: 'array', maxItems: 20, uniqueItems: true, items: uuid },
+    activityId: { type: ['string', 'null'], format: 'uuid' },
+  },
+} as const;
+const sessionView = {
+  type: ['object', 'null'],
+  required: ['number', 'deliveryMode', 'joinUrl', 'units', 'activity'],
+  additionalProperties: false,
+  properties: {
+    number: { type: 'integer' },
+    deliveryMode: { type: 'string', enum: sessionModes },
+    joinUrl: { type: ['string', 'null'] },
+    units: { type: 'array', items: { type: 'object', required: ['id', 'title'], additionalProperties: false, properties: { id: uuid, title: { type: 'string' } } } },
+    activity: {
+      type: ['object', 'null'],
+      required: ['id', 'title', 'type'],
+      additionalProperties: false,
+      properties: { id: uuid, title: { type: 'string' }, type: { type: 'string' } },
+    },
+  },
+} as const;
+
 const eventFields = {
   title,
   description: { type: ['string', 'null'], maxLength: 5000 },
@@ -101,6 +133,7 @@ const eventFields = {
   endDate: day,
   timeZone: { type: 'string', minLength: 1, maxLength: 64 },
   status: { type: 'string', enum: ['hidden', 'published'] },
+  session: sessionInput,
 } as const;
 
 /** Timed events send instants (with offsets); all-day events send dates. The server checks the rest. */
@@ -117,7 +150,7 @@ export const eventInputSchema = {
 
 export const eventSchema = {
   type: 'object',
-  required: ['id', 'scope', 'course', 'title', 'description', 'allDay', 'startsAt', 'endsAt', 'startDate', 'endDate', 'timeZone', 'status', 'publishedAt', 'cancelledAt', 'createdAt', 'updatedAt'],
+  required: ['id', 'scope', 'course', 'title', 'description', 'allDay', 'startsAt', 'endsAt', 'startDate', 'endDate', 'timeZone', 'status', 'publishedAt', 'cancelledAt', 'session', 'createdAt', 'updatedAt'],
   additionalProperties: false,
   properties: {
     id: uuid,
@@ -134,6 +167,7 @@ export const eventSchema = {
     status: { type: 'string', enum: ['hidden', 'published', 'cancelled'] },
     publishedAt: nullableDateTime,
     cancelledAt: nullableDateTime,
+    session: sessionView,
     createdAt: dateTime,
     updatedAt: dateTime,
   },
