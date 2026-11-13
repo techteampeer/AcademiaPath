@@ -9,9 +9,6 @@
  */
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { cp, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import type { LightMyRequestResponse } from 'fastify';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -21,7 +18,7 @@ import { hashPassword } from '../../src/auth/password.js';
 import { checkJoinUrl } from '../../src/calendar/sessions.js';
 import { loadConfig } from '../../src/config.js';
 import { userCredentials, users } from '../../src/db/schema/index.js';
-import { createTestDatabase, migrationsFolder, testServerUrl } from '../helpers/database.js';
+import { createTestDatabase, migrationsBefore, migrationsFolder, testServerUrl } from '../helpers/database.js';
 
 const PASSWORD = randomBytes(18).toString('base64url');
 const ORIGIN = 'http://localhost:3000';
@@ -291,21 +288,16 @@ describe('teaching sessions (PostgreSQL)', { skip: testServerUrl ? false : 'TEST
 
 describe('teaching session migration on existing calendar events (PostgreSQL)', { skip: testServerUrl ? false : 'TEST_DATABASE_URL not set' }, () => {
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
-  let before0034 = '';
+  let previous: Awaited<ReturnType<typeof migrationsBefore>> | undefined;
   const raw = async <T = Record<string, unknown>>(sql: string, params: unknown[] = []) => (await database.pool.query(sql, params)).rows as T[];
 
   before(async () => {
-    before0034 = await mkdtemp(path.join(tmpdir(), 'ap045-migrations-'));
-    for (const file of await readdir(migrationsFolder)) if (file.endsWith('.sql') && !file.startsWith('0034_')) await cp(path.join(migrationsFolder, file), path.join(before0034, file));
-    const journal = JSON.parse(await readFile(path.join(migrationsFolder, 'meta/_journal.json'), 'utf8')) as { entries: Array<{ tag: string }> };
-    journal.entries = journal.entries.filter((entry) => !entry.tag.startsWith('0034_'));
-    await cp(path.join(migrationsFolder, 'meta'), path.join(before0034, 'meta'), { recursive: true });
-    await writeFile(path.join(before0034, 'meta/_journal.json'), JSON.stringify(journal));
-    database = await createTestDatabase({ migrationsFolder: before0034 });
+    previous = await migrationsBefore('0035_hybrid_teaching_sessions');
+    database = await createTestDatabase({ migrationsFolder: previous.folder });
   });
   after(async () => {
     await database?.drop();
-    if (before0034) await rm(before0034, { recursive: true, force: true });
+    await previous?.cleanup();
   });
 
   it('migration 0034 keeps existing course and institution events unchanged and readable as ordinary events', async () => {

@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { cp, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
@@ -50,4 +53,22 @@ export async function createTestDatabase(options: { migrationsFolder?: string } 
     throw error;
   }
   return { ...database, drop, url: url.toString() };
+}
+
+/**
+ * A temporary copy of the migrations that come strictly before `tag` in the journal (for example everything before
+ * `0035_hybrid_teaching_sessions`), to build a database as it was before a migration and then apply the rest.
+ * Call `cleanup()` when done.
+ */
+export async function migrationsBefore(tag: string): Promise<{ folder: string; cleanup: () => Promise<void> }> {
+  const journal = JSON.parse(await readFile(path.join(migrationsFolder, 'meta/_journal.json'), 'utf8')) as { entries: Array<{ idx: number; tag: string }> };
+  const target = journal.entries.find((entry) => entry.tag === tag);
+  if (!target) throw new Error(`Unknown migration ${tag}`);
+  const kept = journal.entries.filter((entry) => entry.idx < target.idx);
+  const folder = await mkdtemp(path.join(tmpdir(), 'academiapath-migrations-'));
+  await cp(path.join(migrationsFolder, 'meta'), path.join(folder, 'meta'), { recursive: true });
+  await writeFile(path.join(folder, 'meta/_journal.json'), JSON.stringify({ ...journal, entries: kept }));
+  const files = new Set(kept.map((entry) => `${entry.tag}.sql`));
+  for (const file of await readdir(migrationsFolder)) if (files.has(file)) await cp(path.join(migrationsFolder, file), path.join(folder, file));
+  return { folder, cleanup: () => rm(folder, { recursive: true, force: true }) };
 }

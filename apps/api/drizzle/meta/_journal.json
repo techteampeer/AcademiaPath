@@ -246,6 +246,13 @@
       "when": 1794597300895,
       "tag": "0034_certificate_signatories",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1794603527728,
+      "tag": "0035_hybrid_teaching_sessions",
+      "breakpoints": true
     }
   ]
 }
