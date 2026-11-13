@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { contentAbilities } from '@/components/content/contentDisplay';
 import { useLocale } from '@/components/i18n/LocaleProvider';
 import { lessonHref, SectionActivities } from '@/components/content/SectionActivities';
+import { QualityCheck } from '@/components/quality/QualityCheck';
 import { DocumentLibrary } from '@/components/documents/DocumentLibrary';
 import { LockedNotice, ProgressBar } from '@/components/progress/ProgressDisplay';
 import { RequireAuth } from '@/components/session/RequireAuth';
@@ -256,6 +257,9 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
         </Card>
       ) : null}
 
+      {/* AP-029: authors and reviewers check the course's working copies; the API enforces the same rule. */}
+      {abilities.edit || abilities.review ? <QualityCheck courseId={course.id} version={activities} /> : null}
+
       <DocumentLibrary courseId={course.id} sections={sections} activities={activities} abilities={abilities} onUploaded={refreshActivities} />
 
       <section aria-labelledby="sections-heading">
@@ -269,7 +273,7 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
             {sections.map((section, index) => {
               const mine = sectionProgress.get(section.id);
               return (
-                <Card as="li" key={section.id} data-section-locked={mine?.locked ? 'true' : undefined}>
+                <Card as="li" key={section.id} id={`section-${section.id}`} className="scroll-mt-24" data-section-locked={mine?.locked ? 'true' : undefined}>
                   <div className="flex items-start justify-between gap-3">
                     <h3 className="font-semibold text-slate-900">
                       <span className="mr-2 text-slate-500">{index + 1}.</span>

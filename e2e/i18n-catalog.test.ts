@@ -7,6 +7,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { defaultTermName, localizeTermName, MESSAGES } from '../apps/web/src/lib/i18n/messages.ts';
+import { QUALITY_CODES } from '../apps/api/src/quality/rules.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
@@ -101,6 +102,28 @@ function hardcodedText(webSrc: string): string[] {
 describe('interface text in components', () => {
   it('no interface text is hardcoded outside the catalogs', () => {
     assert.deepEqual(hardcodedText(path.join(ROOT, 'apps/web/src')), [], 'move these texts to apps/web/src/lib/i18n (EN and ES)');
+  });
+});
+
+describe('content quality findings (AP-029)', () => {
+  it('every quality code the API can report has an English and a Spanish description and correction guidance', () => {
+    for (const locale of ['en', 'es'] as const) {
+      const issues = MESSAGES[locale].quality.issues as Record<string, { title: (value: string) => string; fix: string }>;
+      assert.deepEqual(Object.keys(issues).sort(), [...QUALITY_CODES].sort(), `${locale}: catalog codes match the API`);
+      for (const code of QUALITY_CODES) {
+        const issue = issues[code]!;
+        assert.ok(issue.title('sample').trim().length > 10 && issue.fix.trim().length > 10, `${locale} ${code}`);
+      }
+    }
+  });
+
+  it('English and Spanish descriptions differ and authored values are shown unchanged', () => {
+    for (const code of QUALITY_CODES) {
+      assert.notEqual(MESSAGES.en.quality.issues[code].title('x'), MESSAGES.es.quality.issues[code].title('x'), code);
+      assert.notEqual(MESSAGES.en.quality.issues[code].fix, MESSAGES.es.quality.issues[code].fix, code);
+    }
+    assert.match(MESSAGES.es.quality.issues.PLACEHOLDER_TEXT.title('TODO revisar'), /«TODO revisar»/);
+    assert.match(MESSAGES.en.quality.issues.LINK_URL_INVALID.title('javascript:alert(1)'), /javascript:alert\(1\)$/);
   });
 });
 

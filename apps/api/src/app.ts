@@ -7,6 +7,7 @@ import type { Database } from './db/client.js';
 import { registerErrorHandling } from './http/errors.js';
 import { academicRoutes } from './routes/academic.js';
 import { activityRoutes } from './routes/activities.js';
+import { qualityRoutes } from './routes/quality.js';
 import { authRoutes } from './routes/auth.js';
 import { courseRoutes } from './routes/courses.js';
 import { documentRoutes, type DocumentRouteOptions } from './routes/documents.js';
@@ -94,6 +95,7 @@ export function buildApp({ config, database, logger = false, documents = {}, clo
   app.register(programManagerRoutes, { prefix: API_PREFIX });
   app.register(userRoutes, { prefix: API_PREFIX });
   app.register(activityRoutes, { prefix: API_PREFIX });
+  app.register(qualityRoutes, { prefix: API_PREFIX });
   app.register(quizRoutes, { prefix: API_PREFIX });
   app.register(gradingRoutes, { prefix: API_PREFIX });
   app.register(gradebookRoutes, { prefix: API_PREFIX });

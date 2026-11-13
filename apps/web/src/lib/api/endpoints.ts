@@ -2,6 +2,7 @@ import { API_BASE, ApiError, apiRequest, apiUpload } from './client';
 import type {
   AccountInvitation,
   Activity,
+  QualityReport,
   ActivationPreview,
   ActivityCreate,
   AssignmentGradeInput,
@@ -256,6 +257,9 @@ export const api = {
   createActivity: (courseId: string, sectionId: string, body: ActivityCreate, csrfToken: string) =>
     apiRequest<Activity>('POST', sectionActivities(courseId, sectionId), { body, csrfToken }),
   getActivity: (courseId: string, activityId: string) => apiRequest<Activity>('GET', activity(courseId, activityId)),
+  /** AP-029: content quality report of the whole course, or of one activity (read-only, computed on demand). */
+  courseQuality: (courseId: string) => apiRequest<QualityReport>('GET', `${course(courseId)}/quality`),
+  activityQuality: (courseId: string, activityId: string) => apiRequest<QualityReport>('GET', `${activity(courseId, activityId)}/quality`),
   updateActivity: (courseId: string, activityId: string, body: ActivityUpdate, csrfToken: string) =>
     apiRequest<Activity>('PUT', activity(courseId, activityId), { body, csrfToken }),
   submitActivity: (courseId: string, activityId: string, csrfToken: string) =>

@@ -23,6 +23,7 @@ import { QuizQuestionsPanel, QuizResultsPanel } from '@/components/quizzes/QuizS
 import { QuizStudentPanel } from '@/components/quizzes/QuizStudentPanel';
 import { DocumentPanel } from '@/components/documents/DocumentPanel';
 import { CompletionControl } from '@/components/progress/ProgressDisplay';
+import { QualityCheck } from '@/components/quality/QualityCheck';
 import { ActivityForm } from './ActivityForm';
 import { contentAbilities, ReviewStatusBadge, safeHttpUrl, type ContentAbilities } from './contentDisplay';
 
@@ -71,6 +72,8 @@ function LessonContent({ courseId, activityId, user }: { courseId: string; activ
   const { t } = useLocale();
   const v = t.content.view;
   const [state, setState] = useState<ViewState>({ status: 'loading' });
+  // AP-029: incremented when the API refuses a submission or approval for blocking quality findings.
+  const [qualitySignal, setQualitySignal] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -146,7 +149,11 @@ function LessonContent({ courseId, activityId, user }: { courseId: string; activ
           user={user}
           abilities={abilities}
           onChanged={(updated) => setState({ status: 'ready', course, activity: updated })}
+          onQualityBlocked={() => setQualitySignal((n) => n + 1)}
         />
+      ) : null}
+      {activity.review && (abilities.edit || abilities.review) ? (
+        <QualityCheck courseId={courseId} activityId={activity.id} version={activity} runSignal={qualitySignal} />
       ) : null}
 
       {activity.type === 'file' ? (
@@ -226,12 +233,14 @@ function StaffPanel({
   user,
   abilities,
   onChanged,
+  onQualityBlocked,
 }: {
   courseId: string;
   activity: Activity;
   user: CurrentUser;
   abilities: ContentAbilities;
   onChanged: (activity: Activity) => void;
+  onQualityBlocked: () => void;
 }) {
   const review = activity.review!;
   const { t } = useLocale();
@@ -261,8 +270,20 @@ function StaffPanel({
     return updated !== null;
   };
 
+  /** A refusal for blocking quality findings also runs the activity's quality check, so the issues are listed. */
+  const showingQualityIssues =
+    <T,>(action: (csrf: string) => Promise<T>) =>
+    async (csrf: string) => {
+      try {
+        return await action(csrf);
+      } catch (error) {
+        if (isApiError(error) && error.code === 'QUALITY_CHECK_BLOCKED') onQualityBlocked();
+        throw error;
+      }
+    };
+
   const submit = async () => {
-    const updated = await run((csrf) => api.submitActivity(courseId, activity.id, csrf), () => r.submitted);
+    const updated = await run(showingQualityIssues((csrf) => api.submitActivity(courseId, activity.id, csrf)), () => r.submitted);
     if (updated) onChanged(updated);
   };
 
@@ -274,7 +295,7 @@ function StaffPanel({
     }
     setCommentError(null);
     const updated = await run(
-      (csrf) => api.reviewActivity(courseId, activity.id, { decision, ...(trimmed ? { comment: trimmed } : {}) }, csrf),
+      showingQualityIssues((csrf) => api.reviewActivity(courseId, activity.id, { decision, ...(trimmed ? { comment: trimmed } : {}) }, csrf)),
       () => (decision === 'approve' ? r.approved : r.returned),
     );
     if (updated) {

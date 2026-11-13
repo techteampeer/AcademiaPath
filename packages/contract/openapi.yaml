@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.21.0
+  version: 0.22.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -2161,7 +2161,11 @@ paths:
     post:
       operationId: submitActivityForReview
       summary: Submit draft or returned content for review
-      description: Requires `content.submit` (instructor, design team) or the administrator role. Send no request body. Audited as `activity.submitted`.
+      description: |
+        Requires `content.submit` (instructor, design team) or the administrator role. Send no request body.
+        Refused with 422 when a quiz has no questions or an invalid question pool, or when the activity has a
+        blocking quality finding (`QUALITY_CHECK_BLOCKED`; see the activity quality report). Audited as
+        `activity.submitted`.
       tags:
         - Content
       security:
@@ -2185,6 +2189,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
   /api/v1/courses/{id}/activities/{activityId}/review:
     post:
       operationId: reviewActivity
@@ -2193,7 +2199,8 @@ paths:
         Requires `content.review` (design team) or the administrator role; instructors cannot
         approve. The person who submitted the content cannot approve it
         (`SELF_REVIEW_NOT_ALLOWED`). Approving publishes the working copy as the live version;
-        returning requires a `comment`. Audited as `activity.approved` or `activity.returned`.
+        returning requires a `comment`. Content with a blocking quality finding cannot be approved
+        (`QUALITY_CHECK_BLOCKED`); it can still be returned. Audited as `activity.approved` or `activity.returned`.
       tags:
         - Content
       security:
@@ -2227,6 +2234,77 @@ paths:
           $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/quality:
+    get:
+      operationId: getCourseQualityReport
+      summary: Check the content quality of a course (AP-029)
+      description: |
+        Inspects the course's working copies (what would be submitted and approved) and returns a structured
+        report, computed on demand and never stored. Requires `content.edit` (instructor, design team) or
+        `content.review` (design team), or the administrator role: non-editing instructors and students get 403,
+        anyone outside the course 404. Read-only; URLs are only parsed (never fetched), documents are never
+        reprocessed, and answer keys are never returned.
+
+        Each finding has a stable `code`, a `severity` and its location; interfaces word the description and the
+        correction guidance from the code. `blocking` findings are states the editors already refuse to save, or
+        broken references; content with a blocking finding cannot be submitted or approved
+        (`QUALITY_CHECK_BLOCKED`). `warning` findings never block anything.
+
+        A course with more than 1000 activities is refused with 422 `QUALITY_REPORT_TOO_LARGE` instead of
+        returning a partial report (which could read as "no issues"). Check its activities one at a time; the
+        activity report and the submit and approve guards always inspect their activity in full.
+      tags:
+        - Content
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: The course's quality report (always complete).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QualityReport"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/activities/{activityId}/quality:
+    get:
+      operationId: getActivityQualityReport
+      summary: Check the content quality of one activity (AP-029)
+      description: |
+        The activity-level findings of one activity's working copy (the same rules the submit and approve
+        guards apply). Same permissions as the course report; 404 for activities outside the course.
+      tags:
+        - Content
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200":
+          description: The activity's quality report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QualityReport"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/courses/{id}/sections/{sectionId}/documents:
     post:
       operationId: uploadSectionDocument
@@ -6115,7 +6193,9 @@ components:
         `PROGRAM_NOT_FOUND`, `PROGRAM_INACTIVE`, `TERM_NOT_FOUND`, `TEMPLATE_NOT_FOUND`,
         `TEMPLATE_VERSION_NOT_FOUND`, `TEMPLATE_PROGRAM_MISMATCH`, `USER_NOT_FOUND`, `USER_INACTIVE`,
         `INVALID_URL`, `CONTENT_TYPE_MISMATCH`, `REVIEW_COMMENT_REQUIRED`, `QUIZ_HAS_NO_QUESTIONS`,
-        `INVALID_ANSWER_KEY`, `INVALID_ANSWER`, `INVALID_DUE_DATE` or `INVALID_RUBRIC_SCORES`; or a refused
+        `INVALID_ANSWER_KEY`, `INVALID_ANSWER`, `INVALID_DUE_DATE`, `INVALID_RUBRIC_SCORES` or
+        `QUALITY_CHECK_BLOCKED` (content with a blocking quality finding is neither submitted nor approved) or
+        `QUALITY_REPORT_TOO_LARGE` (a course too large for one quality report); or a refused
         document upload: `FILE_SIGNATURE_MISMATCH` (content does not match the extension),
         `DOCUMENT_ENCRYPTED`, `DOCUMENT_MALFORMED`, `DOCUMENT_LIMITS_EXCEEDED` (decompressed size,
         processing time or memory) or `MALWARE_DETECTED`; or an account or enrollment rule:
@@ -6310,6 +6390,8 @@ components:
             - SELF_REVIEW_NOT_ALLOWED
             - REVIEW_COMMENT_REQUIRED
             - QUIZ_HAS_NO_QUESTIONS
+            - QUALITY_CHECK_BLOCKED
+            - QUALITY_REPORT_TOO_LARGE
             - QUIZ_QUESTION_LIMIT
             - INVALID_ANSWER_KEY
             - INVALID_ANSWER
@@ -7553,6 +7635,139 @@ components:
         approvedAt:
           type: string
           format: date-time
+    QualityIssueCode:
+      type: string
+      description: |
+        Stable code of a content quality finding (AP-029). Blocking: ACTIVITY_TITLE_EMPTY, PAGE_BODY_EMPTY,
+        LINK_URL_INVALID, QUIZ_NO_QUESTIONS, QUIZ_POOL_TOO_SMALL, QUIZ_POOL_POINTS_MIXED, QUIZ_QUESTION_PROMPT_EMPTY,
+        QUIZ_QUESTION_OPTIONS_INCOMPLETE, QUIZ_QUESTION_ANSWER_INVALID, QUIZ_QUESTION_POINTS_INVALID,
+        ASSIGNMENT_INSTRUCTIONS_EMPTY, ASSIGNMENT_RUBRIC_EMPTY, ASSIGNMENT_RUBRIC_CRITERION_INVALID,
+        ASSIGNMENT_DATES_INVALID, DOCUMENT_REFERENCE_INVALID. Every other code is a warning.
+      enum:
+        - ACTIVITY_TITLE_EMPTY
+        - PAGE_BODY_EMPTY
+        - LINK_URL_INVALID
+        - QUIZ_NO_QUESTIONS
+        - QUIZ_POOL_TOO_SMALL
+        - QUIZ_POOL_POINTS_MIXED
+        - QUIZ_QUESTION_PROMPT_EMPTY
+        - QUIZ_QUESTION_OPTIONS_INCOMPLETE
+        - QUIZ_QUESTION_ANSWER_INVALID
+        - QUIZ_QUESTION_POINTS_INVALID
+        - ASSIGNMENT_INSTRUCTIONS_EMPTY
+        - ASSIGNMENT_RUBRIC_EMPTY
+        - ASSIGNMENT_RUBRIC_CRITERION_INVALID
+        - ASSIGNMENT_DATES_INVALID
+        - DOCUMENT_REFERENCE_INVALID
+        - PLACEHOLDER_TEXT
+        - TEXT_LINK_UNSAFE_SCHEME
+        - TEXT_LINK_INSECURE
+        - INTERNAL_LINK_BROKEN
+        - LINK_MEDIA_DESCRIPTION_MISSING
+        - QUIZ_DUPLICATE_OPTIONS
+        - ASSIGNMENT_DEADLINE_PASSED
+        - DOCUMENT_NO_TEXT
+        - DOCUMENT_TEXT_TRUNCATED
+        - SECTION_EMPTY
+        - PREREQUISITE_SECTION_HIDDEN
+        - PREREQUISITE_SECTION_EMPTY
+        - COURSE_DESCRIPTION_MISSING
+        - COURSE_NO_SECTIONS
+        - COURSE_NO_STUDENT_CONTENT
+    QualityFinding:
+      type: object
+      additionalProperties: false
+      required: [code, severity, target, sectionId, activityId, field, itemId, itemNumber, value]
+      properties:
+        code:
+          $ref: "#/components/schemas/QualityIssueCode"
+        severity:
+          type: string
+          enum: [blocking, warning]
+        target:
+          type: string
+          enum: [course, section, activity]
+        sectionId:
+          type: ["string", "null"]
+          format: uuid
+        activityId:
+          type: ["string", "null"]
+          format: uuid
+        field:
+          type: ["string", "null"]
+          description: |
+            Part of the target to correct: title, description, summary, body, url, instructions, settings,
+            questions, question, option, rubric, criterion, dates, document, activities, prerequisites or sections.
+        itemId:
+          type: ["string", "null"]
+          description: Quiz question or rubric criterion the finding is about.
+        itemNumber:
+          type: ["integer", "null"]
+          minimum: 1
+          description: 1-based number of that question or criterion, for display.
+        value:
+          type: ["string", "null"]
+          description: |
+            One short value for the message (authored text, never translated): the placeholder found, the URL,
+            the number of questions drawn, the file name, the deadline, or the id of the required section.
+    QualityReport:
+      type: object
+      additionalProperties: false
+      required: [courseId, scope, activityId, checkedAt, summary, sections, activities, findings]
+      properties:
+        courseId:
+          type: string
+          format: uuid
+        scope:
+          type: string
+          enum: [course, activity]
+        activityId:
+          type: ["string", "null"]
+          format: uuid
+        checkedAt:
+          type: string
+          format: date-time
+        summary:
+          type: object
+          additionalProperties: false
+          required: [blocking, warnings, sections, activities, questions]
+          properties:
+            blocking: { type: integer, minimum: 0 }
+            warnings: { type: integer, minimum: 0 }
+            sections: { type: integer, minimum: 0 }
+            activities: { type: integer, minimum: 0 }
+            questions: { type: integer, minimum: 0 }
+        sections:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, title, position, isVisible]
+            properties:
+              id: { type: string, format: uuid }
+              title: { type: string }
+              position: { type: integer }
+              isVisible: { type: boolean }
+        activities:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, sectionId, type, title, reviewStatus]
+            properties:
+              id: { type: string, format: uuid }
+              sectionId: { type: string, format: uuid }
+              type:
+                type: string
+                enum: [page, link, quiz, assignment, file]
+              title: { type: string }
+              reviewStatus:
+                type: string
+                enum: [draft, submitted, approved, returned]
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/QualityFinding"
     Activity:
       type: object
       description: |

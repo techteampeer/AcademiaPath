@@ -23,6 +23,7 @@ import { messaging } from './catalog/messaging';
 import { forums } from './catalog/forums';
 import { groups } from './catalog/groups';
 import { preview } from './catalog/preview';
+import { quality } from './catalog/quality';
 
 export type Locale = 'en' | 'es';
 export const LOCALES: Locale[] = ['en', 'es'];
@@ -309,6 +310,7 @@ const en = {
   forums: forums.en,
   groups: groups.en,
   preview: preview.en,
+  quality: quality.en,
   academics: {
     hierarchy: 'Hierarchy',
     treeLabel: 'Academic hierarchy',
@@ -788,6 +790,7 @@ const es: Messages = {
   forums: forums.es,
   groups: groups.es,
   preview: preview.es,
+  quality: quality.es,
   academics: {
     hierarchy: 'Jerarquía',
     treeLabel: 'Jerarquía académica',
