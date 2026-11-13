@@ -77,7 +77,13 @@ export type CoursePermission =
    */
   | 'groups.view'
   /** Create, edit, archive and restore groups and change their members (instructors; administrators via the override). */
-  | 'groups.manage';
+  | 'groups.manage'
+  /**
+   * AP-044: list the course's active students' e-mail addresses to compose one e-mail in the caller's own e-mail
+   * application (BCC). AcademiaPath never sends it. Instructors; administrators via the override; never
+   * non-editing instructors, the design team or students (like announcements.manage).
+   */
+  | 'students.email';
 
 /**
  * Course-level permissions per role. Default deny: a permission not listed here is not granted.
@@ -121,6 +127,7 @@ export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermi
     'forum.moderate',
     'groups.view',
     'groups.manage',
+    'students.email',
   ]),
   // Non-editing instructors grade submissions (rubric scores and feedback; AP-009, documented in the API
   // contract) and read the gradebook and certificates, but never change content, release grades, change the
