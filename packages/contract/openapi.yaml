@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.23.0
+  version: 0.24.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -2437,6 +2437,50 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /api/v1/courses/{id}/activities/{activityId}/document/brief:
+    get:
+      operationId: getDocumentStudyBrief
+      summary: Study brief of a document (extractive, deterministic)
+      description: |
+        AP-031D. A study aid computed on request from the document's stored extracted text, with the same access
+        rules as reading the document: staff get the brief of the working copy (`version: working`), students only
+        of approved, visible documents in open sections (`version: approved`). Nothing is generated, paraphrased or
+        translated: every overview sentence, concept, excerpt and list item is the document's own wording with the
+        page, slide or paragraph it comes from (the extraction's own labels; no other location is invented).
+        Headings, keywords and review points are selected by fixed rules; the response contains no wording of its
+        own, so clients phrase labels and prompts in the interface language. No language model or external
+        service is used, the original file is not read again and nothing is stored.
+
+        `status`: `complete`; `partial` when only part of the document could be used (see `limitations`:
+        extraction stopped at its size limit, the brief's own processing limit, or PDF pages without selectable
+        text); `excerpts_only` when the text has too little sentence structure to select from reliably (the text
+        is shown block by block, shortened excerpts flagged); `no_text` when nothing could be extracted.
+        Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
+      tags:
+        - Documents
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200":
+          description: The study brief.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentStudyBrief"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/courses/{id}/activities/{activityId}/document/file:
     get:
       operationId: downloadActivityDocument
@@ -8093,6 +8137,214 @@ components:
           oneOf:
             - $ref: "#/components/schemas/DocumentSummary"
             - type: "null"
+    StudyBriefLanguage:
+      type: ["string", "null"]
+      enum: [en, es, null]
+      description: Detected language of the text (null when it cannot be told). Text is never translated.
+    StudyBriefReference:
+      type: object
+      description: Where the text comes from, as labelled by the extraction (`Page 3`, `Slide 2`, `Paragraph 5`).
+      required: [segmentIndex, kind, label]
+      additionalProperties: false
+      properties:
+        segmentIndex:
+          type: integer
+        kind:
+          type: string
+          enum: [page, slide, paragraph]
+        label:
+          type: string
+    StudyBriefText:
+      type: object
+      description: A sentence (or, for `excerpts_only`, a block of text) quoted from the document. Render as text, never HTML.
+      required: [text, ref, language, shortened]
+      additionalProperties: false
+      properties:
+        text:
+          type: string
+        ref:
+          $ref: "#/components/schemas/StudyBriefReference"
+        language:
+          $ref: "#/components/schemas/StudyBriefLanguage"
+        shortened:
+          type: boolean
+          description: True when the quoted text was cut (at a word boundary, ending with "…").
+    DocumentStudyBrief:
+      type: object
+      required: [activityId, courseId, title, version, generator, document, brief]
+      additionalProperties: false
+      properties:
+        activityId:
+          type: string
+          format: uuid
+        courseId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        version:
+          type: string
+          enum: [working, approved]
+        generator:
+          type: object
+          required: [id, mode]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+            mode:
+              type: string
+              enum: [extractive]
+              description: Selected from the document's text by fixed rules; never generated by a model.
+        document:
+          type: object
+          required: [id, fileName, format, extraction]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            fileName:
+              type: string
+            format:
+              $ref: "#/components/schemas/DocumentFormat"
+            extraction:
+              type: object
+              required: [status, characterCount, segmentCount, truncated]
+              additionalProperties: false
+              properties:
+                status:
+                  type: string
+                  enum: [extracted, no_text]
+                characterCount:
+                  type: integer
+                segmentCount:
+                  type: integer
+                truncated:
+                  type: boolean
+        brief:
+          type: object
+          required: [status, language, coverage, overview, outline, outlineTotal, keywords, concepts, excerpts, reviewPoints, limitations, cleanup]
+          additionalProperties: false
+          properties:
+            status:
+              type: string
+              enum: [complete, partial, excerpts_only, no_text]
+            language:
+              type: object
+              required: [primary, mixed]
+              additionalProperties: false
+              properties:
+                primary:
+                  $ref: "#/components/schemas/StudyBriefLanguage"
+                mixed:
+                  type: boolean
+                  description: The document contains both English and Spanish sentences.
+            coverage:
+              type: object
+              required: [processedSegments, totalSegments, processedCharacters, totalCharacters]
+              additionalProperties: false
+              properties:
+                processedSegments:
+                  type: integer
+                totalSegments:
+                  type: integer
+                processedCharacters:
+                  type: integer
+                totalCharacters:
+                  type: integer
+            overview:
+              type: array
+              description: The opening sentence and the most central sentence, quoted, in document order.
+              items:
+                $ref: "#/components/schemas/StudyBriefText"
+            outline:
+              type: array
+              description: Headings detected in the text (DOCX title-like paragraphs, slide titles, PDF title lines), at most 12.
+              items:
+                type: object
+                required: [text, ref]
+                additionalProperties: false
+                properties:
+                  text:
+                    type: string
+                  ref:
+                    $ref: "#/components/schemas/StudyBriefReference"
+            outlineTotal:
+              type: integer
+            keywords:
+              type: array
+              description: Frequent distinctive words of the text, as written.
+              items:
+                type: string
+            concepts:
+              type: array
+              description: Sentences that define a term ("X is …", "X es …"), quoted.
+              items:
+                type: object
+                required: [term, text, ref, language]
+                additionalProperties: false
+                properties:
+                  term:
+                    type: string
+                  text:
+                    type: string
+                  ref:
+                    $ref: "#/components/schemas/StudyBriefReference"
+                  language:
+                    $ref: "#/components/schemas/StudyBriefLanguage"
+            excerpts:
+              type: array
+              items:
+                $ref: "#/components/schemas/StudyBriefText"
+            reviewPoints:
+              type: array
+              description: Automatically selected review prompts (the client words them); `term` and `items` are quoted from the document.
+              items:
+                type: object
+                required: [kind, term, items, ref, language]
+                additionalProperties: false
+                properties:
+                  kind:
+                    type: string
+                    enum: [concept, list, section, excerpt]
+                  term:
+                    type: ["string", "null"]
+                  items:
+                    type: array
+                    items:
+                      type: string
+                  ref:
+                    $ref: "#/components/schemas/StudyBriefReference"
+                  language:
+                    $ref: "#/components/schemas/StudyBriefLanguage"
+            limitations:
+              type: array
+              items:
+                type: object
+                required: [code, processed, total]
+                additionalProperties: false
+                properties:
+                  code:
+                    type: string
+                    enum: [extraction_truncated, brief_limit, pages_without_text, few_sentences, no_text]
+                    description: |
+                      `brief_limit`: characters processed / total. `pages_without_text`: pages with text / total pages.
+                      `few_sentences`: sentences found. Others carry no numbers.
+                  processed:
+                    type: ["integer", "null"]
+                  total:
+                    type: ["integer", "null"]
+            cleanup:
+              type: object
+              required: [repeatedLinesRemoved, duplicateSentencesRemoved]
+              additionalProperties: false
+              properties:
+                repeatedLinesRemoved:
+                  type: integer
+                  description: Running headers, footers and page numbers left out.
+                duplicateSentencesRemoved:
+                  type: integer
     QuizQuestionType:
       type: string
       description: Supported now. Matching, short answer and essay are not implemented.

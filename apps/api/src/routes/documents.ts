@@ -15,6 +15,7 @@ import {
   sanitizeFileName,
   type RejectionCode,
 } from '../documents/formats.js';
+import { buildStudyBrief } from '../documents/brief.js';
 import { readDocumentConfig, type DocumentConfig } from '../documents/model.js';
 import type { MalwareScanner } from '../documents/scanner.js';
 import type { DocumentStorage } from '../documents/storage.js';
@@ -22,7 +23,7 @@ import type { DocumentSummaryProvider } from '../documents/summary.js';
 import { ApiProblem } from '../http/errors.js';
 import { courseActivityParamsSchema, courseSectionParamsSchema } from './activity-schemas.js';
 import { findActivity } from './activities.js';
-import { documentDetailSchema } from './document-schemas.js';
+import { documentDetailSchema, studyBriefSchema } from './document-schemas.js';
 
 type SectionParams = { id: string; sectionId: string };
 type ActivityParams = { id: string; activityId: string };
@@ -140,16 +141,25 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
   }
 
   /**
-   * The version a caller may read. Staff get the working copy (plus the approved summary as
-   * `liveSummary`); students get only the approved copy of approved, visible documents (else 404).
+   * The document version a caller may read: staff the working copy, students only the approved copy of approved,
+   * visible documents in open sections (else 404 or 403 SECTION_LOCKED, as for any content).
    */
-  async function readableDocument(request: FastifyRequest, params: ActivityParams) {
+  async function readablePointer(request: FastifyRequest, params: ActivityParams) {
     const access = await courseAccess(request, params.id);
     const activity = await findActivity(db, access, params.activityId, false);
     if (activity.type !== 'file') throw notFound('Document');
     const staffView = canInCourse(access, 'content.viewUnapproved');
     const pointer = readDocumentConfig(staffView ? activity.config : activity.approvedConfig);
     if (!pointer) throw notFound('Document');
+    return { access, activity, staffView, pointer };
+  }
+
+  /**
+   * The version a caller may read. Staff get the working copy (plus the approved summary as
+   * `liveSummary`); students get only the approved copy of approved, visible documents (else 404).
+   */
+  async function readableDocument(request: FastifyRequest, params: ActivityParams) {
+    const { access, activity, staffView, pointer } = await readablePointer(request, params);
     const live = staffView ? readDocumentConfig(activity.approvedConfig) : null;
     const document = await loadDocument(db, activity.id, pointer.documentId);
     const summary = await loadSummary(db, document.id, pointer.summaryId);
@@ -386,6 +396,57 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
         return toDetail(access.course.id, current.id, document, summaryRow, liveSummary);
       });
       return reply.code(201).send(detail);
+    },
+  );
+
+  /**
+   * AP-031D study brief of the document version the caller may read, computed on request from its stored extracted
+   * text: no re-extraction, no file read, no model, nothing stored. The same access rules as reading the document.
+   */
+  app.get<{ Params: ActivityParams }>(
+    '/courses/:id/activities/:activityId/document/brief',
+    { ...authenticated, schema: { params: courseActivityParamsSchema, response: { 200: studyBriefSchema } } },
+    async (request) => {
+      const { access, activity, staffView, pointer } = await readablePointer(request, request.params);
+      const [document] = await db
+        .select({
+          id: courseDocuments.id,
+          fileName: courseDocuments.fileName,
+          format: courseDocuments.format,
+          extractionStatus: courseDocuments.extractionStatus,
+          extractionDetail: courseDocuments.extractionDetail,
+          characterCount: courseDocuments.characterCount,
+          truncated: courseDocuments.truncated,
+          segments: courseDocuments.segments,
+        })
+        .from(courseDocuments)
+        .where(and(eq(courseDocuments.id, pointer.documentId), eq(courseDocuments.activityId, activity.id)));
+      if (!document) throw notFound('Document');
+      // Students see the approved title; staff the working copy's, matching the document they read.
+      const title = (staffView ? activity.title : activity.approvedTitle) ?? activity.title;
+      const brief = buildStudyBrief({
+        title,
+        fileName: document.fileName,
+        format: document.format,
+        extractionStatus: document.extractionStatus,
+        extractionDetail: document.extractionDetail,
+        truncated: document.truncated,
+        segments: document.segments,
+      });
+      return {
+        activityId: activity.id,
+        courseId: access.course.id,
+        title,
+        version: staffView ? ('working' as const) : ('approved' as const),
+        generator: { id: 'study-brief-v1', mode: 'extractive' as const },
+        document: {
+          id: document.id,
+          fileName: document.fileName,
+          format: document.format,
+          extraction: { status: document.extractionStatus, characterCount: document.characterCount, segmentCount: document.segments.length, truncated: document.truncated },
+        },
+        brief,
+      };
     },
   );
 
