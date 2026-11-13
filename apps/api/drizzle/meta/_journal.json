@@ -239,6 +239,13 @@
       "when": 1794393139848,
       "tag": "0033_student_group_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1794597300895,
+      "tag": "0034_certificate_signatories",
+      "breakpoints": true
     }
   ]
 }
