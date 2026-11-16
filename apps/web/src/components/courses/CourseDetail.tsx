@@ -21,6 +21,7 @@ import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { Activity, ActivityProgress, Course, CourseProgress, CurrentUser, ResourceFolder, Section } from '@/lib/api/types';
 import { LocalizedCourseStatusBadge as CourseStatusBadge } from '@/components/courses/LocalizedCourseStatusBadge';
+import { CourseExportButton } from '@/components/courses/CourseExportButton';
 
 /** Upper bound on pages fetched per list (100 items per page). */
 const MAX_PAGES = 10;
@@ -215,6 +216,7 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
                     {t.courseEmail.action}
                   </Link>
                 ) : null}
+                {abilities.exportContent ? <CourseExportButton courseId={course.id} /> : null}
               </div>
             </div>
           </div>

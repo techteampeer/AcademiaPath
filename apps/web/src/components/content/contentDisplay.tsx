@@ -46,6 +46,8 @@ export function contentAbilities(user: CurrentUser, viewerRole: CourseRole | nul
     manageCommunications: admin || role === 'instructor',
     /** Compose an e-mail to the course's students in one's own e-mail application (AP-044): instructors and administrators. */
     emailStudents: admin || role === 'instructor',
+    /** Download the course content package (AP-038A): content authors (design team, instructors) and administrators. */
+    exportContent: admin || (role !== undefined && EDITOR_ROLES.includes(role)),
   };
 }
 

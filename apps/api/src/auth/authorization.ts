@@ -18,6 +18,12 @@ export type CoursePermission =
   | 'content.edit'
   | 'content.submit'
   | 'content.review'
+  /**
+   * AP-038A: download the course content package (structure, working and approved content, quiz answer keys,
+   * document references). Content authors only (design team and instructors; administrators via the override):
+   * never non-editing instructors or students. Contains no student data.
+   */
+  | 'content.export'
   /** Take quizzes (students only). */
   | 'quiz.attempt'
   /** See students' quiz attempts and server-computed results. */
@@ -102,12 +108,13 @@ const GRADER: CoursePermission[] = ['grades.view', 'grades.grade', 'grades.expor
 
 export const COURSE_ROLE_PERMISSIONS: Record<CourseRole, ReadonlySet<CoursePermission>> = {
   // Design team reviews (approves/returns) content and can also author it.
-  design_team: new Set([...STAFF_READ, 'content.edit', 'content.submit', 'content.review']),
+  design_team: new Set([...STAFF_READ, 'content.edit', 'content.submit', 'content.review', 'content.export']),
   // Instructors author and submit content but never approve it; they grade, release grades and set the grading policy.
   instructor: new Set([
     ...STAFF_READ,
     'content.edit',
     'content.submit',
+    'content.export',
     'quiz.viewResults',
     ...GRADER,
     'grades.release',

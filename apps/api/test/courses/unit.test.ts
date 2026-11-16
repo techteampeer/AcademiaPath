@@ -39,6 +39,7 @@ describe('course role permissions', () => {
         ...staff,
         'content.edit',
         'content.submit',
+        'content.export',
         'quiz.viewResults',
         ...grader,
         'grades.release',
@@ -85,7 +86,9 @@ describe('course role permissions', () => {
       assert.equal(hasCoursePermission('non_editing_instructor', permission), false);
       assert.equal(hasCoursePermission('design_team', permission), false);
     }
-    assert.deepEqual(granted('design_team'), [...staff, 'content.edit', 'content.submit', 'content.review'].sort());
+    assert.deepEqual(granted('design_team'), [...staff, 'content.edit', 'content.submit', 'content.review', 'content.export'].sort());
+    // AP-038A: only content authors export the course package (it holds quiz answer keys and unapproved drafts).
+    for (const role of ['non_editing_instructor', 'student'] as const) assert.equal(hasCoursePermission(role, 'content.export'), false, role);
     assert.equal(hasCoursePermission('design_team', 'quiz.attempt'), false, 'staff never take quizzes');
     assert.equal(hasCoursePermission('design_team', 'progress.viewAll'), false, 'the design team never reads student progress');
     assert.equal(hasCoursePermission('instructor', 'content.review'), false, 'instructors never approve');
