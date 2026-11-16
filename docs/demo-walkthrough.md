@@ -7,9 +7,12 @@ documents.
 - **Everything is synthetic.** Accounts use the reserved `academiapath.example` domain and the names "Demo …". All
   course material, documents, answers and grades were written for this demo. There are no real student or institutional
   records.
-- **AI features are mocks.** The tutor and the document summaries are deterministic local programs. No AI model or
-  external service is called. The UI labels them **"Mock AI — local demonstration"** and
-  **"Mock AI summary — local demonstration"**.
+- **No generative AI.** The guided tutor, the document summaries and the study briefs are deterministic local
+  programs that quote the approved course material or the document. No AI model or external service is called. The UI
+  says so next to their output: **"Guided study assistant — rule-based, no generative AI"** (tutor), **"Extractive
+  summary — no generative AI"** (document summary) and **"Selected from the document — not written by AI"** (study
+  brief); in Spanish **"Asistente de estudio guiado — basado en reglas, sin IA generativa"**, **"Resumen extractivo —
+  sin IA generativa"** and **"Seleccionado del documento — no escrito por IA"**.
 - **Local only.** Nothing is deployed. The seed refuses to run when `NODE_ENV=production` or when `DATABASE_URL` points at
   a non-local host.
 
@@ -92,7 +95,7 @@ Each published course has:
 - approved text lessons and a safe external reference link (Wikipedia)
 - a quiz mixing single-choice, multiple-choice and true/false questions
 - an assignment with a rubric and a due date (4 Dec 2026, 23:59 Lima time)
-- one uploaded synthetic document (PDF or Word) with an approved extractive mock summary
+- one uploaded synthetic document (PDF or Word) with an approved extractive summary
 
 Content in review states, used to demonstrate review permissions:
 
@@ -207,15 +210,15 @@ Release publishes the current grades of every graded student for that activity. 
 ### Student
 **12. See released grades.** As `student@`, open ITIL 4 Foundation → **My grades**. The released quiz and assignment appear on the 0–20 scale with feedback. Project Management Fundamentals already shows released grades (15 and 18). Introduction to AI shows the quiz as not yet released.
 
-**13. Use the mock tutor.** Open ITIL 4 Foundation → **Tutor** (labelled "Mock AI — local demonstration"). The response language follows the interface language and can be changed under **Response language**.
+**13. Use the guided tutor.** Open ITIL 4 Foundation → **Tutor** (labelled "Guided study assistant — rule-based, no generative AI"). Its responses follow the interface language: switch **EN** / **ES** in the header. Quoted course material is never translated.
 - Ask "What are the four dimensions of service management?". The answer cites approved lessons of this course only.
 - Ask about "change enablement" before that lesson is approved: it is not cited.
 - In Introduction to AI the tutor answers in Spanish from the Spanish lessons, for example "¿Qué es el aprendizaje supervisado?".
 
 ### Instructor
-**14. Upload a document and refresh its mock summary.** As `instructor@`, open ITIL 4 Foundation → **Document library** → **Upload a document**.
+**14. Upload a document and refresh its extractive summary.** As `instructor@`, open ITIL 4 Foundation → **Document library** → **Upload a document**.
 - Choose a section, for example Module 3, and the file `~/.academiapath/demo-files/itil-continual-improvement.pdf`. For Project Management, use `pm-stakeholder-map.docx`.
-- The API checks the file, extracts its text and creates a mock summary (labelled "Mock AI summary — local demonstration") that quotes the document with page references.
+- The API checks the file, extracts its text and creates an extractive summary (labelled "Extractive summary — no generative AI") that quotes the document with page references.
 - **Refresh summary** creates a new summary revision.
 - Choose **Submit for review**.
 
