@@ -1926,6 +1926,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{id}/scorm-inspections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inspect a SCORM package (dry run, AP-033B)
+         * @description Validates the structure of a SCORM 1.2 or SCORM 2004 package and returns an inspection report. This is a
+         *     **dry run**: nothing is written to the database or to storage, no activity is created, and nothing is
+         *     imported, published or launched. The package's HTML and JavaScript are never executed, nothing it refers to
+         *     is fetched, and no file is extracted to disk.
+         *
+         *     Requires `content.edit` (design team, instructor) or the administrator role; non-editing instructors and
+         *     students get 403, and callers who cannot see the course get 404. Send `multipart/form-data` with exactly one
+         *     `file` part: a `.zip` of at most 25 MB (larger: 413; another extension: 415 `UNSUPPORTED_FILE_TYPE`).
+         *
+         *     The package is inspected in an isolated worker with time and memory limits. The archive is checked for path
+         *     traversal, absolute and invalid names, symbolic links and special files, encrypted entries, duplicate names
+         *     and letter-case or Unicode collisions, unsupported compression, ZIP bombs (entry count, per-file and total
+         *     decompressed size, per-file expansion ratio, forged sizes) and damaged entries (CRC-32). `imsmanifest.xml`
+         *     must be at the root; it is parsed strictly, without a DTD (a DOCTYPE is refused) and within depth and
+         *     element limits. A package that fails any check is still answered with `200` and a report whose `status` is
+         *     `invalid`; `issues` explains why. Rate limited per user (30 inspections per 10 minutes).
+         */
+        post: operations["inspectScormPackage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{id}/export": {
         parameters: {
             query?: never;
@@ -4306,6 +4341,119 @@ export interface components {
             title?: string;
             /** @description One PDF, DOCX or PPTX file. */
             file: string;
+        };
+        ScormPackageUpload: {
+            /** @description One SCORM package as a .zip file (at most 25 MB). */
+            file: string;
+        };
+        /**
+         * @description One finding. `message` is English; clients may show their own text for `code`. `path` is a package-relative
+         *     file path or manifest address and `line` a line in imsmanifest.xml; neither is ever a server path.
+         */
+        ScormInspectionIssue: {
+            /** @enum {string} */
+            code: "SCORM_PACKAGE_TOO_LARGE" | "SCORM_ARCHIVE_INVALID" | "SCORM_ARCHIVE_TOO_MANY_ENTRIES" | "SCORM_ARCHIVE_TOO_LARGE" | "SCORM_ENTRY_TOO_LARGE" | "SCORM_ENTRY_EXPANSION_RATIO" | "SCORM_ENTRY_CORRUPT" | "SCORM_ENTRY_ENCRYPTED" | "SCORM_ENTRY_SYMLINK" | "SCORM_ENTRY_SPECIAL_FILE" | "SCORM_ENTRY_COMPRESSION_UNSUPPORTED" | "SCORM_PATH_TRAVERSAL" | "SCORM_PATH_ABSOLUTE" | "SCORM_PATH_INVALID" | "SCORM_PATH_DUPLICATE" | "SCORM_PATH_COLLISION" | "SCORM_MANIFEST_MISSING" | "SCORM_MANIFEST_NOT_AT_ROOT" | "SCORM_MANIFEST_TOO_LARGE" | "SCORM_MANIFEST_ENCODING" | "SCORM_MANIFEST_MALFORMED" | "SCORM_MANIFEST_DOCTYPE" | "SCORM_MANIFEST_TOO_DEEP" | "SCORM_MANIFEST_TOO_MANY_ELEMENTS" | "SCORM_MANIFEST_NOT_A_MANIFEST" | "SCORM_MANIFEST_NAMESPACE_UNKNOWN" | "SCORM_COMMON_CARTRIDGE" | "SCORM_VERSION_UNSUPPORTED" | "SCORM_VERSION_UNKNOWN" | "SCORM_VERSION_INFERRED" | "SCORM_VERSION_MISMATCH" | "SCORM_METADATA_SCHEMA_UNEXPECTED" | "SCORM_NO_ORGANIZATIONS" | "SCORM_DEFAULT_ORGANIZATION_INVALID" | "SCORM_DEFAULT_ORGANIZATION_MISSING" | "SCORM_IDENTIFIER_MISSING" | "SCORM_IDENTIFIER_DUPLICATE" | "SCORM_ITEM_REFERENCE_INVALID" | "SCORM_ITEM_WITHOUT_RESOURCE" | "SCORM_RESOURCE_TYPE_UNSUPPORTED" | "SCORM_SCORMTYPE_MISSING" | "SCORM_SCORMTYPE_INVALID" | "SCORM_DEPENDENCY_INVALID" | "SCORM_LAUNCH_HREF_MISSING" | "SCORM_LAUNCH_FILE_MISSING" | "SCORM_FILE_MISSING" | "SCORM_FILE_CASE_MISMATCH" | "SCORM_HREF_EXTERNAL" | "SCORM_HREF_DANGEROUS" | "SCORM_HREF_INVALID" | "SCORM_HREF_OUTSIDE_PACKAGE" | "SCORM_HREF_BACKSLASH" | "SCORM_LAUNCH_NOT_HTML" | "SCORM_LAUNCH_FLASH" | "SCORM_NO_LAUNCHABLE_CONTENT" | "SCORM_SEQUENCING_IGNORED" | "SCORM_SUBMANIFEST_UNSUPPORTED" | "SCORM_INSPECTION_LIMIT" | "SCORM_INSPECTION_FAILED";
+            /** @enum {string} */
+            severity: "error" | "warning";
+            message: string;
+            path: string | null;
+            line: number | null;
+            /** @description The limit that was exceeded (bytes, entries, depth or ratio, depending on `code`). */
+            limit: number | null;
+            /** @description A short value from the package, such as an identifier, a declared version or an address scheme. */
+            value: string | null;
+        };
+        /**
+         * @description AP-033B structural inspection of a SCORM package. It does not promise runtime compatibility: SCORM playback
+         *     is not available in AcademiaPath yet (`runtime.playbackAvailable` is always false) and `imported` is always
+         *     false. Strings taken from the package are cleaned and shortened; lists are capped at 500 entries
+         *     (`listsTruncated`) and issues at 200 (`issuesTruncated`), while `counts` stay complete.
+         */
+        ScormInspectionReport: {
+            /** @enum {integer} */
+            reportVersion: 1;
+            /** @enum {string} */
+            status: "valid" | "valid_with_warnings" | "invalid";
+            /** @enum {boolean} */
+            imported: false;
+            package: {
+                fileName: string | null;
+                sha256: string;
+                compressedBytes: number;
+                /** @description Verified total decompressed size; null when the archive could not be read. */
+                uncompressedBytes: number | null;
+                fileCount: number;
+                folderCount: number;
+            };
+            standard: {
+                /**
+                 * @description `common_cartridge`: an IMS Common Cartridge such as a Canvas course export, which is not SCORM.
+                 * @enum {string}
+                 */
+                format: "scorm" | "common_cartridge" | "unknown";
+                /** @enum {string|null} */
+                version: "scorm_1_2" | "scorm_2004" | null;
+                /** @enum {string|null} */
+                edition: "2nd" | "3rd" | "4th" | null;
+                /** @description The manifest's declared schema version, as written. */
+                schemaVersion: string | null;
+            };
+            title: string | null;
+            manifestIdentifier: string | null;
+            counts: {
+                organizations: number;
+                items: number;
+                resources: number;
+                scos: number;
+                assets: number;
+                launchable: number;
+                declaredFiles: number;
+                missingFiles: number;
+                /** @description Files in the archive that no resource lists (common, and not an error). */
+                undeclaredFiles: number;
+            };
+            organizations: {
+                identifier: string;
+                title: string | null;
+                isDefault: boolean;
+                itemCount: number;
+            }[];
+            /** @description Items that launch a file present in the package, default organization first. */
+            launchable: {
+                organization: string;
+                item: string;
+                title: string | null;
+                resource: string;
+                /** @enum {string} */
+                scormType: "sco" | "asset";
+                /** @description Package-relative path of the launch file. */
+                launchPath: string;
+                parameters: string | null;
+                visible: boolean;
+            }[];
+            resources: {
+                identifier: string;
+                /** @enum {string} */
+                scormType: "sco" | "asset";
+                launchPath: string | null;
+                fileCount: number;
+                missingFileCount: number;
+                dependencyCount: number;
+            }[];
+            features: {
+                /** @description SCORM 2004 sequencing rules are present (they will not be applied). */
+                sequencing: boolean;
+                subManifests: boolean;
+            };
+            runtime: {
+                /** @enum {boolean} */
+                playbackAvailable: false;
+                /** @enum {string} */
+                plannedSupport: "planned" | "planned_without_sequencing" | "not_supported";
+            };
+            issues: components["schemas"]["ScormInspectionIssue"][];
+            issuesTruncated: boolean;
+            listsTruncated: boolean;
         };
         /**
          * @description One block of extracted plain text: a PDF page (`Page 3`), a PPTX slide (`Slide 2`) or a DOCX
@@ -6810,7 +6958,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
-        /** @description Too many sign-in or activation attempts, tutor requests, messages, forum posts or polling requests (`code`: `RATE_LIMITED`). */
+        /** @description Too many sign-in or activation attempts, tutor requests, messages, forum posts, polling requests or SCORM package inspections (`code`: `RATE_LIMITED`). */
         RateLimited: {
             headers: {
                 /** @description Seconds until another attempt is allowed. */
@@ -9733,6 +9881,40 @@ export interface operations {
             409: components["responses"]["Conflict"];
             413: components["responses"]["PayloadTooLarge"];
             422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    inspectScormPackage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["ScormPackageUpload"];
+            };
+        };
+        responses: {
+            /** @description The inspection report. Nothing was stored, imported or published. */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScormInspectionReport"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            429: components["responses"]["RateLimited"];
         };
     };
     exportCourse: {
