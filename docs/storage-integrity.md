@@ -21,7 +21,7 @@ It changes no infrastructure, no Cloud Run configuration and no data.
 | Mode | Default for | Checks | Effect when the check fails |
 | ---- | ----------- | ------ | --------------------------- |
 | `off` | development and tests | none (the directory is created on first use) | none |
-| `report` | **production** (`NODE_ENV=production`) | the directory exists; whether the API can read and write it and whether it is a **mount point** | missing directory: uploads refused with `503 DOCUMENT_STORAGE_UNAVAILABLE`, error logged. Permission denied: `unavailable` logged and reported, but the write itself decides (a failed write is a clean `503`). Not mounted: `degraded`, warning logged. **The API always starts**: the startup check runs in the background and never delays it |
+| `report` | **production** (`NODE_ENV=production`) | the directory exists; whether the API can read and write it and whether it is a **mount point** | missing directory: uploads refused with `503 DOCUMENT_STORAGE_UNAVAILABLE`, error logged. Permission denied: `unavailable` logged and reported, but the write itself decides (a failed write is a clean `503`). Directory exists but is not a mount: `degraded`, warning logged, **uploads are still accepted** (see "Limitation of `report` mode"). **The API always starts**: the startup check runs in the background and never delays it |
 | `enforce` | opt-in only | the same, and the directory must be a mount point | the API **refuses to start** (also if the check does not finish within 10 s); uploads are refused |
 
 `off` is rejected in production. Production also never creates the storage directory. If the mount point is absent,
@@ -33,6 +33,30 @@ and falls back to comparing the directory's device with its parent's. The same c
 been observed inside the API service**. Nor has the permission check (`access()`) on the FUSE mount for the API's
 non-root `node` user. That is why production defaults to `report`: it never blocks startup, and it refuses uploads
 only for a missing directory, which `stat` shows reliably.
+
+### Limitation of `report` mode (storage readiness: PARTIAL)
+
+In `report` mode, a `DOCUMENT_STORAGE_DIR` that **exists but is not a mount** still accepts uploads. Two examples:
+
+- Cloud Run created `/mnt/documents` but the bucket is not mounted there. How Cloud Run behaves when a Cloud Storage
+  volume fails to mount has not been verified.
+- The setting points at another writable directory.
+
+Such files are written to the instance's own filesystem. On Cloud Run that filesystem is in memory, so the files:
+
+- are lost when the instance stops;
+- are invisible to other instances, where downloads fail with `DOCUMENT_FILE_MISSING`.
+
+The only safeguards in `report` mode are:
+
+- the startup warning "Document storage is usable, but no mount was detected at its directory";
+- `"status": "degraded", "mount": "not_mounted"` at `GET /api/v1/system/storage`.
+
+This is not a regression: `main` before AP-040B accepted the same uploads with no check and no warning.
+
+Only `enforce` refuses these uploads. It must not be enabled before the verification below. If mount detection
+wrongly answered `not_mounted` on the real Cloud Run mount, `enforce` would refuse every upload and stop the API from
+starting.
 
 **How to see readiness:**
 
@@ -49,14 +73,25 @@ only for a missing directory, which `stat` shows reliably.
 
 ### Required production verification before `enforce`
 
-1. After AP-040B is deployed, sign in as an administrator and open `/api/v1/system/storage`, or read the startup
-   log entry. Do not use the demo credentials from Secret Manager without authorization.
-2. Expected: `"status": "ready"`, `"mount": "mounted"`, `"access": "read_write"`.
-   - If it shows `degraded`/`not_mounted` while uploads and downloads work, the detection does not recognise this
-     Cloud Run mount. Keep `report` and investigate; do **not** switch to `enforce`.
-3. Only after a `ready` result, a reviewed change to `.github/workflows/deploy.yml` may add
+This is the exact requirement for closing the `report`-mode limitation. It needs no new resources, no storage scan
+and no write to the bucket.
+
+1. Once AP-040B is deployed (with Sagar's authorization), sign in to the production web URL with an administrator
+   account and open `/api/v1/system/storage`. Do not read or use the demo credentials from Secret Manager without
+   authorization.
+2. Alternatively, read the `academiapath-api` startup entries of the new revision in Cloud Logging. Every instance
+   logs one when it starts.
+3. Required result: `"mountCheck": "report"`, `"status": "ready"`, `"directory": "present"`, `"access": "read_write"`
+   and `"mount": "mounted"`. The startup log entry must say "Document storage is ready", with `storage.mount` set to
+   `mounted`.
+4. If the result is `degraded` / `not_mounted` while the seeded documents still download, the detection does not
+   recognise this Cloud Run mount. Keep `report`, do **not** switch to `enforce`, and investigate the mount table
+   inside the service. If the documents also fail to download, the bucket really is not mounted: treat it as an
+   incident and stop uploads.
+5. Only after a `ready` / `mounted` result, a reviewed change to `.github/workflows/deploy.yml` may add
    `DOCUMENT_STORAGE_MOUNT_CHECK=enforce` to the API's environment. That is a deploy-workflow change, so it needs
    Sagar's approval and merge. It adds no cost.
+6. After that deploy, confirm `/api/v1/system/storage` shows `"mountCheck": "enforce"` and `"status": "ready"`.
 
 ## 2. Missing and corrupt files
 
@@ -163,8 +198,8 @@ It would need, in order:
 - **No retention or deletion policy** for stored documents, and no object versioning or soft-delete policy has been
   confirmed, so a deleted or overwritten object may be unrecoverable.
 - **Mount detection not yet verified in the API service** (see section 1). Until then production runs in `report`
-  mode, so an unmounted volume is reported but not prevented at startup. Writes into an absent mount point still
-  fail.
+  mode. An existing but unmounted storage directory is reported (warning log, `degraded`) but **still accepts
+  uploads** into the instance's temporary in-memory storage. A storage directory that does not exist refuses uploads.
 - **Orphans after failed uploads.** If an upload's database transaction fails, the API removes the file it has just
   written. If that removal also fails, the file remains, and nothing cleans it up automatically. The audit reports it
   as orphaned once the grace period has passed.
