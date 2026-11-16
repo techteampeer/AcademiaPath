@@ -215,11 +215,25 @@ resets, so the demo accounts are unaffected. Each link is audited (`user.invitat
 `identityConfirmed`); the token is never stored or logged. Only administrators can issue links. Do not issue links for
 the supporting learners `learner.a@` and `learner.b@`, which have no password by design.
 
-**Before creating any account in the demo database, run the seed jobs you still need.** The seed job only runs on a
-database that holds nothing but demo data: once any other account exists (a tester's account included), every mode,
-`check`, `create` and `reset-credentials`, stops with "account(s) are not synthetic demo accounts" and changes nothing
-(`apps/api/test/demo/seed-cloud-demo.test.ts`). Rotating the demo credentials after the demo would then need a reviewed
-change to the seed job or an authorized removal of that account.
+### Accounts other than the demo data and the seed job
+
+The seed job (`academiapath-seed-demo`, workflow **Seed demo data (manual)**) never runs on its own: deployments
+(`deploy.yml`) only build, migrate and deploy. It only works on a database that holds nothing but demo data. Once any
+other account exists (a tester's account included, active or deactivated), every mode, `check`, `create` and
+`reset-credentials`, stops with "N account(s) are not synthetic demo accounts" and changes nothing
+(`apps/api/test/demo/seed-cloud-demo.test.ts`). It never names, modifies or overwrites such an account: it only ever
+writes to its seven fixed demo addresses. Deployments, migrations and sign-in with the demo accounts are not affected.
+
+Procedure for a dedicated account (each step with Sagar's authorization):
+
+1. After the deployment of `main` has succeeded, run **Seed demo data (manual)** with mode `check`. It must end with
+   "Ready. Nothing was changed." If it reports missing demo accounts or data, run mode `create` now.
+2. Run any other seed you still need now, including `reset-credentials` if the demo passwords must change before the
+   account exists.
+3. Only then create the account (steps above).
+4. From then on the seed job refuses every mode until that account is removed. Rotating the demo credentials after
+   the demo then needs either a reviewed change to the seed job or an authorized removal of that account (a production
+   data change).
 
 **Switching it off.** Remove `@ACCOUNT_INVITATION_DELIVERY=administrator_handoff` from the API `--set-env-vars` in
 `deploy.yml` (production then uses the code default, `disabled`) and merge. That deploys, so it needs Sagar's
