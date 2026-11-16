@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.26.0
+  version: 0.27.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -74,7 +74,11 @@ info:
     token is stored). Administrators can never read passwords or reuse a link. Local link delivery
     (`ACCOUNT_INVITATION_DELIVERY=local_link`) shows the link to the administrator once, for synthetic
     addresses only; it is a development-only stand-in for secure delivery and identity verification
-    and is refused in production. Deactivation revokes all sessions at once, and the last active
+    and is refused in production. Administrator handoff (`ACCOUNT_INVITATION_DELIVERY=administrator_handoff`,
+    opt-in, allowed in production) never issues links automatically: an administrator issues one from
+    the user's page after confirming that they verified the person's identity (`identityConfirmed`),
+    sees it once and gives it to the person privately; it lives at most 24 hours. Production defaults
+    to `disabled` (no links). Deactivation revokes all sessions at once, and the last active
     administrator can never be deactivated or demoted.
 
     Course lifecycle: administrators edit an offering's details, publish (`draft` → `published`) and
@@ -585,7 +589,9 @@ paths:
         addresses on reserved domains (`.example`, `.test`, `.invalid`, `.localhost`,
         `example.com/.net/.org`) only. Only a hash of the token is stored, so it can never be shown
         again; issue a new one with `POST /users/{userId}/invitations`. Otherwise `invitation` is
-        `null` and `invitationStatus` says why.
+        `null` and `invitationStatus` says why. With `ACCOUNT_INVITATION_DELIVERY=administrator_handoff`
+        no link is issued here (`handoff_required`): the administrator issues it explicitly with
+        `POST /users/{userId}/invitations` after verifying the person's identity.
 
         Audited as `user.created`, `enrollment.created` and `user.invitation_issued`.
       tags:
@@ -756,11 +762,16 @@ paths:
       summary: Issue a new activation link for a pending account
       description: |
         Administrators only. Revokes the account's open activation links and issues a new
-        single-use link that expires after `ACCOUNT_INVITATION_TTL_HOURS` (default 72). Only for
-        active accounts that have not set a password (`ACCOUNT_ALREADY_ACTIVATED` otherwise): this is
-        not a password reset. Requires local link delivery (`INVITATIONS_DISABLED`) and a synthetic
-        address (`INVITATION_SYNTHETIC_ONLY`); see `POST /users`. Send no request body. Audited as
-        `user.invitation_issued`.
+        single-use link that expires after `ACCOUNT_INVITATION_TTL_HOURS` (default 72; with
+        administrator handoff, default and maximum 24). Only for active accounts that have not set a
+        password (`ACCOUNT_ALREADY_ACTIVATED` otherwise): this is not a password reset, so existing
+        accounts keep their passwords. Refused when delivery is `disabled` (`INVITATIONS_DISABLED`).
+        Local link delivery needs a synthetic address (`INVITATION_SYNTHETIC_ONLY`) and no request
+        body. Administrator handoff (`administrator_handoff`) works for any address but requires
+        `{"identityConfirmed": true}`: the administrator confirms they verified the person's identity
+        and will give them the link privately (`INVITATION_CONFIRMATION_REQUIRED` otherwise). Audited as
+        `user.invitation_issued` with the delivery mode (and `identityConfirmed` for a handoff), never
+        the token.
       tags:
         - Users
       security:
@@ -768,6 +779,12 @@ paths:
           csrfToken: []
       parameters:
         - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationIssueRequest"
       responses:
         "201":
           description: Activation link issued (shown only in this response).
@@ -6380,7 +6397,8 @@ components:
         document upload: `FILE_SIGNATURE_MISMATCH` (content does not match the extension),
         `DOCUMENT_ENCRYPTED`, `DOCUMENT_MALFORMED`, `DOCUMENT_LIMITS_EXCEEDED` (decompressed size,
         processing time or memory) or `MALWARE_DETECTED`; or an account or enrollment rule:
-        `COURSE_NOT_FOUND`, `DUPLICATE_COURSE`, `INVITATION_SYNTHETIC_ONLY`, `PASSWORD_TOO_WEAK`,
+        `COURSE_NOT_FOUND`, `DUPLICATE_COURSE`, `INVITATION_SYNTHETIC_ONLY`, `INVITATION_CONFIRMATION_REQUIRED`,
+        `PASSWORD_TOO_WEAK`,
         `IMPORT_HAS_ERRORS`, `IMPORT_TOO_LARGE` or `INVALID_SECTION_ORDER`; or a progress rule:
         `COMPLETION_AUTOMATIC` (quizzes and assignments complete on submission), `PREREQUISITE_SELF`,
         `PREREQUISITE_SECTION_NOT_FOUND` or `PREREQUISITE_CYCLE`; or a learning-resource rule:
@@ -6598,6 +6616,7 @@ components:
             - SELF_ACCOUNT_CHANGE
             - INVITATIONS_DISABLED
             - INVITATION_SYNTHETIC_ONLY
+            - INVITATION_CONFIRMATION_REQUIRED
             - ACCOUNT_ALREADY_ACTIVATED
             - INVITATION_INVALID
             - PASSWORD_TOO_WEAK
@@ -10973,7 +10992,8 @@ components:
       description: |
         A single-use activation link, returned only once when issued. `activationPath` is relative to
         the web app origin; the token is in the URL fragment so browsers never send it to a server.
-        Synthetic local demonstration only (local link delivery).
+        `local_link`: synthetic local demonstration only. `administrator_handoff`: an administrator
+        verified the person's identity and gives them the link privately.
       required: [id, expiresAt, delivery, activationPath]
       additionalProperties: false
       properties:
@@ -10985,7 +11005,7 @@ components:
           format: date-time
         delivery:
           type: string
-          enum: [local_link]
+          enum: [local_link, administrator_handoff]
         activationPath:
           type: string
           description: "`/activate#token=…`"
@@ -11005,7 +11025,18 @@ components:
           description: |
             `issued`: a local activation link is included. `disabled`: activation links are turned off
             in this environment. `synthetic_only`: local links are only issued for synthetic addresses.
-          enum: [issued, disabled, synthetic_only]
+            `handoff_required`: administrator handoff; issue the link from the user's page after
+            verifying the person's identity.
+          enum: [issued, disabled, synthetic_only, handoff_required]
+    InvitationIssueRequest:
+      type: [object, "null"]
+      description: |
+        Optional. Required with administrator handoff delivery: `identityConfirmed: true` records that
+        the administrator verified the person's identity and will give them the link privately.
+      additionalProperties: false
+      properties:
+        identityConfirmed:
+          type: boolean
     ActivationPreviewRequest:
       type: object
       required: [token]

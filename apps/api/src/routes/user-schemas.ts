@@ -142,7 +142,7 @@ export const accountInvitationSchema = {
   type: 'object',
   required: ['id', 'expiresAt', 'delivery', 'activationPath'],
   additionalProperties: false,
-  properties: { id: uuid, expiresAt: dateTime, delivery: { type: 'string', enum: ['local_link'] }, activationPath: { type: 'string' } },
+  properties: { id: uuid, expiresAt: dateTime, delivery: { type: 'string', enum: ['local_link', 'administrator_handoff'] }, activationPath: { type: 'string' } },
 } as const;
 
 export const userCreateResultSchema = {
@@ -152,8 +152,18 @@ export const userCreateResultSchema = {
   properties: {
     user: userDetailSchema,
     invitation: { ...accountInvitationSchema, type: ['object', 'null'] },
-    invitationStatus: { type: 'string', enum: ['issued', 'disabled', 'synthetic_only'] },
+    invitationStatus: { type: 'string', enum: ['issued', 'disabled', 'synthetic_only', 'handoff_required'] },
   },
+} as const;
+
+/**
+ * AP-DEMO-02: issuing an activation link. With `administrator_handoff` delivery the administrator must confirm
+ * that they verified the person's identity and will hand the link over privately.
+ */
+export const invitationIssueBodySchema = {
+  type: ['object', 'null'],
+  additionalProperties: false,
+  properties: { identityConfirmed: { type: 'boolean' } },
 } as const;
 
 export const activationPreviewBodySchema = {

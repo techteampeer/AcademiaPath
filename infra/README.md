@@ -209,6 +209,7 @@ The demo data can stay. Never reset or delete the database.
 ## Known limitations
 
 - **No demo users until the seed job runs.** The database is empty until someone runs `academiapath-seed-demo` (see "Demo users and courses" above). `db:seed:dev` and `db:seed:demo` refuse production, Cloud Run and Cloud SQL, and production issues no activation links.
+- **New accounts stay pending in production.** Activation links are `disabled` by default. `ACCOUNT_INVITATION_DELIVERY=administrator_handoff` (AP-DEMO-02) lets an administrator create an identity-confirmed, single-use link (24 hours at most) and give it to the person privately; it never applies to accounts that already have a password, so the demo accounts are unaffected. It is not enabled: `deploy.yml` replaces all API variables (`--set-env-vars`) on every deployment, so it must be added there, and enabling it needs explicit approval like any production change.
 - **Client IPs.** The web proxies `/api/*`, so the API sees Google front-end IPs. Login rate limits still work because they are keyed by email, but audit logs have no client IP. For production, put both services behind one external HTTPS load balancer with path routing and set `TRUST_PROXY` to its ranges.
 - **Public services.** Both services allow unauthenticated access, which a public demo needs. The API still enforces its own Origin, CSRF and session checks.
 - **JSON key.** `GCP_SA_KEY` is a long-lived credential. Replace it with Workload Identity Federation when possible.

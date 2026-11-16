@@ -24,6 +24,7 @@ import {
 } from '../users/accounts.js';
 import {
   accountInvitationSchema,
+  invitationIssueBodySchema,
   userCreateResultSchema,
   userCreateSchema,
   userDetailSchema,
@@ -136,7 +137,10 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         throw new ApiProblem(422, 'DUPLICATE_COURSE', 'Each course can be listed only once (one role per course).');
       }
       const delivery = config.accounts.invitationDelivery;
-      const invitationStatus = delivery === 'disabled' ? 'disabled' : isSyntheticAddress(email) ? 'issued' : 'synthetic_only';
+      // Links are only issued automatically by local synthetic delivery; a handed-over link is always issued
+      // explicitly from the user's page, after the administrator has verified the person's identity.
+      const invitationStatus =
+        delivery === 'disabled' ? 'disabled' : delivery === 'administrator_handoff' ? 'handoff_required' : isSyntheticAddress(email) ? 'issued' : 'synthetic_only';
 
       const { userId, invitation } = await db.transaction(async (tx) => {
         const [created] = await withUniqueConflict(
@@ -173,7 +177,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         let issued: Awaited<ReturnType<typeof issueInvitation>> | null = null;
         if (invitationStatus === 'issued') {
           issued = await issueInvitation(tx, { userId: created.id, createdByUserId: auth.user.id, ttlHours: config.accounts.invitationTtlHours });
-          await auditInvitation(tx, request, created.id, issued);
+          await auditInvitation(tx, request, created.id, issued, 'local_link');
         }
         return { userId: created.id, invitation: issued };
       });
@@ -294,13 +298,21 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
 
   // ---- Activation links ----
 
-  app.post<{ Params: UserParams }>(
+  app.post<{ Params: UserParams; Body: { identityConfirmed?: boolean } | null | undefined }>(
     '/users/:userId/invitations',
-    { ...adminWrite, schema: { params: userIdParamsSchema, response: { 201: accountInvitationSchema } } },
+    { ...adminWrite, schema: { params: userIdParamsSchema, body: invitationIssueBodySchema, response: { 201: accountInvitationSchema } } },
     async (request, reply) => {
       const auth = getAuth(request);
-      if (config.accounts.invitationDelivery === 'disabled') {
+      const delivery = config.accounts.invitationDelivery;
+      if (delivery === 'disabled') {
         throw new ApiProblem(409, 'INVITATIONS_DISABLED', 'Activation links are disabled in this environment.');
+      }
+      if (delivery === 'administrator_handoff' && request.body?.identityConfirmed !== true) {
+        throw new ApiProblem(
+          422,
+          'INVITATION_CONFIRMATION_REQUIRED',
+          'Confirm that you verified this person\'s identity and will give them the activation link privately.',
+        );
       }
       const issued = await db.transaction(async (tx) => {
         const [current] = await tx.select().from(users).where(eq(users.id, request.params.userId)).for('update');
@@ -309,30 +321,39 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         if (await hasPassword(tx, current.id)) {
           throw new ApiProblem(409, 'ACCOUNT_ALREADY_ACTIVATED', 'This account is already activated. Activation links are not password resets.');
         }
-        if (!isSyntheticAddress(current.email)) {
+        if (delivery === 'local_link' && !isSyntheticAddress(current.email)) {
           throw new ApiProblem(422, 'INVITATION_SYNTHETIC_ONLY', 'Local activation links are only issued for synthetic addresses (for example @academiapath.example).');
         }
         const invitation = await issueInvitation(tx, { userId: current.id, createdByUserId: auth.user.id, ttlHours: config.accounts.invitationTtlHours });
-        await auditInvitation(tx, request, current.id, invitation);
+        await auditInvitation(tx, request, current.id, invitation, delivery);
         return invitation;
       });
-      return reply.code(201).send({ id: issued.id, expiresAt: issued.expiresAt, delivery: 'local_link', activationPath: activationPath(issued.token) });
+      return reply.code(201).send({ id: issued.id, expiresAt: issued.expiresAt, delivery, activationPath: activationPath(issued.token) });
     },
   );
 };
 
-/** Audits an issued link by id and expiry only: never the token or its hash. */
+/**
+ * Audits an issued link by id, expiry and delivery only: never the token or its hash. A handed-over link also
+ * records that the issuing administrator confirmed the person's identity.
+ */
 async function auditInvitation(
   tx: Parameters<typeof recordAudit>[0],
   request: FastifyRequest,
   userId: string,
   invitation: { id: string; expiresAt: Date },
+  delivery: 'local_link' | 'administrator_handoff',
 ) {
   await recordAudit(tx, request, {
     action: 'user.invitation_issued',
     entityType: 'user',
     entityId: userId,
     before: null,
-    after: { invitationId: invitation.id, expiresAt: invitation.expiresAt.toISOString(), delivery: 'local_link' },
+    after: {
+      invitationId: invitation.id,
+      expiresAt: invitation.expiresAt.toISOString(),
+      delivery,
+      ...(delivery === 'administrator_handoff' ? { identityConfirmed: true } : {}),
+    },
   });
 }

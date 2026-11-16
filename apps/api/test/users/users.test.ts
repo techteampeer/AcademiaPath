@@ -71,8 +71,14 @@ describe('pure helpers', () => {
     const production = { NODE_ENV: 'production', APP_ORIGINS: 'https://lms.example', DOCUMENT_STORAGE_DIR: '/var/lib/academiapath/documents' };
     assert.equal(loadConfig(production).accounts.invitationDelivery, 'disabled');
     assert.throws(() => loadConfig({ ...production, ACCOUNT_INVITATION_DELIVERY: 'local_link' }), /secure delivery/);
-    assert.throws(() => loadConfig({ NODE_ENV: 'test', ACCOUNT_INVITATION_DELIVERY: 'email' }), /local_link or disabled/);
+    assert.throws(() => loadConfig({ NODE_ENV: 'test', ACCOUNT_INVITATION_DELIVERY: 'email' }), /local_link, disabled or administrator_handoff/);
     assert.throws(() => loadConfig({ NODE_ENV: 'test', ACCOUNT_INVITATION_TTL_HOURS: '0' }), /ACCOUNT_INVITATION_TTL_HOURS/);
+    // AP-DEMO-02: administrator handoff is opt-in, allowed in production, and its links live at most 24 hours.
+    const handoff = loadConfig({ ...production, ACCOUNT_INVITATION_DELIVERY: 'administrator_handoff' }).accounts;
+    assert.deepEqual([handoff.invitationDelivery, handoff.invitationTtlHours], ['administrator_handoff', 24]);
+    assert.equal(loadConfig({ ...production, ACCOUNT_INVITATION_DELIVERY: 'administrator_handoff', ACCOUNT_INVITATION_TTL_HOURS: '4' }).accounts.invitationTtlHours, 4);
+    assert.throws(() => loadConfig({ ...production, ACCOUNT_INVITATION_DELIVERY: 'administrator_handoff', ACCOUNT_INVITATION_TTL_HOURS: '25' }), /between 1 and 24/);
+    assert.equal(loadConfig({ NODE_ENV: 'test' }).accounts.invitationTtlHours, 72, 'local links keep their 72-hour default');
   });
 });
 
