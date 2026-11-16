@@ -105,7 +105,13 @@ function NewUserContent() {
           {created.invitation ? (
             <ActivationLinkPanel invitation={created.invitation} />
           ) : (
-            <Alert tone="info">{created.invitationStatus === 'disabled' ? t.users.linkDisabled : t.users.linkSyntheticOnly}</Alert>
+            <Alert tone="info">
+              {created.invitationStatus === 'disabled'
+                ? t.users.linkDisabled
+                : created.invitationStatus === 'handoff_required'
+                  ? t.users.linkHandoffRequired
+                  : t.users.linkSyntheticOnly}
+            </Alert>
           )}
           <div className="flex flex-wrap gap-2">
             <Link href={`/admin/users/${created.user.id}`} className={buttonClasses()}>

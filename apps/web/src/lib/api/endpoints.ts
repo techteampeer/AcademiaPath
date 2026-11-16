@@ -251,7 +251,9 @@ export const api = {
   updateUser: (id: string, body: UserUpdate, csrfToken: string) => apiRequest<UserDetail>('PUT', user(id), { body, csrfToken }),
   deactivateUser: (id: string, csrfToken: string) => apiRequest<UserDetail>('POST', `${user(id)}/deactivate`, { csrfToken }),
   reactivateUser: (id: string, csrfToken: string) => apiRequest<UserDetail>('POST', `${user(id)}/reactivate`, { csrfToken }),
-  issueInvitation: (id: string, csrfToken: string) => apiRequest<AccountInvitation>('POST', `${user(id)}/invitations`, { csrfToken }),
+  /** The caller has confirmed the person's identity (required by administrator handoff delivery, AP-DEMO-02). */
+  issueInvitation: (id: string, csrfToken: string) =>
+    apiRequest<AccountInvitation>('POST', `${user(id)}/invitations`, { csrfToken, body: { identityConfirmed: true } }),
   /** Public: the token travels in the request body only (never in a URL the server sees). */
   previewActivation: (token: string) => apiRequest<ActivationPreview>('POST', '/auth/activation/preview', { body: { token } }),
   activateAccount: (token: string, password: string) => apiRequest<void>('POST', '/auth/activate', { body: { token, password } }),

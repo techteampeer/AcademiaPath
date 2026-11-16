@@ -157,8 +157,9 @@ describe('academic term names', () => {
  * AP-042: the interface reads as an institutional LMS. No development or demonstration branding, while the honest
  * capability and security disclosures stay (rule-based tutor and extractive summaries without generative AI;
  * no malware scanning). Allowed exceptions, both accurate: the unlinked component showcase (/preview/courses, which
- * displays frontend sample data) and the activation-link panel that only renders with
- * ACCOUNT_INVITATION_DELIVERY=local_link, which production refuses.
+ * displays frontend sample data) and the activation-link panel title `users.linkTitle`, which only renders with
+ * ACCOUNT_INVITATION_DELIVERY=local_link, which production refuses (an administrator-handed-over link, AP-DEMO-02,
+ * uses `users.handoffTitle`, which this guard checks like any other string).
  */
 describe('production presentation (AP-042)', () => {
   const strings = (value: unknown, at = ''): Array<[string, string]> =>

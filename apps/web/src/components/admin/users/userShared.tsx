@@ -109,13 +109,19 @@ export function ActivationLinkPanel({ invitation }: { invitation: AccountInvitat
       setCopied(false);
     }
   };
+  // A handed-over link (AP-DEMO-02) is real: the administrator gives it to a verified person privately.
+  const handoff = invitation.delivery === 'administrator_handoff';
   return (
-    <section aria-labelledby="activation-link-heading" className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+    <section
+      aria-labelledby="activation-link-heading"
+      data-link-delivery={invitation.delivery}
+      className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4"
+    >
       <h3 id="activation-link-heading" className="font-semibold text-amber-900">
-        {t.users.linkTitle}
+        {handoff ? t.users.handoffTitle : t.users.linkTitle}
       </h3>
       <p className="text-sm text-amber-900">
-        {t.users.linkIntro} {t.users.linkExpires(formatDateTime(invitation.expiresAt, locale))}
+        {handoff ? t.users.handoffIntro : t.users.linkIntro} {t.users.linkExpires(formatDateTime(invitation.expiresAt, locale))}
       </p>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
         <div className="min-w-0 flex-1">

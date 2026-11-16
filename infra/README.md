@@ -198,6 +198,50 @@ The demo data can stay. Never reset or delete the database.
 - **Cloud SQL and Cloud Storage:** a few hundred rows and three small documents, on the existing instance and bucket.
 - **Nothing else new:** no new image (the job reuses the release's `migrate` image), no new instance, and no Vertex AI or other paid API call.
 
+## Account activation links
+
+`deploy.yml` sets `ACCOUNT_INVITATION_DELIVERY=administrator_handoff` on the API (AP-DEMO-02). New accounts have no
+password. To activate one (for example a tester's account):
+
+1. An administrator creates the account under **Administration → Users → New user**, with its system role and course
+   roles. No link is created or sent.
+2. The administrator verifies the person's identity, opens the account's page, ticks **I verified this person's
+   identity and will give them the link privately**, and creates the activation link.
+3. The link is shown once, works once and expires after 24 hours at most. Give it to the person in person or through a
+   private channel; never post it in shared chats, tickets, documents or GitHub. The person chooses their own password.
+
+Links are never issued for accounts that already have a password (`ACCOUNT_ALREADY_ACTIVATED`): they are not password
+resets, so the demo accounts are unaffected. Each link is audited (`user.invitation_issued`, with the administrator and
+`identityConfirmed`); the token is never stored or logged. Only administrators can issue links. Do not issue links for
+the supporting learners `learner.a@` and `learner.b@`, which have no password by design.
+
+### Accounts other than the demo data and the seed job
+
+The seed job (`academiapath-seed-demo`, workflow **Seed demo data (manual)**) never runs on its own: deployments
+(`deploy.yml`) only build, migrate and deploy. It only works on a database that holds nothing but demo data. Once any
+other account exists (a tester's account included, active or deactivated), every mode, `check`, `create` and
+`reset-credentials`, stops with "N account(s) are not synthetic demo accounts" and changes nothing
+(`apps/api/test/demo/seed-cloud-demo.test.ts`). It never names, modifies or overwrites such an account: it only ever
+writes to its seven fixed demo addresses. Deployments, migrations and sign-in with the demo accounts are not affected.
+
+Procedure for a dedicated account (each step with Sagar's authorization):
+
+1. After the deployment of `main` has succeeded, run **Seed demo data (manual)** with mode `check`. It must end with
+   "Ready. Nothing was changed." If it reports missing demo accounts or data, run mode `create` now.
+2. Run any other seed you still need now, including `reset-credentials` if the demo passwords must change before the
+   account exists.
+3. Only then create the account (steps above).
+4. From then on the seed job refuses every mode until that account is removed. Rotating the demo credentials after
+   the demo then needs either a reviewed change to the seed job or an authorized removal of that account (a production
+   data change).
+
+**Switching it off.** Remove `@ACCOUNT_INVITATION_DELIVERY=administrator_handoff` from the API `--set-env-vars` in
+`deploy.yml` (production then uses the code default, `disabled`) and merge. That deploys, so it needs Sagar's
+authorization. The workflow replaces every API variable on each deployment, so a change made only with
+`gcloud run services update` is undone by the next merge. With `disabled`, no new links can be issued, but a link that
+was already issued keeps working until it is used or expires (at most 24 hours). To cancel one at once, deactivate that
+pending account on its page (this revokes its open links; after reactivation a new link is needed).
+
 ## Rules for changing the deployment
 
 - **No secrets in Git:** they go to Secret Manager and are mounted with `--set-secrets`.
@@ -208,7 +252,8 @@ The demo data can stay. Never reset or delete the database.
 
 ## Known limitations
 
-- **No demo users until the seed job runs.** The database is empty until someone runs `academiapath-seed-demo` (see "Demo users and courses" above). `db:seed:dev` and `db:seed:demo` refuse production, Cloud Run and Cloud SQL, and production issues no activation links.
+- **No demo users until the seed job runs.** The database is empty until someone runs `academiapath-seed-demo` (see "Demo users and courses" above). `db:seed:dev` and `db:seed:demo` refuse production, Cloud Run and Cloud SQL.
+- **Activation links need a person.** New accounts stay pending until an administrator hands over an activation link (see "Account activation links" above). There is no e-mail delivery, self-registration or password reset.
 - **Client IPs.** The web proxies `/api/*`, so the API sees Google front-end IPs. Login rate limits still work because they are keyed by email, but audit logs have no client IP. For production, put both services behind one external HTTPS load balancer with path routing and set `TRUST_PROXY` to its ranges.
 - **Public services.** Both services allow unauthenticated access, which a public demo needs. The API still enforces its own Origin, CSRF and session checks.
 - **JSON key.** `GCP_SA_KEY` is a long-lived credential. Replace it with Workload Identity Federation when possible.

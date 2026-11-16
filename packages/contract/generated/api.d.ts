@@ -224,7 +224,9 @@ export interface paths {
          *     addresses on reserved domains (`.example`, `.test`, `.invalid`, `.localhost`,
          *     `example.com/.net/.org`) only. Only a hash of the token is stored, so it can never be shown
          *     again; issue a new one with `POST /users/{userId}/invitations`. Otherwise `invitation` is
-         *     `null` and `invitationStatus` says why.
+         *     `null` and `invitationStatus` says why. With `ACCOUNT_INVITATION_DELIVERY=administrator_handoff`
+         *     no link is issued here (`handoff_required`): the administrator issues it explicitly with
+         *     `POST /users/{userId}/invitations` after verifying the person's identity.
          *
          *     Audited as `user.created`, `enrollment.created` and `user.invitation_issued`.
          */
@@ -323,11 +325,16 @@ export interface paths {
         /**
          * Issue a new activation link for a pending account
          * @description Administrators only. Revokes the account's open activation links and issues a new
-         *     single-use link that expires after `ACCOUNT_INVITATION_TTL_HOURS` (default 72). Only for
-         *     active accounts that have not set a password (`ACCOUNT_ALREADY_ACTIVATED` otherwise): this is
-         *     not a password reset. Requires local link delivery (`INVITATIONS_DISABLED`) and a synthetic
-         *     address (`INVITATION_SYNTHETIC_ONLY`); see `POST /users`. Send no request body. Audited as
-         *     `user.invitation_issued`.
+         *     single-use link that expires after `ACCOUNT_INVITATION_TTL_HOURS` (default 72; with
+         *     administrator handoff, default and maximum 24). Only for active accounts that have not set a
+         *     password (`ACCOUNT_ALREADY_ACTIVATED` otherwise): this is not a password reset, so existing
+         *     accounts keep their passwords. Refused when delivery is `disabled` (`INVITATIONS_DISABLED`).
+         *     Local link delivery needs a synthetic address (`INVITATION_SYNTHETIC_ONLY`) and no request
+         *     body. Administrator handoff (`administrator_handoff`) works for any address but requires
+         *     `{"identityConfirmed": true}`: the administrator confirms they verified the person's identity
+         *     and will give them the link privately (`INVITATION_CONFIRMATION_REQUIRED` otherwise). Audited as
+         *     `user.invitation_issued` with the delivery mode (and `identityConfirmed` for a handoff), never
+         *     the token.
          */
         post: operations["issueUserInvitation"];
         delete?: never;
@@ -3450,7 +3457,7 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUALITY_CHECK_BLOCKED" | "QUALITY_REPORT_TOO_LARGE" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE" | "QUIZ_POOL_TOO_SMALL" | "QUIZ_POOL_POINTS_MIXED" | "QUIZ_SOURCE_INVALID" | "FEEDBACK_NOT_AVAILABLE" | "GRADE_CATEGORY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_INVALID" | "GRADE_WEIGHTS_INVALID" | "GRADE_RELEASE_DUPLICATE" | "GRADING_POLICY_CONFLICT" | "CERTIFICATE_POLICY_INVALID" | "CERTIFICATE_POLICY_CONFLICT" | "CERTIFICATE_NOT_ELIGIBLE" | "CERTIFICATE_ALREADY_REVOKED" | "CERTIFICATE_REVOKED" | "CERTIFICATE_NOT_FOUND" | "ANNOUNCEMENT_ARCHIVED" | "ANNOUNCEMENT_NOT_SCHEDULED" | "PUBLISH_AT_INVALID" | "EVENT_TIME_INVALID" | "INVALID_TIME_ZONE" | "RANGE_INVALID" | "EVENT_CANCELLED" | "EVENT_WAS_PUBLISHED";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUALITY_CHECK_BLOCKED" | "QUALITY_REPORT_TOO_LARGE" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "INVITATION_CONFIRMATION_REQUIRED" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE" | "QUIZ_POOL_TOO_SMALL" | "QUIZ_POOL_POINTS_MIXED" | "QUIZ_SOURCE_INVALID" | "FEEDBACK_NOT_AVAILABLE" | "GRADE_CATEGORY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_INVALID" | "GRADE_WEIGHTS_INVALID" | "GRADE_RELEASE_DUPLICATE" | "GRADING_POLICY_CONFLICT" | "CERTIFICATE_POLICY_INVALID" | "CERTIFICATE_POLICY_CONFLICT" | "CERTIFICATE_NOT_ELIGIBLE" | "CERTIFICATE_ALREADY_REVOKED" | "CERTIFICATE_REVOKED" | "CERTIFICATE_NOT_FOUND" | "ANNOUNCEMENT_ARCHIVED" | "ANNOUNCEMENT_NOT_SCHEDULED" | "PUBLISH_AT_INVALID" | "EVENT_TIME_INVALID" | "INVALID_TIME_ZONE" | "RANGE_INVALID" | "EVENT_CANCELLED" | "EVENT_WAS_PUBLISHED";
         };
         /**
          * @description What a link points to. Every kind is only a link opened in a new tab; nothing is embedded, fetched or executed.
@@ -5594,7 +5601,8 @@ export interface components {
         /**
          * @description A single-use activation link, returned only once when issued. `activationPath` is relative to
          *     the web app origin; the token is in the URL fragment so browsers never send it to a server.
-         *     Synthetic local demonstration only (local link delivery).
+         *     `local_link`: synthetic local demonstration only. `administrator_handoff`: an administrator
+         *     verified the person's identity and gives them the link privately.
          */
         AccountInvitation: {
             /** Format: uuid */
@@ -5602,7 +5610,7 @@ export interface components {
             /** Format: date-time */
             expiresAt: string;
             /** @enum {string} */
-            delivery: "local_link";
+            delivery: "local_link" | "administrator_handoff";
             /** @description `/activate#token=…` */
             activationPath: string;
         };
@@ -5612,10 +5620,19 @@ export interface components {
             /**
              * @description `issued`: a local activation link is included. `disabled`: activation links are turned off
              *     in this environment. `synthetic_only`: local links are only issued for synthetic addresses.
+             *     `handoff_required`: administrator handoff; issue the link from the user's page after
+             *     verifying the person's identity.
              * @enum {string}
              */
-            invitationStatus: "issued" | "disabled" | "synthetic_only";
+            invitationStatus: "issued" | "disabled" | "synthetic_only" | "handoff_required";
         };
+        /**
+         * @description Optional. Required with administrator handoff delivery: `identityConfirmed: true` records that
+         *     the administrator verified the person's identity and will give them the link privately.
+         */
+        InvitationIssueRequest: {
+            identityConfirmed?: boolean;
+        } | null;
         ActivationPreviewRequest: {
             token: string;
         };
@@ -6442,7 +6459,8 @@ export interface components {
          *     document upload: `FILE_SIGNATURE_MISMATCH` (content does not match the extension),
          *     `DOCUMENT_ENCRYPTED`, `DOCUMENT_MALFORMED`, `DOCUMENT_LIMITS_EXCEEDED` (decompressed size,
          *     processing time or memory) or `MALWARE_DETECTED`; or an account or enrollment rule:
-         *     `COURSE_NOT_FOUND`, `DUPLICATE_COURSE`, `INVITATION_SYNTHETIC_ONLY`, `PASSWORD_TOO_WEAK`,
+         *     `COURSE_NOT_FOUND`, `DUPLICATE_COURSE`, `INVITATION_SYNTHETIC_ONLY`, `INVITATION_CONFIRMATION_REQUIRED`,
+         *     `PASSWORD_TOO_WEAK`,
          *     `IMPORT_HAS_ERRORS`, `IMPORT_TOO_LARGE` or `INVALID_SECTION_ORDER`; or a progress rule:
          *     `COMPLETION_AUTOMATIC` (quizzes and assignments complete on submission), `PREREQUISITE_SELF`,
          *     `PREREQUISITE_SECTION_NOT_FOUND` or `PREREQUISITE_CYCLE`; or a learning-resource rule:
@@ -6909,7 +6927,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InvitationIssueRequest"];
+            };
+        };
         responses: {
             /** @description Activation link issued (shown only in this response). */
             201: {

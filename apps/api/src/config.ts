@@ -59,16 +59,21 @@ export type AppConfig = {
   accounts: {
     /**
      * How single-use activation links reach new users. `local_link`: the API returns the link once to
-     * the issuing administrator, for synthetic addresses only (local demonstration). `disabled`: no
-     * links are issued. Production allows only `disabled` until secure delivery and identity
-     * verification are configured.
+     * the issuing administrator, for synthetic addresses only (local demonstration; refused in production).
+     * `disabled`: no links are issued (the production default). `administrator_handoff` (AP-DEMO-02, opt-in,
+     * allowed in production): an administrator explicitly issues a link from the user's page after verifying
+     * the person's identity, receives it once and hands it over privately; links are never issued
+     * automatically and live at most 24 hours.
      */
     invitationDelivery: InvitationDelivery;
     invitationTtlHours: number;
   };
 };
 
-export type InvitationDelivery = 'local_link' | 'disabled';
+export type InvitationDelivery = 'local_link' | 'disabled' | 'administrator_handoff';
+
+/** Longest lifetime of an administrator-handed-over activation link (AP-DEMO-02). */
+export const HANDOFF_MAX_TTL_HOURS = 24;
 
 export const SESSION_COOKIE_NAMES = {
   development: 'ap_session',
@@ -121,8 +126,8 @@ function parseOrigins(raw: string): string[] {
 
 function parseInvitationDelivery(raw: string | undefined, isProduction: boolean): InvitationDelivery {
   const value = raw?.trim() || (isProduction ? 'disabled' : 'local_link');
-  if (value !== 'local_link' && value !== 'disabled') {
-    throw new Error('ACCOUNT_INVITATION_DELIVERY must be local_link or disabled');
+  if (value !== 'local_link' && value !== 'disabled' && value !== 'administrator_handoff') {
+    throw new Error('ACCOUNT_INVITATION_DELIVERY must be local_link, disabled or administrator_handoff');
   }
   if (isProduction && value === 'local_link') {
     throw new Error(
@@ -180,6 +185,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new Error('APP_ORIGINS must be set in production');
   }
   const allowedOrigins = parseOrigins(originsRaw || DEFAULT_DEV_ORIGIN);
+  const invitationDelivery = parseInvitationDelivery(env.ACCOUNT_INVITATION_DELIVERY, isProduction);
 
   return {
     isProduction,
@@ -216,8 +222,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       timeZone: parseTimeZone(env.INSTITUTION_TIME_ZONE),
     },
     accounts: {
-      invitationDelivery: parseInvitationDelivery(env.ACCOUNT_INVITATION_DELIVERY, isProduction),
-      invitationTtlHours: readPositiveInt(env, 'ACCOUNT_INVITATION_TTL_HOURS', 72, 24 * 7),
+      invitationDelivery,
+      invitationTtlHours:
+        invitationDelivery === 'administrator_handoff'
+          ? readPositiveInt(env, 'ACCOUNT_INVITATION_TTL_HOURS', HANDOFF_MAX_TTL_HOURS, HANDOFF_MAX_TTL_HOURS)
+          : readPositiveInt(env, 'ACCOUNT_INVITATION_TTL_HOURS', 72, 24 * 7),
     },
   };
 }
