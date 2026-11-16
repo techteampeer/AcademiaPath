@@ -92,6 +92,8 @@ jobs:
       - name: Deploy API
         run: |
           # ^@^ makes @ the separator between variables, because APP_ORIGINS is a comma-separated list.
+          # ACCOUNT_INVITATION_DELIVERY=administrator_handoff (AP-DEMO-02): administrators may issue identity-confirmed,
+          # single-use activation links (24 h at most) for pending accounts; see infra/README.md to switch it off.
           gcloud run deploy "$API_SERVICE" \
             --image="$API_IMAGE" \
             --region="$REGION" \
@@ -99,7 +101,7 @@ jobs:
             --execution-environment=gen2 \
             --add-cloudsql-instances="$SQL_INSTANCE" \
             --set-secrets=DATABASE_URL=academiapath-db-url:latest \
-            --set-env-vars="^@^NODE_ENV=production@API_HOST=0.0.0.0@LOG_LEVEL=info@APP_ORIGINS=${APP_ORIGINS}@SESSION_TTL_HOURS=8@DOCUMENT_STORAGE_DIR=/mnt/documents@DOCUMENT_MAX_UPLOAD_MB=10" \
+            --set-env-vars="^@^NODE_ENV=production@API_HOST=0.0.0.0@LOG_LEVEL=info@APP_ORIGINS=${APP_ORIGINS}@SESSION_TTL_HOURS=8@DOCUMENT_STORAGE_DIR=/mnt/documents@DOCUMENT_MAX_UPLOAD_MB=10@ACCOUNT_INVITATION_DELIVERY=administrator_handoff" \
             --clear-volume-mounts --clear-volumes \
             --add-volume=name=documents,type=cloud-storage,bucket="$DOCUMENTS_BUCKET" \
             --add-volume-mount=volume=documents,mount-path=/mnt/documents \
