@@ -1814,6 +1814,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/course-imports/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate a course package and preview its import (AP-038B)
+         * @description Administrators only (like creating a course). The request body is the course package file itself
+         *     (`CoursePackage`, at most 20 MB). Nothing is written: the package is validated and described.
+         *
+         *     Checks: `format` and `formatVersion` (only version 1 is supported); the `contentHash`, recomputed over the
+         *     content rebuilt in the export's canonical form (key order in the file does not matter); every value with the
+         *     authoring limits (text lengths, https links on a domain name, quiz settings, answer keys that name options of
+         *     their own question, rubric points); every package-local key (unique, and references only to units, folders
+         *     and assets of the same package, folders of the activity's own unit); prerequisite cycles; at most 200 units,
+         *     100 folders per unit and 1000 activities. Fields this version does not know are listed in
+         *     `unsupportedFields` and ignored.
+         *
+         *     The preview lists what cannot be imported (`skipped`): document activities (version 1 packages never
+         *     contain files; see AP-040) and activity types that are not portable yet. An import with skipped
+         *     activities needs `acknowledgeSkipped`. Malformed JSON gets 400 `BAD_REQUEST`; a larger body 413.
+         */
+        post: operations["previewCourseImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/course-imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import a course package as a new draft course (AP-038B)
+         * @description Administrators only. Validates the package again exactly as the preview does, then creates a NEW course in
+         *     the chosen program and term with the given code (never overwriting a course: a taken code gets 409
+         *     `COURSE_CODE_TAKEN`, so a repeated or concurrent confirmation creates the course once). In one
+         *     transaction (a failure leaves nothing behind) it creates the units in order with their prerequisites,
+         *     the resource folders, and every importable activity as a **draft** that goes through this institution's
+         *     review (no approval, review state or publication travels with a package; the course is a draft too).
+         *     Every row gets a new identifier; package keys are only used to connect the new rows. Quiz questions get
+         *     new option ids and answer keys rebuilt from them; rubric criteria get new ids.
+         *
+         *     `versionPreference` chooses the approved version (default) or the authors' working copy of activities
+         *     that have both. Assignments get `assignmentDueAt` (required when the package has assignments) and no
+         *     late window: dates in a package belong to the source term. Document activities and activity types that
+         *     are not portable yet are not created; when the package has any, `acknowledgeSkipped` must be true and the
+         *     response lists them. Never created: people, enrollments, attempts, submissions, grades, completions,
+         *     documents, calendar events, certificates or grading policies. Audited as `course.imported`.
+         *
+         *     Problems: 422 `IMPORT_PACKAGE_INVALID`, `IMPORT_VERSION_UNSUPPORTED`, `IMPORT_HASH_MISMATCH`,
+         *     `IMPORT_ACKNOWLEDGEMENT_REQUIRED`, `IMPORT_DUE_DATE_REQUIRED`, `PROGRAM_NOT_FOUND`, `PROGRAM_INACTIVE`,
+         *     `TERM_NOT_FOUND`; 409 `COURSE_CODE_TAKEN`; 413 for a body above 20 MB.
+         */
+        post: operations["importCourse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{id}/export": {
         parameters: {
             query?: never;
@@ -3497,7 +3568,7 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUALITY_CHECK_BLOCKED" | "QUALITY_REPORT_TOO_LARGE" | "COURSE_EXPORT_TOO_LARGE" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "INVITATION_CONFIRMATION_REQUIRED" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE" | "QUIZ_POOL_TOO_SMALL" | "QUIZ_POOL_POINTS_MIXED" | "QUIZ_SOURCE_INVALID" | "FEEDBACK_NOT_AVAILABLE" | "GRADE_CATEGORY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_INVALID" | "GRADE_WEIGHTS_INVALID" | "GRADE_RELEASE_DUPLICATE" | "GRADING_POLICY_CONFLICT" | "CERTIFICATE_POLICY_INVALID" | "CERTIFICATE_POLICY_CONFLICT" | "CERTIFICATE_NOT_ELIGIBLE" | "CERTIFICATE_ALREADY_REVOKED" | "CERTIFICATE_REVOKED" | "CERTIFICATE_NOT_FOUND" | "ANNOUNCEMENT_ARCHIVED" | "ANNOUNCEMENT_NOT_SCHEDULED" | "PUBLISH_AT_INVALID" | "EVENT_TIME_INVALID" | "INVALID_TIME_ZONE" | "RANGE_INVALID" | "EVENT_CANCELLED" | "EVENT_WAS_PUBLISHED";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUALITY_CHECK_BLOCKED" | "QUALITY_REPORT_TOO_LARGE" | "COURSE_EXPORT_TOO_LARGE" | "IMPORT_PACKAGE_INVALID" | "IMPORT_VERSION_UNSUPPORTED" | "IMPORT_HASH_MISMATCH" | "IMPORT_ACKNOWLEDGEMENT_REQUIRED" | "IMPORT_DUE_DATE_REQUIRED" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "INVITATION_CONFIRMATION_REQUIRED" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE" | "QUIZ_POOL_TOO_SMALL" | "QUIZ_POOL_POINTS_MIXED" | "QUIZ_SOURCE_INVALID" | "FEEDBACK_NOT_AVAILABLE" | "GRADE_CATEGORY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_INVALID" | "GRADE_WEIGHTS_INVALID" | "GRADE_RELEASE_DUPLICATE" | "GRADING_POLICY_CONFLICT" | "CERTIFICATE_POLICY_INVALID" | "CERTIFICATE_POLICY_CONFLICT" | "CERTIFICATE_NOT_ELIGIBLE" | "CERTIFICATE_ALREADY_REVOKED" | "CERTIFICATE_REVOKED" | "CERTIFICATE_NOT_FOUND" | "ANNOUNCEMENT_ARCHIVED" | "ANNOUNCEMENT_NOT_SCHEDULED" | "PUBLISH_AT_INVALID" | "EVENT_TIME_INVALID" | "INVALID_TIME_ZONE" | "RANGE_INVALID" | "EVENT_CANCELLED" | "EVENT_WAS_PUBLISHED";
         };
         /**
          * @description What a link points to. Every kind is only a link opened in a new tab; nothing is embedded, fetched or executed.
@@ -5775,6 +5846,122 @@ export interface components {
             /** @constant */
             bundled: false;
         };
+        /** @description An activity of the package that is not created. */
+        CourseImportSkipped: {
+            key: string;
+            unitKey: string;
+            type: string;
+            title: string;
+            /** @enum {string} */
+            reason: "DOCUMENT_NOT_BUNDLED" | "UNSUPPORTED_ACTIVITY_TYPE";
+        };
+        CourseImportPreview: {
+            /** @description True when the package can be imported (no errors, supported version, hash verified). */
+            valid: boolean;
+            format: string | null;
+            formatVersion: number | null;
+            supportedFormatVersion: number;
+            contentHash: string | null;
+            hashVerified: boolean;
+            source: {
+                title: string | null;
+                description: string | null;
+                courseCode: string | null;
+                courseStatus: string | null;
+                exportedAt: string | null;
+            };
+            counts: {
+                units: number;
+                folders: number;
+                activities: number;
+                activitiesByType: {
+                    [key: string]: number;
+                };
+                questions: number;
+                importableActivities: number;
+                skippedActivities: number;
+                assignments: number;
+            };
+            /** @description Every document the package refers to. None can be imported yet (their files are not in the package). */
+            documents: {
+                assetKey: string;
+                fileName: string;
+                format: string;
+                byteSize: number;
+                sha256: string;
+                /**
+                 * @description `not_bundled`: described but not included; `missing_at_source`: the file was already missing when exported.
+                 * @enum {string}
+                 */
+                availability: "not_bundled" | "missing_at_source";
+                activityKeys: string[];
+            }[];
+            skipped: components["schemas"]["CourseImportSkipped"][];
+            /** @description Paths of fields this version does not know (ignored), at most 100. */
+            unsupportedFields: string[];
+            unsupportedFieldCount: number;
+            /** @description Validation problems, at most 100 (see `errorCount`). */
+            errors: {
+                path: string;
+                code: string;
+                message: string;
+            }[];
+            errorCount: number;
+            packageWarnings: {
+                code: string;
+                target: string;
+            }[];
+            requiresAcknowledgement: boolean;
+            requiresDueDate: boolean;
+        };
+        CourseImportRequest: {
+            package: components["schemas"]["CoursePackage"];
+            /** Format: uuid */
+            programId: string;
+            /** Format: uuid */
+            termId: string;
+            code: string;
+            /** @description Defaults to the package's course title. */
+            title?: string;
+            /**
+             * @default approved
+             * @enum {string}
+             */
+            versionPreference: "approved" | "working";
+            /**
+             * @description Required (true) when the preview lists skipped activities.
+             * @default false
+             */
+            acknowledgeSkipped: boolean;
+            /**
+             * Format: date-time
+             * @description Due date of every imported assignment; required when the package has assignments.
+             */
+            assignmentDueAt?: string;
+        };
+        CourseImportResult: {
+            course: {
+                /** Format: uuid */
+                id: string;
+                code: string;
+                title: string;
+                /** @enum {string} */
+                status: "draft";
+                /** Format: uuid */
+                programId: string;
+                /** Format: uuid */
+                termId: string;
+            };
+            created: {
+                units: number;
+                folders: number;
+                prerequisites: number;
+                activities: number;
+                questions: number;
+            };
+            skipped: components["schemas"]["CourseImportSkipped"][];
+            contentHash: string;
+        };
         CoursePackageWarning: {
             /** @enum {string} */
             code: "ASSET_NOT_BUNDLED" | "ASSET_MISSING" | "INVALID_REFERENCE" | "UNSUPPORTED_ACTIVITY_TYPE";
@@ -6640,7 +6827,9 @@ export interface components {
          *     `INVALID_ANSWER_KEY`, `INVALID_ANSWER`, `INVALID_DUE_DATE`, `INVALID_RUBRIC_SCORES` or
          *     `QUALITY_CHECK_BLOCKED` (content with a blocking quality finding is neither submitted nor approved) or
          *     `QUALITY_REPORT_TOO_LARGE` (a course too large for one quality report) or `COURSE_EXPORT_TOO_LARGE`
-         *     (more than 1000 activities or 20 MB in one course package); or a refused
+         *     (more than 1000 activities or 20 MB in one course package); or a refused course import:
+         *     `IMPORT_PACKAGE_INVALID`, `IMPORT_VERSION_UNSUPPORTED`, `IMPORT_HASH_MISMATCH`,
+         *     `IMPORT_ACKNOWLEDGEMENT_REQUIRED` or `IMPORT_DUE_DATE_REQUIRED`; or a refused
          *     document upload: `FILE_SIGNATURE_MISMATCH` (content does not match the extension),
          *     `DOCUMENT_ENCRYPTED`, `DOCUMENT_MALFORMED`, `DOCUMENT_LIMITS_EXCEEDED` (decompressed size,
          *     processing time or memory) or `MALWARE_DETECTED`; or an account or enrollment rule:
@@ -9349,6 +9538,64 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    previewCourseImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": unknown;
+            };
+        };
+        responses: {
+            /** @description The preview (`valid` false lists every problem in `errors`). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseImportPreview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["PayloadTooLarge"];
+        };
+    };
+    importCourse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CourseImportRequest"];
+            };
+        };
+        responses: {
+            /** @description The new draft course and what was created or skipped. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseImportResult"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            422: components["responses"]["UnprocessableContent"];
         };
     };
     exportCourse: {

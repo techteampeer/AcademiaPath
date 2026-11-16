@@ -1,6 +1,9 @@
 import { API_BASE, ApiError, apiRequest, apiUpload } from './client';
 import type {
   CourseEmailRecipients,
+  CourseImportPreview,
+  CourseImportRequest,
+  CourseImportResult,
   AccountInvitation,
   Activity,
   QualityReport,
@@ -463,6 +466,10 @@ export const api = {
     return { blob: await response.blob(), fileName };
   },
 
+  /** AP-038B: validates a course package (the parsed file) and describes its import; nothing is written. */
+  previewCourseImport: (pkg: unknown, csrfToken: string) => apiRequest<CourseImportPreview>('POST', '/course-imports/preview', { body: pkg, csrfToken }),
+  /** AP-038B: imports a validated package as a new draft course. */
+  importCourse: (body: CourseImportRequest, csrfToken: string) => apiRequest<CourseImportResult>('POST', '/course-imports', { body, csrfToken }),
   /** AP-038A: the course content package as a Blob (same-origin, with the session cookie); the browser saves it as a file. */
   exportCoursePackage: async (courseId: string) => {
     const response = await fetch(`${API_BASE}${course(courseId)}/export`, { credentials: 'same-origin', headers: { accept: 'application/json' } });

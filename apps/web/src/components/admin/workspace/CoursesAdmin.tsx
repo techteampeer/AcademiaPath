@@ -42,9 +42,14 @@ function CoursesContent() {
       title={t.admin.coursesTitle}
       description={t.admin.coursesIntro}
       actions={
-        <Link href="/admin/setup" className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
-          {t.admin.setup}
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/admin/courses/import" className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
+            {t.courseImport.action}
+          </Link>
+          <Link href="/admin/setup" className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
+            {t.admin.setup}
+          </Link>
+        </div>
       }
     />
   );
