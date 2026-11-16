@@ -13,6 +13,7 @@ import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { Activity, DocumentDetail, DocumentSummary } from '@/lib/api/types';
 import { formatDateTimeOrDash, type Messages } from '@/lib/i18n/messages';
+import { DocumentDownloadLink } from './DocumentDownloadLink';
 import { formatBytes, segmentCount, segmentLabel } from './documentDisplay';
 
 type PanelState = { status: 'loading' } | { status: 'error' } | { status: 'ready'; detail: DocumentDetail };
@@ -117,10 +118,10 @@ export function DocumentPanel({ courseId, activity, canRefresh, onChanged }: { c
             <Link href={`/courses/${courseId}/activities/${activity.id}/brief`} className={buttonClasses({ size: 'sm' })} aria-describedby="study-brief-hint">
               {t.documents.brief.create}
             </Link>
-            <a href={api.documentFileHref(courseId, activity.id)} download className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
+            <DocumentDownloadLink courseId={courseId} activityId={activity.id} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
               {p.download}
               <span className="sr-only"> ({document.fileName})</span>
-            </a>
+            </DocumentDownloadLink>
           </div>
         </div>
         <p id="study-brief-hint" className="text-xs text-slate-500">

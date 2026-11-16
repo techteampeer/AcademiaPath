@@ -21,6 +21,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Document storage readiness (administrators only)
+         * @description Whether the document storage directory is usable, checked on each request: it exists, the API can read and
+         *     write it, and (unless `mountCheck` is `off`) whether it is a mount point, as the Cloud Storage volume must be
+         *     in the cloud deployment. Read-only: nothing is created, written or listed. No path, file name or file count is
+         *     returned.
+         *
+         *     `status` is `ready` (usable, and mounted when a mount is checked), `degraded` (usable, but no mount was
+         *     detected while `mountCheck` is `report`; uploads continue) or `unavailable` (missing, not a directory, not
+         *     writable, or not mounted while `mountCheck` is `enforce`).
+         *
+         *     Uploads are refused with `503 DOCUMENT_STORAGE_UNAVAILABLE` when the directory is missing or not a directory,
+         *     and, when `mountCheck` is `enforce`, whenever `status` is not `ready`. In `report` mode a permission problem is
+         *     reported here but left to the write itself, which refuses the upload in the same way if it fails.
+         */
+        get: operations["getStorageReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -1151,6 +1182,10 @@ export interface paths {
          *     without selectable text (for example scanned pages) is stored with extraction status
          *     `no_text`; no OCR is performed. The new `file` activity is a `draft`. Audited as
          *     `activity.created`, `document.uploaded` and `document.summary_generated`.
+         *
+         *     When the storage directory is missing (or, with `DOCUMENT_STORAGE_MOUNT_CHECK=enforce`, storage is not ready;
+         *     see `GET /api/v1/system/storage`), or the file cannot be stored, the upload is refused with
+         *     `503 DOCUMENT_STORAGE_UNAVAILABLE` and nothing is created.
          */
         post: operations["uploadSectionDocument"];
         delete?: never;
@@ -1258,6 +1293,12 @@ export interface paths {
          *     SHA-256 is verified before it is sent. Original files are never reachable through a public
          *     URL.
          *     Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
+         *
+         *     Access is checked before storage is read, so callers without access always receive the normal `401`, `403`
+         *     or `404`. If the stored file is missing the response is `500 DOCUMENT_FILE_MISSING`; if its size or SHA-256
+         *     does not match the values recorded at upload it is `500 DOCUMENT_FILE_CORRUPT` and no byte of it is sent;
+         *     if storage cannot be read it is `503 DOCUMENT_STORAGE_UNAVAILABLE`. These responses never contain the
+         *     storage path, the stored file's name or its content.
          */
         get: operations["downloadActivityDocument"];
         put?: never;
@@ -3515,6 +3556,31 @@ export interface components {
             /** Format: date-time */
             timestamp: string;
         };
+        /**
+         * @description Document storage readiness. `mountCheck` is the configured `DOCUMENT_STORAGE_MOUNT_CHECK` mode: `off` (local
+         *     development; no checks), `report` (production default; a missing mount is reported as `degraded` but does
+         *     not stop the API) or `enforce` (a missing mount makes storage `unavailable` and stops the API at startup).
+         */
+        StorageReadiness: {
+            /** @enum {string} */
+            status: "ready" | "degraded" | "unavailable";
+            /** @enum {string} */
+            mountCheck: "off" | "report" | "enforce";
+            /** @enum {string} */
+            directory: "present" | "missing" | "not_a_directory";
+            /**
+             * @description Whether the API may read and write the directory (`not_checked` when it does not exist).
+             * @enum {string}
+             */
+            access: "read_write" | "denied" | "not_checked";
+            /**
+             * @description Whether the directory is a mount point (`not_checked` when it is unusable or the check is `off`).
+             * @enum {string}
+             */
+            mount: "mounted" | "not_mounted" | "not_checked";
+            /** Format: date-time */
+            checkedAt: string;
+        };
         LoginRequest: {
             email: string;
             /** Format: password */
@@ -3568,7 +3634,7 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUALITY_CHECK_BLOCKED" | "QUALITY_REPORT_TOO_LARGE" | "COURSE_EXPORT_TOO_LARGE" | "IMPORT_PACKAGE_INVALID" | "IMPORT_VERSION_UNSUPPORTED" | "IMPORT_HASH_MISMATCH" | "IMPORT_ACKNOWLEDGEMENT_REQUIRED" | "IMPORT_DUE_DATE_REQUIRED" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "INVITATION_CONFIRMATION_REQUIRED" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE" | "QUIZ_POOL_TOO_SMALL" | "QUIZ_POOL_POINTS_MIXED" | "QUIZ_SOURCE_INVALID" | "FEEDBACK_NOT_AVAILABLE" | "GRADE_CATEGORY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_INVALID" | "GRADE_WEIGHTS_INVALID" | "GRADE_RELEASE_DUPLICATE" | "GRADING_POLICY_CONFLICT" | "CERTIFICATE_POLICY_INVALID" | "CERTIFICATE_POLICY_CONFLICT" | "CERTIFICATE_NOT_ELIGIBLE" | "CERTIFICATE_ALREADY_REVOKED" | "CERTIFICATE_REVOKED" | "CERTIFICATE_NOT_FOUND" | "ANNOUNCEMENT_ARCHIVED" | "ANNOUNCEMENT_NOT_SCHEDULED" | "PUBLISH_AT_INVALID" | "EVENT_TIME_INVALID" | "INVALID_TIME_ZONE" | "RANGE_INVALID" | "EVENT_CANCELLED" | "EVENT_WAS_PUBLISHED";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUALITY_CHECK_BLOCKED" | "QUALITY_REPORT_TOO_LARGE" | "COURSE_EXPORT_TOO_LARGE" | "IMPORT_PACKAGE_INVALID" | "IMPORT_VERSION_UNSUPPORTED" | "IMPORT_HASH_MISMATCH" | "IMPORT_ACKNOWLEDGEMENT_REQUIRED" | "IMPORT_DUE_DATE_REQUIRED" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "INVITATION_CONFIRMATION_REQUIRED" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE" | "QUIZ_POOL_TOO_SMALL" | "QUIZ_POOL_POINTS_MIXED" | "QUIZ_SOURCE_INVALID" | "FEEDBACK_NOT_AVAILABLE" | "GRADE_CATEGORY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_INVALID" | "GRADE_WEIGHTS_INVALID" | "GRADE_RELEASE_DUPLICATE" | "GRADING_POLICY_CONFLICT" | "CERTIFICATE_POLICY_INVALID" | "CERTIFICATE_POLICY_CONFLICT" | "CERTIFICATE_NOT_ELIGIBLE" | "CERTIFICATE_ALREADY_REVOKED" | "CERTIFICATE_REVOKED" | "CERTIFICATE_NOT_FOUND" | "ANNOUNCEMENT_ARCHIVED" | "ANNOUNCEMENT_NOT_SCHEDULED" | "PUBLISH_AT_INVALID" | "EVENT_TIME_INVALID" | "INVALID_TIME_ZONE" | "RANGE_INVALID" | "EVENT_CANCELLED" | "EVENT_WAS_PUBLISHED" | "DOCUMENT_FILE_MISSING" | "DOCUMENT_FILE_CORRUPT" | "DOCUMENT_STORAGE_UNAVAILABLE";
         };
         /**
          * @description What a link points to. Every kind is only a link opened in a new tab; nothing is embedded, fetched or executed.
@@ -6865,6 +6931,51 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
+        /**
+         * @description The document's record exists but its stored file cannot be served: `DOCUMENT_FILE_MISSING` (the stored file
+         *     is gone) or `DOCUMENT_FILE_CORRUPT` (its size or SHA-256 differs from the values recorded at upload; nothing
+         *     is sent). An administrator must restore the file; the read-only `pnpm storage:audit` command lists every
+         *     affected document. The response never contains a path, the stored file's name or its content.
+         */
+        DocumentFileUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "type": "about:blank",
+                 *       "title": "Internal Server Error",
+                 *       "status": 500,
+                 *       "detail": "The stored file of this document is missing. Contact an administrator.",
+                 *       "code": "DOCUMENT_FILE_MISSING"
+                 *     }
+                 */
+                "application/problem+json": components["schemas"]["ProblemDetails"];
+            };
+        };
+        /**
+         * @description Document storage cannot be used right now (`DOCUMENT_STORAGE_UNAVAILABLE`): the storage directory is
+         *     missing, not writable or (when the mount check is enforced) not mounted, or reading or writing it failed.
+         *     Nothing was created or sent; the request can be retried later.
+         */
+        StorageUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "type": "about:blank",
+                 *       "title": "Service Unavailable",
+                 *       "status": 503,
+                 *       "detail": "Document storage is temporarily unavailable. Try again later or contact an administrator.",
+                 *       "code": "DOCUMENT_STORAGE_UNAVAILABLE"
+                 *     }
+                 */
+                "application/problem+json": components["schemas"]["ProblemDetails"];
+            };
+        };
     };
     parameters: {
         /** @description Page size. */
@@ -6920,6 +7031,29 @@ export interface operations {
                     "application/json": components["schemas"]["HealthResponse"];
                 };
             };
+        };
+    };
+    getStorageReadiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current storage readiness. */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageReadiness"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     login: {
@@ -8656,6 +8790,7 @@ export interface operations {
             413: components["responses"]["PayloadTooLarge"];
             415: components["responses"]["UnsupportedMediaType"];
             422: components["responses"]["UnprocessableContent"];
+            503: components["responses"]["StorageUnavailable"];
         };
     };
     getActivityDocument: {
@@ -8772,6 +8907,8 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["DocumentFileUnavailable"];
+            503: components["responses"]["StorageUnavailable"];
         };
     };
     listQuizQuestions: {

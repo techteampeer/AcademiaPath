@@ -2,6 +2,7 @@ import type { preHandlerAsyncHookHandler } from 'fastify';
 import type { AppConfig } from '../config.js';
 import type { Database } from '../db/client.js';
 import type { Locale, SystemRole } from '../db/schema/index.js';
+import type { StorageReadiness } from '../documents/readiness.js';
 
 /** Profile fields that are safe to return to the signed-in user. */
 export type SafeUser = {
@@ -37,5 +38,7 @@ declare module 'fastify' {
     requireCsrf: preHandlerAsyncHookHandler;
     /** Requires the system-level administrator role. Use after `requireAuth`. */
     requireAdministrator: preHandlerAsyncHookHandler;
+    /** AP-040B: checks document storage now (read-only; see documents/readiness.ts). */
+    storageReadiness: () => Promise<StorageReadiness>;
   }
 }

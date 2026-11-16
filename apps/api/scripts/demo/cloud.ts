@@ -7,11 +7,11 @@
  * DEMO_ACCOUNT_CREDENTIALS), hashed with the API's own Argon2id settings and never logged.
  */
 import { readFile, stat } from 'node:fs/promises';
-import { dirname } from 'node:path';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { hashPassword, isWeakPassword, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../../src/auth/password.js';
 import type { Database } from '../../src/db/client.js';
+import { isMountPoint } from '../../src/documents/mounts.js';
 import { auditLog, courseDocuments, courses, courseTemplates, programs, sessions, terms, userCredentials, users } from '../../src/db/schema/index.js';
 import { DEV_USERS, isLocalDatabase, type SyntheticUser } from '../seed-dev-users.js';
 import { ACCOUNTS, COURSES, DEMO_LEARNERS, PROGRAMS, TERMS } from './content.js';
@@ -73,14 +73,8 @@ export const runtimeGuardDeps: GuardDeps = {
       return null;
     }
   },
-  isMountPoint: async (path) => {
-    const listed = await readFile('/proc/mounts', 'utf8')
-      .then((text) => text.split('\n').some((line) => line.split(' ')[1] === path))
-      .catch(() => false);
-    if (listed) return true;
-    const [own, parent] = await Promise.all([stat(path).catch(() => null), stat(dirname(path)).catch(() => null)]);
-    return Boolean(own?.isDirectory() && parent && own.dev !== parent.dev);
-  },
+  // Shared with the API's storage readiness check (AP-040B).
+  isMountPoint,
 };
 
 export class SeedRefused extends Error {

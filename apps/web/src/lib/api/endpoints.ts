@@ -497,6 +497,28 @@ export const api = {
     apiRequest<DocumentDetail>('POST', `${activity(courseId, activityId)}/document/summaries`, { csrfToken }),
   /** Same-origin download link; the API checks the session and course access before sending the file. */
   documentFileHref: (courseId: string, activityId: string) => `${API_BASE}${activity(courseId, activityId)}/document/file`,
+  /**
+   * AP-040B: the original file as a Blob, so a failed download (missing or corrupt stored file, storage unavailable)
+   * can be explained instead of the browser saving an error page. The API verifies the file before sending it.
+   */
+  downloadDocumentFile: async (courseId: string, activityId: string) => {
+    const response = await fetch(`${API_BASE}${activity(courseId, activityId)}/document/file`, { credentials: 'same-origin', cache: 'no-store' });
+    if (!response.ok) {
+      const problem = await response.json().catch(() => null);
+      throw new ApiError(response.status, problem && typeof problem === 'object' && 'status' in problem ? problem : null);
+    }
+    const disposition = response.headers.get('content-disposition') ?? '';
+    const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+    let fileName = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'document';
+    if (encoded) {
+      try {
+        fileName = decodeURIComponent(encoded);
+      } catch {
+        // Keep the ASCII fallback name.
+      }
+    }
+    return { blob: await response.blob(), fileName };
+  },
 
   // Guided demo tutor (deterministic, on the API; nothing is sent to external services, nothing is stored).
   guideTutor: (

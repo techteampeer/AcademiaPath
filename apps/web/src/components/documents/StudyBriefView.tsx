@@ -15,6 +15,7 @@ import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { Course, DocumentStudyBrief, StudyBriefReference, StudyBriefText } from '@/lib/api/types';
 import type { Messages } from '@/lib/i18n/messages';
+import { DocumentDownloadLink } from './DocumentDownloadLink';
 import { segmentCount, segmentLabel } from './documentDisplay';
 
 type State = { status: 'loading' } | { status: 'missing' } | { status: 'error' } | { status: 'ready'; course: Course; data: DocumentStudyBrief };
@@ -144,9 +145,9 @@ function BriefContent({ courseId, activityId }: { courseId: string; activityId: 
         <Alert tone="info">
           <p>{b.limitations.no_text}</p>
           <p className="mt-2">{b.noTextRecovery}</p>
-          <a href={api.documentFileHref(courseId, activityId)} download className="mt-2 inline-block font-medium text-brand-700 underline">
+          <DocumentDownloadLink courseId={courseId} activityId={activityId} className="mt-2 inline-block font-medium text-brand-700 underline">
             {t.documents.panel.download}
-          </a>
+          </DocumentDownloadLink>
         </Alert>
       ) : (
         <>
