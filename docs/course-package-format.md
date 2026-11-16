@@ -1,8 +1,10 @@
-# Course package format, version 1 (AP-038A)
+# Course package format, version 1 (AP-038A, AP-038B)
 
-A course package is the portable copy of one course's reusable content. AP-038A delivers the **export** only:
-`GET /api/v1/courses/{id}/export` returns one JSON document, saved as `course-<code>.academiapath.json`. Importing a
-package (AP-038B) is not built yet. The authoritative schema is `CoursePackage` in `packages/contract/openapi.yaml`.
+A course package is the portable copy of one course's reusable content. `GET /api/v1/courses/{id}/export` (AP-038A)
+returns one JSON document, saved as `course-<code>.academiapath.json`; `POST /api/v1/course-imports/preview` and
+`POST /api/v1/course-imports` (AP-038B) turn it into a new draft course (see "Import"). The authoritative schemas are
+`CoursePackage`, `CourseImportPreview`, `CourseImportRequest` and `CourseImportResult` in
+`packages/contract/openapi.yaml`.
 
 ## Who may export
 
@@ -65,7 +67,7 @@ teaching sessions (they are term-specific), certificates and the certificate pol
 staff), the grading policy, extracted document text and summaries (derived from the file), and file bytes. The
 package lists these categories in `excludedData`.
 
-## Identifiers and how an import will remap them
+## Identifiers and how the import remaps them
 
 The package never uses database identifiers. Every reference is a **package-local key**, assigned in course order:
 
@@ -79,16 +81,69 @@ The package never uses database identifiers. Every reference is a **package-loca
 | `o<n>`, `true`, `false` | one question | an option; used by `correctOptionKeys` |
 | `c<n>` | one rubric | a rubric criterion |
 
-An import (AP-038B) should:
+The import (AP-038B) never uses a key as a database identifier. It creates every row with a new identifier, in order
+(units, prerequisites, folders, activities, quiz questions), keeping a map from each key to its new row, and resolves
+prerequisites and folders through that map. Quiz options get new identifiers and each answer key is rebuilt from the
+options it names; rubric criteria get new identifiers.
 
-1. Check `format`, `formatVersion` and `contentHash`, and refuse a package it cannot read.
-2. Create the course in the target institution's own program and term, with a new code.
-3. Create rows in order (units, folders, activities, questions), keeping a map from each key to the new row id, then
-   resolve references through that map: prerequisites, folders and assets. Unknown keys are refused.
-4. Generate new option and criterion ids, and rewrite answer keys through the option-key map.
-5. Import content as **drafts** that go through the target institution's own review, whatever `reviewStatus` says;
-   the approved version is reference material, not an approval.
-6. Ask staff to set new due dates (`dueAt`, `lateUntil` belong to the source term).
+## Import (AP-038B)
+
+Administrators only (like creating a course); course authors, non-editing instructors and students are refused by the
+API. Two steps, both stateless (nothing is stored between them):
+
+1. **Preview** (`POST /course-imports/preview`, body: the package file). Writes nothing. Reports the format and
+   version, whether the content hash matches, the source course, counts (units, folders, activities by type, quiz
+   questions), every document reference with its availability, the activities that cannot be imported, the fields this
+   version does not know (ignored), and every validation problem with its JSON path.
+2. **Import** (`POST /course-imports`). Validates the package again, then, in **one transaction** (a failure leaves
+   nothing behind), creates a **new** course in the chosen program and term with the given code. A code already used in
+   that term is refused (`409 COURSE_CODE_TAKEN`): no course is ever overwritten, and a repeated or concurrent
+   confirmation creates the course once.
+
+What is created:
+
+| From the package | In the new course |
+| --- | --- |
+| Course title (or the title given) and description | A course with status `draft` and no template |
+| Units in order, with summary and visibility | Sections in the same order |
+| Prerequisites | Section prerequisites between the new sections |
+| Resource folders | Folders in the same units and order |
+| Lessons, links, quizzes, assignments | Activities in the same order, visibility and folder, every one a **draft** (no approval, review state or publication travels) |
+| Quiz settings and questions | The same settings and questions, new option ids, rebuilt answer keys |
+| Assignment instructions and rubric | The same instructions and rubric; the due date chosen at import (`assignmentDueAt`) and no late window |
+
+`versionPreference` chooses, for activities that have both, the approved version (default: what students of the source
+course saw) or the authors' working copy; activities never approved always use their working copy.
+
+Never created: people, enrollments, quiz attempts, submissions, grades, completions, messages, documents, calendar
+events and teaching sessions, certificates and their policies, grading policies.
+
+### Validation and compatibility rules
+
+- `format` must be `academiapath.course-package` and `formatVersion` must be `1` (`IMPORT_VERSION_UNSUPPORTED`).
+- `contentHash` must match the content. It is recomputed over the content rebuilt in the export's canonical form, so the
+  order of keys in the file does not matter, but any change to the content does (`IMPORT_HASH_MISMATCH`). Fields
+  outside the hashed content (`exportedAt`, `source`, `warnings`, `counts`, `excludedData`) are informational.
+- Every value is checked with the authoring limits: text lengths, non-empty lessons, links only `https://` on a domain
+  name without credentials (others are refused, including older `http://` links), quiz settings in range, each answer
+  key naming options of its own question (one for single-choice and true/false, at least one for multiple-choice),
+  rubric points from 1 to 100.
+- Keys are unique, and every reference resolves inside the package: prerequisites to other units (no cycles), folders
+  to folders of the activity's own unit (reading activities only), assets to listed assets.
+- Limits: at most 20 MB per package, 200 units, 100 folders per unit, 1000 activities, 100 questions per quiz.
+- Fields this version does not know are reported in the preview and ignored, never imported.
+- Malformed JSON is refused with `400`; anything else with `422 IMPORT_PACKAGE_INVALID` naming the first problem (the
+  preview lists them all).
+
+### Documents and unsupported activities
+
+Version 1 packages do not contain document files, so **document activities cannot be imported** and AcademiaPath never
+creates a document activity without its file. The preview lists every document (`not_bundled`, or
+`missing_at_source` when the file was already missing at export) and every activity that will not be created
+(`DOCUMENT_NOT_BUNDLED`; `UNSUPPORTED_ACTIVITY_TYPE` for `scorm` and `lti`). An import with such activities is refused
+(`IMPORT_ACKNOWLEDGEMENT_REQUIRED`) unless the administrator explicitly confirms a content-only import
+(`acknowledgeSkipped: true`); the result lists exactly what was skipped. Moving document files is AP-040 work (see
+below).
 
 ## File assets (limitation)
 

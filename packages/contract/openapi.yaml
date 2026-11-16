@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.28.0
+  version: 0.29.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -3418,6 +3418,103 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/v1/course-imports/preview:
+    post:
+      operationId: previewCourseImport
+      summary: Validate a course package and preview its import (AP-038B)
+      description: |
+        Administrators only (like creating a course). The request body is the course package file itself
+        (`CoursePackage`, at most 20 MB). Nothing is written: the package is validated and described.
+
+        Checks: `format` and `formatVersion` (only version 1 is supported); the `contentHash`, recomputed over the
+        content rebuilt in the export's canonical form (key order in the file does not matter); every value with the
+        authoring limits (text lengths, https links on a domain name, quiz settings, answer keys that name options of
+        their own question, rubric points); every package-local key (unique, and references only to units, folders
+        and assets of the same package, folders of the activity's own unit); prerequisite cycles; at most 200 units,
+        100 folders per unit and 1000 activities. Fields this version does not know are listed in
+        `unsupportedFields` and ignored.
+
+        The preview lists what cannot be imported (`skipped`): document activities (version 1 packages never
+        contain files; see AP-040) and activity types that are not portable yet. An import with skipped
+        activities needs `acknowledgeSkipped`. Malformed JSON gets 400 `BAD_REQUEST`; a larger body 413.
+      tags: [Courses]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: The course package file (any JSON value is accepted and validated).
+      responses:
+        "200":
+          description: The preview (`valid` false lists every problem in `errors`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseImportPreview"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+  /api/v1/course-imports:
+    post:
+      operationId: importCourse
+      summary: Import a course package as a new draft course (AP-038B)
+      description: |
+        Administrators only. Validates the package again exactly as the preview does, then creates a NEW course in
+        the chosen program and term with the given code (never overwriting a course: a taken code gets 409
+        `COURSE_CODE_TAKEN`, so a repeated or concurrent confirmation creates the course once). In one
+        transaction (a failure leaves nothing behind) it creates the units in order with their prerequisites,
+        the resource folders, and every importable activity as a **draft** that goes through this institution's
+        review (no approval, review state or publication travels with a package; the course is a draft too).
+        Every row gets a new identifier; package keys are only used to connect the new rows. Quiz questions get
+        new option ids and answer keys rebuilt from them; rubric criteria get new ids.
+
+        `versionPreference` chooses the approved version (default) or the authors' working copy of activities
+        that have both. Assignments get `assignmentDueAt` (required when the package has assignments) and no
+        late window: dates in a package belong to the source term. Document activities and activity types that
+        are not portable yet are not created; when the package has any, `acknowledgeSkipped` must be true and the
+        response lists them. Never created: people, enrollments, attempts, submissions, grades, completions,
+        documents, calendar events, certificates or grading policies. Audited as `course.imported`.
+
+        Problems: 422 `IMPORT_PACKAGE_INVALID`, `IMPORT_VERSION_UNSUPPORTED`, `IMPORT_HASH_MISMATCH`,
+        `IMPORT_ACKNOWLEDGEMENT_REQUIRED`, `IMPORT_DUE_DATE_REQUIRED`, `PROGRAM_NOT_FOUND`, `PROGRAM_INACTIVE`,
+        `TERM_NOT_FOUND`; 409 `COURSE_CODE_TAKEN`; 413 for a body above 20 MB.
+      tags: [Courses]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CourseImportRequest"
+      responses:
+        "201":
+          description: The new draft course and what was created or skipped.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseImportResult"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
   /api/v1/courses/{id}/export:
     get:
       operationId: exportCourse
@@ -6442,7 +6539,9 @@ components:
         `INVALID_ANSWER_KEY`, `INVALID_ANSWER`, `INVALID_DUE_DATE`, `INVALID_RUBRIC_SCORES` or
         `QUALITY_CHECK_BLOCKED` (content with a blocking quality finding is neither submitted nor approved) or
         `QUALITY_REPORT_TOO_LARGE` (a course too large for one quality report) or `COURSE_EXPORT_TOO_LARGE`
-        (more than 1000 activities or 20 MB in one course package); or a refused
+        (more than 1000 activities or 20 MB in one course package); or a refused course import:
+        `IMPORT_PACKAGE_INVALID`, `IMPORT_VERSION_UNSUPPORTED`, `IMPORT_HASH_MISMATCH`,
+        `IMPORT_ACKNOWLEDGEMENT_REQUIRED` or `IMPORT_DUE_DATE_REQUIRED`; or a refused
         document upload: `FILE_SIGNATURE_MISMATCH` (content does not match the extension),
         `DOCUMENT_ENCRYPTED`, `DOCUMENT_MALFORMED`, `DOCUMENT_LIMITS_EXCEEDED` (decompressed size,
         processing time or memory) or `MALWARE_DETECTED`; or an account or enrollment rule:
@@ -6641,6 +6740,11 @@ components:
             - QUALITY_CHECK_BLOCKED
             - QUALITY_REPORT_TOO_LARGE
             - COURSE_EXPORT_TOO_LARGE
+            - IMPORT_PACKAGE_INVALID
+            - IMPORT_VERSION_UNSUPPORTED
+            - IMPORT_HASH_MISMATCH
+            - IMPORT_ACKNOWLEDGEMENT_REQUIRED
+            - IMPORT_DUE_DATE_REQUIRED
             - QUIZ_QUESTION_LIMIT
             - INVALID_ANSWER_KEY
             - INVALID_ANSWER
@@ -11323,6 +11427,229 @@ components:
         bundled:
           type: boolean
           const: false
+    CourseImportSkipped:
+      type: object
+      description: An activity of the package that is not created.
+      required: [key, unitKey, type, title, reason]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        unitKey:
+          type: string
+        type:
+          type: string
+        title:
+          type: string
+        reason:
+          type: string
+          enum: [DOCUMENT_NOT_BUNDLED, UNSUPPORTED_ACTIVITY_TYPE]
+    CourseImportPreview:
+      type: object
+      required: [valid, format, formatVersion, supportedFormatVersion, contentHash, hashVerified, source, counts, documents, skipped, unsupportedFields, unsupportedFieldCount, errors, errorCount, packageWarnings, requiresAcknowledgement, requiresDueDate]
+      additionalProperties: false
+      properties:
+        valid:
+          type: boolean
+          description: True when the package can be imported (no errors, supported version, hash verified).
+        format:
+          type: [string, "null"]
+        formatVersion:
+          type: [integer, "null"]
+        supportedFormatVersion:
+          type: integer
+        contentHash:
+          type: [string, "null"]
+        hashVerified:
+          type: boolean
+        source:
+          type: object
+          required: [title, description, courseCode, courseStatus, exportedAt]
+          additionalProperties: false
+          properties:
+            title:
+              type: [string, "null"]
+            description:
+              type: [string, "null"]
+            courseCode:
+              type: [string, "null"]
+            courseStatus:
+              type: [string, "null"]
+            exportedAt:
+              type: [string, "null"]
+        counts:
+          type: object
+          required: [units, folders, activities, activitiesByType, questions, importableActivities, skippedActivities, assignments]
+          additionalProperties: false
+          properties:
+            units:
+              type: integer
+            folders:
+              type: integer
+            activities:
+              type: integer
+            activitiesByType:
+              type: object
+              additionalProperties:
+                type: integer
+            questions:
+              type: integer
+            importableActivities:
+              type: integer
+            skippedActivities:
+              type: integer
+            assignments:
+              type: integer
+        documents:
+          type: array
+          description: Every document the package refers to. None can be imported yet (their files are not in the package).
+          items:
+            type: object
+            required: [assetKey, fileName, format, byteSize, sha256, availability, activityKeys]
+            additionalProperties: false
+            properties:
+              assetKey:
+                type: string
+              fileName:
+                type: string
+              format:
+                type: string
+              byteSize:
+                type: integer
+              sha256:
+                type: string
+              availability:
+                type: string
+                description: "`not_bundled`: described but not included; `missing_at_source`: the file was already missing when exported."
+                enum: [not_bundled, missing_at_source]
+              activityKeys:
+                type: array
+                items:
+                  type: string
+        skipped:
+          type: array
+          items:
+            $ref: "#/components/schemas/CourseImportSkipped"
+        unsupportedFields:
+          type: array
+          description: Paths of fields this version does not know (ignored), at most 100.
+          items:
+            type: string
+        unsupportedFieldCount:
+          type: integer
+        errors:
+          type: array
+          description: Validation problems, at most 100 (see `errorCount`).
+          items:
+            type: object
+            required: [path, code, message]
+            additionalProperties: false
+            properties:
+              path:
+                type: string
+              code:
+                type: string
+              message:
+                type: string
+        errorCount:
+          type: integer
+        packageWarnings:
+          type: array
+          items:
+            type: object
+            required: [code, target]
+            additionalProperties: false
+            properties:
+              code:
+                type: string
+              target:
+                type: string
+        requiresAcknowledgement:
+          type: boolean
+        requiresDueDate:
+          type: boolean
+    CourseImportRequest:
+      type: object
+      required: [package, programId, termId, code]
+      additionalProperties: false
+      properties:
+        package:
+          $ref: "#/components/schemas/CoursePackage"
+        programId:
+          type: string
+          format: uuid
+        termId:
+          type: string
+          format: uuid
+        code:
+          type: string
+          minLength: 1
+          maxLength: 32
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Defaults to the package's course title.
+        versionPreference:
+          type: string
+          enum: [approved, working]
+          default: approved
+        acknowledgeSkipped:
+          type: boolean
+          default: false
+          description: Required (true) when the preview lists skipped activities.
+        assignmentDueAt:
+          type: string
+          format: date-time
+          description: Due date of every imported assignment; required when the package has assignments.
+    CourseImportResult:
+      type: object
+      required: [course, created, skipped, contentHash]
+      additionalProperties: false
+      properties:
+        course:
+          type: object
+          required: [id, code, title, status, programId, termId]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            code:
+              type: string
+            title:
+              type: string
+            status:
+              type: string
+              enum: [draft]
+            programId:
+              type: string
+              format: uuid
+            termId:
+              type: string
+              format: uuid
+        created:
+          type: object
+          required: [units, folders, prerequisites, activities, questions]
+          additionalProperties: false
+          properties:
+            units:
+              type: integer
+            folders:
+              type: integer
+            prerequisites:
+              type: integer
+            activities:
+              type: integer
+            questions:
+              type: integer
+        skipped:
+          type: array
+          items:
+            $ref: "#/components/schemas/CourseImportSkipped"
+        contentHash:
+          type: string
     CoursePackageWarning:
       type: object
       required: [code, target, detail]

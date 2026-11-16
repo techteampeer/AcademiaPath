@@ -124,7 +124,14 @@ export type CoursePackage = {
 
 export const exportTooLarge = (detail: string) => new ApiProblem(422, 'COURSE_EXPORT_TOO_LARGE', detail);
 
-const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
+/**
+ * The package's `contentHash`: SHA-256 of the JSON of `formatVersion`, `course` and `assets`, with every object's keys in
+ * the order the export writes them. Shared with the import (AP-038B), which rebuilds that exact shape before checking.
+ */
+export function packageContentHash(course: CoursePackage['course'], assets: PackageAsset[]): string {
+  return `sha256:${createHash('sha256').update(JSON.stringify({ formatVersion: PACKAGE_FORMAT_VERSION, course, assets })).digest('hex')}`;
+}
+
 const asText = (value: unknown, fallback = ''): string => (typeof value === 'string' ? value : fallback);
 const asNullableText = (value: unknown): string | null => (typeof value === 'string' && value.length ? value : null);
 
@@ -321,7 +328,7 @@ export async function buildCoursePackage(db: Executor, courseId: string, storage
     formatVersion: PACKAGE_FORMAT_VERSION,
     exportedAt: now.toISOString(),
     // The same content always gives the same hash, whatever the export time or the state of file storage.
-    contentHash: `sha256:${sha256(JSON.stringify({ formatVersion: PACKAGE_FORMAT_VERSION, course: body, assets }))}`,
+    contentHash: packageContentHash(body, assets),
     source: { courseCode: course.code, courseStatus: course.status },
     course: body,
     assets,
