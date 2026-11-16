@@ -6,7 +6,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { api } from '@/lib/api/endpoints';
-import type { Certificate, CertificateEligibility } from '@/lib/api/types';
+import type { Certificate, CertificateEligibility, CertificateSignatory } from '@/lib/api/types';
 
 export function CertificateStatusBadge({ status }: { status: Certificate['status'] }) {
   const { t } = useLocale();
@@ -85,5 +85,43 @@ export function DownloadCertificateButton({ certificateId, variant = 'primary' }
       </Button>
       {state === 'failed' ? <Alert tone="error">{c.downloadFailed}</Alert> : null}
     </span>
+  );
+}
+
+/** AP-043: the signatories printed on a certificate (its saved snapshot), in print order. */
+export function SignatoryList({ signatories }: { signatories: CertificateSignatory[] }) {
+  return (
+    <ol className="space-y-2" data-signatories={signatories.length}>
+      {signatories.map((signatory, index) => (
+        <li key={index} data-signatory={index + 1}>
+          <span className="block font-medium break-words">{signatory.name}</span>
+          <span className="block break-words text-slate-600">{signatory.title}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+const PREVIEW_COLUMNS = ['grid-cols-1', 'grid-cols-1 sm:grid-cols-2', 'grid-cols-1 sm:grid-cols-3'];
+
+/** AP-043: an approximate preview of the certificate's signature area (a line, the name, the title). */
+export function SignatoryPreview({ signatories }: { signatories: CertificateSignatory[] }) {
+  const { t } = useLocale();
+  const p = t.certificates.policy;
+  if (signatories.length === 0) return null;
+  return (
+    <figure className="space-y-3 rounded-lg border border-slate-200 bg-white p-4" data-signatory-preview={signatories.length}>
+      <figcaption className="text-xs font-medium text-slate-500">{p.preview}</figcaption>
+      <div className={`grid gap-6 ${PREVIEW_COLUMNS[Math.min(signatories.length, 3) - 1]}`}>
+        {signatories.map((signatory, index) => (
+          <div key={index} className="min-w-0 text-center">
+            <div aria-hidden="true" className="mx-auto h-8 w-4/5 border-b border-slate-700" />
+            <p className="mt-2 text-sm font-semibold break-words text-slate-900">{signatory.name}</p>
+            <p className="text-xs break-words text-slate-600">{signatory.title}</p>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-slate-500">{p.previewNote}</p>
+    </figure>
   );
 }

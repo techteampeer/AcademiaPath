@@ -8,7 +8,7 @@ import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import { formatDate, localizeTermName } from '@/lib/i18n/messages';
 import type { CertificateVerification } from '@/lib/api/types';
-import { CertificateStatusBadge } from './certificateDisplay';
+import { CertificateStatusBadge, SignatoryList } from './certificateDisplay';
 
 type State = { status: 'loading' } | { status: 'not-found' } | { status: 'error'; message: string } | { status: 'ready'; data: CertificateVerification };
 
@@ -66,6 +66,14 @@ export function VerifyCertificateView({ token }: { token: string }) {
                 <dd className="text-sm break-words text-slate-900">{value}</dd>
               </div>
             ))}
+            {state.data.signatories.length > 0 ? (
+              <div className="contents">
+                <dt className="text-sm font-medium text-slate-500">{v.signatories}</dt>
+                <dd className="text-sm text-slate-900">
+                  <SignatoryList signatories={state.data.signatories} />
+                </dd>
+              </div>
+            ) : null}
           </dl>
           <p className="text-xs text-slate-500">{v.note}</p>
         </Card>

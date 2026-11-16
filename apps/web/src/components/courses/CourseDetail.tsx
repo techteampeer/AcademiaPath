@@ -210,6 +210,11 @@ function CourseDetailContent({ courseId, user }: { courseId: string; user: Curre
                     {t.progress.studentProgress}
                   </Link>
                 ) : null}
+                {abilities.emailStudents ? (
+                  <Link href={`/courses/${course.id}/email`} className={buttonClasses({ variant: 'inverse', size: 'sm' })}>
+                    {t.courseEmail.action}
+                  </Link>
+                ) : null}
               </div>
             </div>
           </div>

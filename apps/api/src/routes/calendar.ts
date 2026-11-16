@@ -4,9 +4,11 @@ import { readAssignment } from '../assignments/model.js';
 import { recordAudit } from '../audit.js';
 import { canInCourse, getCourseAccess, isAdministrator, type CourseAccess } from '../auth/authorization.js';
 import { getAuth } from '../auth/hooks.js';
+import { FULL_VIEWER, NO_SESSION, resolveSession, saveUnits, sessionViews, unitIdsOf, type SessionInput, type SessionView, type SessionViewer } from '../calendar/sessions.js';
 import { isCalendarDate, isValidTimeZone, nextDay, startOfDay } from '../calendar/time.js';
 import type { Database } from '../db/client.js';
 import { activities, calendarEvents, courses, enrollments, sections } from '../db/schema/index.js';
+import { getPgError } from '../db/errors.js';
 import { ApiProblem } from '../http/errors.js';
 import { lockedSectionIds } from '../progress/model.js';
 import { calendarQuerySchema, calendarSchema, eventInputSchema, eventListSchema, eventParamsSchema, eventSchema } from './communication-schemas.js';
@@ -24,6 +26,8 @@ type EventBody = {
   endDate?: string;
   timeZone?: string;
   status: 'hidden' | 'published';
+  /** AP-045 teaching session details (course events only). On update, leaving it out keeps the current ones; null removes them. */
+  session?: SessionInput | null;
 };
 type RangeQuery = { from?: string; to?: string; courseId?: string };
 type Reader = Pick<Database, 'select'>;
@@ -37,11 +41,21 @@ const notFound = () => new ApiProblem(404, 'NOT_FOUND', 'Event not found.');
 const forbidden = (detail: string) => new ApiProblem(403, 'FORBIDDEN', detail);
 const invalid = (detail: string) => new ApiProblem(422, 'EVENT_TIME_INVALID', detail);
 const courseColumns = { id: courses.id, title: courses.title, code: courses.code };
+/** A viewer without course access sees no hidden units, no unapproved activities and no unpublished links. */
+const RESTRICTED_VIEWER: SessionViewer = { hiddenUnits: false, unapprovedActivities: false, lockedSections: new Set(), anyJoinUrl: false };
+const sessionNotAllowed = () => new ApiProblem(422, 'SESSION_NOT_ALLOWED', 'Only course events can be teaching sessions.');
+const sessionNumberTaken = () => new ApiProblem(409, 'SESSION_NUMBER_TAKEN', 'Another session of this course already has this number. Choose another number or cancel that session.');
+/** The partial unique index (course, session number) among events that are not cancelled. */
+function rethrowSessionConflict(error: unknown): never {
+  const pg = getPgError(error);
+  if (pg?.code === '23505' && pg.constraint === 'calendar_events_session_number_unique') throw sessionNumberTaken();
+  throw error;
+}
 
 /** Students see published events, and cancelled ones (marked cancelled) so a change of plans is visible. */
 const studentVisible = inArray(calendarEvents.status, ['published', 'cancelled']);
 
-function view(row: EventRecord, course: CourseRef | null) {
+function view(row: EventRecord, course: CourseRef | null, session: SessionView | null) {
   return {
     id: row.id,
     scope: row.scope,
@@ -57,6 +71,7 @@ function view(row: EventRecord, course: CourseRef | null) {
     status: row.status,
     publishedAt: row.publishedAt,
     cancelledAt: row.cancelledAt,
+    session,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -114,6 +129,18 @@ export const calendarRoutes: FastifyPluginAsync = async (app) => {
   }
   const refOf = (access: CourseAccess): CourseRef => ({ id: access.course.id, title: access.course.title, code: access.course.code });
 
+  /** What the caller may see of sessions in this course (prerequisite locks are only read when an activity is linked). */
+  async function viewerOf(access: CourseAccess, needLocks: boolean): Promise<SessionViewer> {
+    const unapprovedActivities = canInCourse(access, 'content.viewUnapproved');
+    return {
+      hiddenUnits: canInCourse(access, 'sections.viewHidden'),
+      unapprovedActivities,
+      lockedSections: unapprovedActivities || !needLocks ? new Set() : await lockedSectionIds(db, access.course.id, access.userId),
+      anyJoinUrl: canInCourse(access, 'calendar.viewAll'),
+    };
+  }
+  const linksActivity = (rows: readonly EventRecord[]) => rows.some((row) => row.sessionActivityId);
+
   /**
    * Assignment due dates come only from approved assignments (their reviewed due date and late window);
    * quizzes have no due date, so none is invented. Students see only assignments they can open.
@@ -146,13 +173,13 @@ export const calendarRoutes: FastifyPluginAsync = async (app) => {
     if (row.scope === 'institution') {
       const admin = isAdministrator(user);
       if (!admin && row.status === 'hidden') throw notFound();
-      return { manage: admin, course: null };
+      return { manage: admin, course: null, access: null };
     }
     const access = await getCourseAccess(db, user, row.courseId!);
     if (!access) throw notFound();
     const manage = canInCourse(access, 'calendar.manage');
     if (row.status === 'hidden' && !manage && !canInCourse(access, 'calendar.viewAll')) throw notFound();
-    return { manage, course: refOf(access) };
+    return { manage, course: refOf(access), access };
   }
 
   async function load(executor: Reader, eventId: string, lock = false) {
@@ -177,11 +204,13 @@ export const calendarRoutes: FastifyPluginAsync = async (app) => {
         .where(and(eq(calendarEvents.courseId, access.course.id), staff ? undefined : studentVisible, overlaps(from, to)))
         .orderBy(asc(calendarEvents.startsAt), asc(calendarEvents.id))
         .limit(MAX_EVENTS);
+      const viewer = await viewerOf(access, linksActivity(rows));
+      const sessions = await sessionViews(db, rows, () => viewer);
       return {
         timeZone: config.institution.timeZone,
         from,
         to,
-        events: rows.map((row) => view(row, refOf(access))),
+        events: rows.map((row) => view(row, refOf(access), sessions.get(row.id) ?? null)),
         dueDates: await dueDates(db, access, from, to),
       };
     },
@@ -221,16 +250,25 @@ export const calendarRoutes: FastifyPluginAsync = async (app) => {
         .orderBy(asc(calendarEvents.startsAt), asc(calendarEvents.id))
         .limit(MAX_EVENTS);
       const due = [];
+      const viewers = new Map<string, SessionViewer>();
+      const needLocks = linksActivity(rows.map(({ row }) => row));
       for (const courseId of courseIds) {
         const access = await getCourseAccess(db, user, courseId);
-        if (access) due.push(...(await dueDates(db, access, from, to)));
+        if (!access) continue;
+        due.push(...(await dueDates(db, access, from, to)));
+        viewers.set(courseId, await viewerOf(access, needLocks));
       }
       due.sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
+      const sessions = await sessionViews(
+        db,
+        rows.map(({ row }) => row),
+        (courseId) => viewers.get(courseId) ?? RESTRICTED_VIEWER,
+      );
       return {
         timeZone: config.institution.timeZone,
         from,
         to,
-        events: rows.map(({ row, course }) => view(row, course?.id ? (course as CourseRef) : null)),
+        events: rows.map(({ row, course }) => view(row, course?.id ? (course as CourseRef) : null, sessions.get(row.id) ?? null)),
         dueDates: due,
       };
     },
@@ -248,7 +286,7 @@ export const calendarRoutes: FastifyPluginAsync = async (app) => {
         .where(and(eq(calendarEvents.scope, 'institution'), admin ? undefined : studentVisible, overlaps(from, to)))
         .orderBy(asc(calendarEvents.startsAt), asc(calendarEvents.id))
         .limit(MAX_EVENTS);
-      return { items: rows.map((row) => view(row, null)) };
+      return { items: rows.map((row) => view(row, null, null)) };
     },
   );
 
@@ -257,8 +295,9 @@ export const calendarRoutes: FastifyPluginAsync = async (app) => {
     { ...authenticated, schema: { params: eventParamsSchema, response: { 200: eventSchema } } },
     async (request) => {
       const row = await load(db, request.params.eventId);
-      const { course } = await authorize(request, row);
-      return view(row, course);
+      const { course, access } = await authorize(request, row);
+      const viewer = access ? await viewerOf(access, linksActivity([row])) : RESTRICTED_VIEWER;
+      return view(row, course, (await sessionViews(db, [row], () => viewer)).get(row.id) ?? null);
     },
   );
 
@@ -274,13 +313,17 @@ export const calendarRoutes: FastifyPluginAsync = async (app) => {
     timeZone: row.timeZone,
     status: row.status,
     descriptionLength: row.description?.length ?? 0,
+    // AP-045: whether a classroom link is set, never the link itself (it may carry a meeting passcode).
+    session: row.sessionMode ? { number: row.sessionNumber, deliveryMode: row.sessionMode, joinUrl: row.joinUrl !== null, activityId: row.sessionActivityId } : null,
   });
 
   async function create(request: FastifyRequest, scope: 'course' | 'institution', course: CourseRef | null, body: EventBody) {
     const { user } = getAuth(request);
     const times = resolveTimes(body, config.institution.timeZone);
+    if (body.session && scope !== 'course') throw sessionNotAllowed();
     const at = app.now();
     return db.transaction(async (tx) => {
+      const session = body.session && course ? await resolveSession(tx, course.id, body.session) : { columns: NO_SESSION, unitIds: [] };
       const [row] = await tx
         .insert(calendarEvents)
         .values({
@@ -292,14 +335,22 @@ export const calendarRoutes: FastifyPluginAsync = async (app) => {
           ...times,
           status: body.status,
           publishedAt: body.status === 'published' ? at : null,
+          ...session.columns,
           createdByUserId: user.id,
           updatedByUserId: user.id,
         })
         .returning();
       if (!row) throw new Error('Event was not recorded');
-      await recordAudit(tx, request, { action: 'calendar_event.created', entityType: 'calendar_event', entityId: row.id, before: null, after: { scope, courseId: row.courseId, ...auditView(row) } });
-      return view(row, course);
-    });
+      if (row.courseId) await saveUnits(tx, row.id, row.courseId, session.unitIds);
+      await recordAudit(tx, request, {
+        action: 'calendar_event.created',
+        entityType: 'calendar_event',
+        entityId: row.id,
+        before: null,
+        after: { scope, courseId: row.courseId, ...auditView(row), unitIds: [...session.unitIds].sort() },
+      });
+      return view(row, course, (await sessionViews(tx, [row], () => FULL_VIEWER)).get(row.id) ?? null);
+    }).catch(rethrowSessionConflict);
   }
 
   app.post<{ Params: { id: string }; Body: EventBody }>(
@@ -321,20 +372,33 @@ export const calendarRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
-  /** One change on a locked event the caller manages, audited. */
-  async function change(request: FastifyRequest, eventId: string, action: string, apply: (row: EventRecord, at: Date) => Partial<typeof calendarEvents.$inferInsert> | null) {
+  type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+  type Change = { values: Partial<typeof calendarEvents.$inferInsert>; unitIds?: string[] };
+  /** One change on a locked event the caller manages, audited (with its units when they change). */
+  async function change(request: FastifyRequest, eventId: string, action: string, apply: (row: EventRecord, at: Date, tx: Tx) => Promise<Change | null> | Change | null) {
     const { user } = getAuth(request);
-    return db.transaction(async (tx) => {
-      const current = await load(tx, eventId, true);
-      const { manage, course } = await authorize(request, current);
-      if (!manage) throw forbidden(current.scope === 'institution' ? 'Only administrators can change institution-wide events.' : 'Only instructors of this course and administrators can change its events.');
-      const next = apply(current, app.now());
-      if (!next) return view(current, course);
-      const [row] = await tx.update(calendarEvents).set({ ...next, updatedByUserId: user.id }).where(eq(calendarEvents.id, current.id)).returning();
-      if (!row) throw notFound();
-      await recordAudit(tx, request, { action, entityType: 'calendar_event', entityId: row.id, before: auditView(current), after: auditView(row) });
-      return view(row, course);
-    });
+    return db
+      .transaction(async (tx) => {
+        const current = await load(tx, eventId, true);
+        const { manage, course } = await authorize(request, current);
+        if (!manage) throw forbidden(current.scope === 'institution' ? 'Only administrators can change institution-wide events.' : 'Only instructors of this course and administrators can change its events.');
+        const next = await apply(current, app.now(), tx);
+        const sessionOf = async (row: EventRecord) => (await sessionViews(tx, [row], () => FULL_VIEWER)).get(row.id) ?? null;
+        if (!next) return view(current, course, await sessionOf(current));
+        const beforeUnits = next.unitIds ? await unitIdsOf(tx, current.id) : undefined;
+        const [row] = await tx.update(calendarEvents).set({ ...next.values, updatedByUserId: user.id }).where(eq(calendarEvents.id, current.id)).returning();
+        if (!row) throw notFound();
+        if (next.unitIds && row.courseId) await saveUnits(tx, row.id, row.courseId, next.unitIds);
+        await recordAudit(tx, request, {
+          action,
+          entityType: 'calendar_event',
+          entityId: row.id,
+          before: { ...auditView(current), ...(beforeUnits ? { unitIds: beforeUnits } : {}) },
+          after: { ...auditView(row), ...(next.unitIds ? { unitIds: [...next.unitIds].sort() } : {}) },
+        });
+        return view(row, course, await sessionOf(row));
+      })
+      .catch(rethrowSessionConflict);
   }
   const cancelledConflict = () => new ApiProblem(409, 'EVENT_CANCELLED', 'This event is cancelled and can no longer change.');
 
@@ -343,15 +407,23 @@ export const calendarRoutes: FastifyPluginAsync = async (app) => {
     { ...authenticatedWrite, schema: { params: eventParamsSchema, body: eventInputSchema, response: { 200: eventSchema } } },
     async (request) => {
       const times = resolveTimes(request.body, config.institution.timeZone);
-      return change(request, request.params.eventId, 'calendar_event.updated', (row, at) => {
+      const { session } = request.body;
+      return change(request, request.params.eventId, 'calendar_event.updated', async (row, at, tx) => {
         if (row.status === 'cancelled') throw cancelledConflict();
+        if (session && row.scope !== 'course') throw sessionNotAllowed();
+        // Left out: the session details stay as they are (older clients, publish/hide); null: removed.
+        const resolved = session === undefined ? null : session === null ? { columns: NO_SESSION, unitIds: [] } : await resolveSession(tx, row.courseId!, session);
         return {
-          title: request.body.title.trim(),
-          description: request.body.description?.trim() || null,
-          allDay: request.body.allDay,
-          ...times,
-          status: request.body.status,
-          publishedAt: row.publishedAt ?? (request.body.status === 'published' ? at : null),
+          values: {
+            title: request.body.title.trim(),
+            description: request.body.description?.trim() || null,
+            allDay: request.body.allDay,
+            ...times,
+            status: request.body.status,
+            publishedAt: row.publishedAt ?? (request.body.status === 'published' ? at : null),
+            ...(resolved ? resolved.columns : {}),
+          },
+          ...(resolved ? { unitIds: resolved.unitIds } : {}),
         };
       });
     },
@@ -361,7 +433,7 @@ export const calendarRoutes: FastifyPluginAsync = async (app) => {
     '/calendar/events/:eventId/cancel',
     { ...authenticatedWrite, schema: { params: eventParamsSchema, response: { 200: eventSchema } } },
     async (request) =>
-      change(request, request.params.eventId, 'calendar_event.cancelled', (row, at) => (row.status === 'cancelled' ? null : { status: 'cancelled', cancelledAt: at })),
+      change(request, request.params.eventId, 'calendar_event.cancelled', (row, at) => (row.status === 'cancelled' ? null : { values: { status: 'cancelled', cancelledAt: at } })),
   );
 
   /** Deleting is only for events students never saw; anything ever published is cancelled instead. */

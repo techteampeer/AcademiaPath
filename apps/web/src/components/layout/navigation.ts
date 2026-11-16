@@ -80,6 +80,8 @@ export function buildNavigation(
     items.push({ href: `${base}/announcements`, label: t.nav.announcements }, { href: `${base}/calendar`, label: t.nav.calendar });
     // Messaging (AP-026): students, instructors and non-editing instructors only.
     if (role === 'student' || role === 'instructor' || role === 'non_editing_instructor') items.push({ href: `${base}/messages`, label: t.nav.messages });
+    // E-mail composed in one's own e-mail application (AP-044): instructors and administrators.
+    if (role === 'instructor' || isAdmin) items.push({ href: `${base}/email`, label: t.courseEmail.navLabel });
     // Course forum (AP-027): the same course roles, and administrators (moderation only).
     if (role === 'student' || role === 'instructor' || role === 'non_editing_instructor' || (isAdmin && role === null)) items.push({ href: `${base}/forum`, label: t.nav.forum });
     // Student groups (AP-028): the same roles; students see their own groups, staff and administrators all of them.

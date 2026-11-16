@@ -22,6 +22,7 @@ import { certificateRoutes } from './routes/certificates.js';
 import { announcementRoutes } from './routes/announcements.js';
 import { calendarRoutes } from './routes/calendar.js';
 import { messagingRoutes } from './routes/messaging.js';
+import { courseEmailRoutes } from './routes/course-email.js';
 import { notificationRoutes } from './routes/notifications.js';
 import { forumRoutes } from './routes/forums.js';
 import { groupRoutes } from './routes/groups.js';
@@ -103,6 +104,7 @@ export function buildApp({ config, database, logger = false, documents = {}, clo
   app.register(announcementRoutes, { prefix: API_PREFIX });
   app.register(calendarRoutes, { prefix: API_PREFIX });
   app.register(messagingRoutes, { prefix: API_PREFIX });
+  app.register(courseEmailRoutes, { prefix: API_PREFIX });
   app.register(notificationRoutes, { prefix: API_PREFIX });
   app.register(forumRoutes, { prefix: API_PREFIX });
   app.register(groupRoutes, { prefix: API_PREFIX });

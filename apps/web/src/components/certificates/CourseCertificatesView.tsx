@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { contentAbilities } from '@/components/content/contentDisplay';
 import { useLocale } from '@/components/i18n/LocaleProvider';
 import { RequireAuth } from '@/components/session/RequireAuth';
@@ -17,8 +17,8 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import { formatDate } from '@/lib/i18n/messages';
-import type { Certificate, CertificatePolicy, Course, CourseCertificateEligibility, CurrentUser, MyCourseCertificates } from '@/lib/api/types';
-import { CertificateStatusBadge, DownloadCertificateButton, EligibilityBadge, RequirementList } from './certificateDisplay';
+import type { Certificate, CertificatePolicy, CertificateSignatory, Course, CourseCertificateEligibility, CurrentUser, MyCourseCertificates } from '@/lib/api/types';
+import { CertificateStatusBadge, DownloadCertificateButton, EligibilityBadge, RequirementList, SignatoryPreview } from './certificateDisplay';
 
 type Load<T> = { status: 'loading' } | { status: 'not-found' } | { status: 'error'; message: string } | { status: 'ready'; data: T };
 
@@ -209,6 +209,7 @@ function PolicyForm({ courseId, policy, canManage, onSaved }: { courseId: string
   const [requireFinalGrade, setRequireFinalGrade] = useState(policy.requireFinalGrade);
   const [minimum, setMinimum] = useState(policy.minimumGradePercent === null ? '' : String(policy.minimumGradePercent));
   const [issuer, setIssuer] = useState(policy.issuerName);
+  const signers = useSignatoryList(policy.signatories);
   const [error, setError] = useState<string | null>(null);
   const save = async () => {
     const minimumValue = minimum.trim() === '' ? null : Number(minimum);
@@ -216,9 +217,17 @@ function PolicyForm({ courseId, policy, canManage, onSaved }: { courseId: string
     if (minimumValue !== null && (!Number.isInteger(minimumValue) || minimumValue < 1 || minimumValue > 100)) return setError(p.minimumRange);
     if (minimumValue !== null && !requireFinalGrade) return setError(p.minimumNeedsFinal);
     if (!issuer.trim()) return setError(p.issuerRequired);
+    const signatories = signers.cleaned();
+    const problem = signatoryProblem(signatories);
+    if (problem) return setError(problem.kind === 'incomplete' ? p.signatoryIncomplete(problem.position) : p.signatoryDuplicate(problem.position));
     setError(null);
     const saved = await run(
-      (csrf) => api.saveCertificatePolicy(courseId, { expectedVersion: policy.version, enabled, requireCompletion, requireFinalGrade, minimumGradePercent: minimumValue, issuerName: issuer.trim() }, csrf),
+      (csrf) =>
+        api.saveCertificatePolicy(
+          courseId,
+          { expectedVersion: policy.version, enabled, requireCompletion, requireFinalGrade, minimumGradePercent: minimumValue, issuerName: issuer.trim(), signatories },
+          csrf,
+        ),
       () => p.saved,
     );
     if (saved) onSaved();
@@ -259,6 +268,7 @@ function PolicyForm({ courseId, policy, canManage, onSaved }: { courseId: string
             <TextField id="certificate-minimum" label={p.minimum} hint={p.minimumHint} type="number" inputMode="numeric" min={1} max={100} step={1} value={minimum} onChange={(event) => setMinimum(event.target.value)} />
             <TextField id="certificate-issuer" label={p.issuer} maxLength={120} value={issuer} onChange={(event) => setIssuer(event.target.value)} />
           </div>
+          <SignatoryEditor list={signers} canManage={canManage} />
         </fieldset>
         {error ? <Alert tone="error">{error}</Alert> : null}
         {result ? <Alert tone={result.tone}>{result.message}</Alert> : null}
@@ -269,6 +279,114 @@ function PolicyForm({ courseId, policy, canManage, onSaved }: { courseId: string
         ) : null}
       </form>
     </Card>
+  );
+}
+
+type SignatoryDraft = CertificateSignatory & { key: number };
+
+/** AP-043: the editable signatory list of the policy form (at most 3, in print order). */
+function useSignatoryList(initial: CertificateSignatory[]) {
+  const next = useRef(initial.length);
+  const [items, setItems] = useState<SignatoryDraft[]>(() => initial.map((signatory, index) => ({ ...signatory, key: index })));
+  return {
+    items,
+    add: () => setItems((current) => (current.length >= MAX_SIGNATORIES ? current : [...current, { name: '', title: '', key: next.current++ }])),
+    remove: (index: number) => setItems((current) => current.filter((_, position) => position !== index)),
+    move: (index: number, offset: -1 | 1) =>
+      setItems((current) => {
+        const target = index + offset;
+        if (target < 0 || target >= current.length) return current;
+        const copy = [...current];
+        [copy[index], copy[target]] = [copy[target]!, copy[index]!];
+        return copy;
+      }),
+    edit: (index: number, field: 'name' | 'title', value: string) => setItems((current) => current.map((item, position) => (position === index ? { ...item, [field]: value } : item))),
+    /** What is sent: spacing tidied as the server does; order kept. */
+    cleaned: (): CertificateSignatory[] => items.map(({ name, title }) => ({ name: name.replace(/\s+/g, ' ').trim(), title: title.replace(/\s+/g, ' ').trim() })),
+  };
+}
+type SignatoryListState = ReturnType<typeof useSignatoryList>;
+const MAX_SIGNATORIES = 3;
+
+/** The first incomplete or repeated signatory (the server checks the same and more). */
+function signatoryProblem(signatories: CertificateSignatory[]): { kind: 'incomplete' | 'duplicate'; position: number } | null {
+  const seen = new Set<string>();
+  for (const [index, { name, title }] of signatories.entries()) {
+    if (!name || !title) return { kind: 'incomplete', position: index + 1 };
+    const key = name.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('es');
+    if (seen.has(key)) return { kind: 'duplicate', position: index + 1 };
+    seen.add(key);
+  }
+  return null;
+}
+
+function SignatoryEditor({ list, canManage }: { list: SignatoryListState; canManage: boolean }) {
+  const { t } = useLocale();
+  const p = t.certificates.policy;
+  const { items } = list;
+  return (
+    <fieldset className="space-y-3 rounded-lg border border-slate-200 p-3 sm:p-4" data-signatory-editor={items.length}>
+      <legend className="px-1 text-sm font-semibold text-slate-800">{p.signatories}</legend>
+      <p id="signatories-hint" className="text-xs text-slate-600">
+        {p.signatoriesHint}
+      </p>
+      {items.length === 0 ? <p className="text-sm text-slate-600">{p.noSignatories}</p> : null}
+      <ol className="space-y-3">
+        {items.map((item, index) => (
+          <li key={item.key} data-signatory-row={index + 1}>
+            <fieldset className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+              <legend className="sr-only">{p.signatory(index + 1)}</legend>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p aria-hidden="true" className="text-sm font-medium text-slate-800">
+                  {p.signatory(index + 1)}
+                </p>
+                {canManage ? (
+                  <div className="flex flex-wrap gap-1">
+                    <Button size="sm" variant="ghost" disabled={index === 0} onClick={() => list.move(index, -1)}>
+                      {p.moveUp} <span className="sr-only">{p.signatory(index + 1)}</span>
+                    </Button>
+                    <Button size="sm" variant="ghost" disabled={index === items.length - 1} onClick={() => list.move(index, 1)}>
+                      {p.moveDown} <span className="sr-only">{p.signatory(index + 1)}</span>
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => list.remove(index)}>
+                      {p.remove} <span className="sr-only">{p.signatory(index + 1)}</span>
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextField
+                  id={`signatory-${item.key}-name`}
+                  label={p.signatoryName}
+                  maxLength={80}
+                  autoComplete="off"
+                  value={item.name}
+                  onChange={(event) => list.edit(index, 'name', event.target.value)}
+                />
+                <TextField
+                  id={`signatory-${item.key}-title`}
+                  label={p.signatoryTitle}
+                  maxLength={100}
+                  autoComplete="off"
+                  value={item.title}
+                  onChange={(event) => list.edit(index, 'title', event.target.value)}
+                />
+              </div>
+            </fieldset>
+          </li>
+        ))}
+      </ol>
+      {canManage ? (
+        items.length < MAX_SIGNATORIES ? (
+          <Button size="sm" variant="secondary" onClick={list.add} aria-describedby="signatories-hint">
+            {p.addSignatory}
+          </Button>
+        ) : (
+          <p className="text-xs text-slate-600">{p.maxSignatories}</p>
+        )
+      ) : null}
+      <SignatoryPreview signatories={list.cleaned().filter((signatory) => signatory.name || signatory.title)} />
+    </fieldset>
   );
 }
 

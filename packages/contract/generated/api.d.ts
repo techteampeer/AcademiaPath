@@ -1827,6 +1827,12 @@ export interface paths {
          *     minimum grade needs a final grade (`422 CERTIFICATE_POLICY_INVALID`). `expectedVersion` is the version
          *     the edit was based on (0 when none exists; otherwise `409 CERTIFICATE_POLICY_CONFLICT`). Certificates
          *     already issued keep the policy version they were issued under. Audited as `certificate_policy.updated`.
+         *
+         *     AP-043: `signatories` (optional, 0–3, in print order) replaces the saved list; when it is left out the
+         *     saved signatories are kept. Names and titles are tidied (spacing collapsed, trimmed) and must print
+         *     exactly on the certificate (Latin letters, including Spanish accents); each person appears once
+         *     (case, accents and spacing ignored). Otherwise `422 CERTIFICATE_SIGNATORIES_INVALID`. Signatories are
+         *     printed names and titles only: no handwritten, scanned, electronic or cryptographic signature.
          */
         put: operations["saveCertificatePolicy"];
         post?: never;
@@ -2280,6 +2286,12 @@ export interface paths {
          *     with explicit offsets; all-day events send `startDate`/`endDate` (inclusive). `timeZone` defaults to the
          *     institution's. The end must follow the start (`422 EVENT_TIME_INVALID`); unknown zones are
          *     `422 INVALID_TIME_ZONE`. Audited as `calendar_event.created`.
+         *
+         *     AP-045: optional `session` makes the event a teaching session (number and delivery mode; an external
+         *     HTTPS classroom link for live and presentation sessions only; units and one activity of this course).
+         *     `422 SESSION_JOIN_URL_INVALID`, `422 SESSION_UNIT_INVALID` (a unit not of this course),
+         *     `422 SESSION_ACTIVITY_INVALID`, `409 SESSION_NUMBER_TAKEN` (another session of the course that is not
+         *     cancelled has this number).
          */
         post: operations["createCourseEvent"];
         delete?: never;
@@ -2351,6 +2363,10 @@ export interface paths {
          * Edit, publish or hide an event
          * @description Requires `calendar.manage` for the course (administrators for institution-wide events). Replaces the
          *     event's fields; cancelled events cannot change (`409 EVENT_CANCELLED`). Audited.
+         *
+         *     AP-045: `session` left out keeps the event's session details (so publishing or hiding never drops them);
+         *     `null` removes them; an object replaces them, with the same checks as on creation. Institution-wide events
+         *     cannot be sessions (`422 SESSION_NOT_ALLOWED`).
          */
         put: operations["updateCalendarEvent"];
         post?: never;
@@ -2717,6 +2733,34 @@ export interface paths {
          *     design team) and in unpublished courses.
          */
         get: operations["getCourseMessaging"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}/email-recipients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * BCC recipients to compose an e-mail to the course's students in one's own e-mail application
+         * @description AP-044. The course's students with an active enrollment and an active account, one entry per e-mail
+         *     address (compared without case), for an e-mail the caller writes and sends from their own e-mail
+         *     application (the web app opens it with the addresses in BCC). AcademiaPath never sends, queues, delivers
+         *     or tracks that e-mail. Addresses that are not valid e-mail addresses, and repeated addresses, are left out
+         *     and only counted in `excluded`.
+         *
+         *     Requires `students.email`: instructors of the course, and administrators. Non-editing instructors, the
+         *     design team and students get `403 FORBIDDEN`; a course the caller cannot access gets `404`. Each request is
+         *     audited as `course.email_recipients_listed` with counts only (never addresses). Responses are `no-store`.
+         */
+        get: operations["getCourseEmailRecipients"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4704,7 +4748,20 @@ export interface components {
             /** @description The issuing institution printed on certificates (for example "AcademiaPath"). */
             issuerName: string;
         };
+        /**
+         * @description AP-043. A person whose printed name and official title appear on certificates, under a signature line.
+         *     Text only: not linked to a user account, and no electronic or cryptographic signature is produced.
+         */
+        CertificateSignatory: {
+            /** @description Full printed name (for example "María Fernanda Quispe Huamán"). */
+            name: string;
+            /** @description Official title (for example "Decana de la Facultad de Ingeniería"). */
+            title: string;
+        };
+        /** @description AP-043. Up to three signatories, in print order (left to right). Empty when there are none. */
+        CertificateSignatories: components["schemas"]["CertificateSignatory"][];
         CertificatePolicy: components["schemas"]["CertificatePolicyRules"] & {
+            signatories: components["schemas"]["CertificateSignatories"];
             configured: boolean;
             version: number;
             /** Format: date-time */
@@ -4712,6 +4769,8 @@ export interface components {
         };
         CertificatePolicyInput: components["schemas"]["CertificatePolicyRules"] & {
             expectedVersion: number;
+            /** @description Optional; when left out, the saved signatories are kept. */
+            signatories?: components["schemas"]["CertificateSignatories"];
         };
         CertificateRequirement: {
             /** @enum {string} */
@@ -4768,6 +4827,8 @@ export interface components {
             termName: string;
             academicYear: number;
             issuerName: string;
+            /** @description The signatories saved when the certificate was issued (empty for certificates issued before AP-043), never the current policy's. */
+            signatories: components["schemas"]["CertificateSignatories"];
             /** Format: date-time */
             issuedAt: string;
             policyVersion: number;
@@ -4840,6 +4901,8 @@ export interface components {
             courseTitle: string;
             academicPeriod: string;
             issuerName: string;
+            /** @description AP-043. The printed names and titles saved at issue time (empty before AP-043); nothing else about them. */
+            signatories: components["schemas"]["CertificateSignatories"];
             /** Format: date-time */
             issuedAt: string;
             /** Format: date-time */
@@ -4915,7 +4978,55 @@ export interface components {
             timeZone?: string;
             /** @enum {string} */
             status: "hidden" | "published";
+            session?: components["schemas"]["TeachingSessionInput"];
         };
+        /**
+         * @description AP-045. How a teaching session is delivered.
+         * @enum {string}
+         */
+        TeachingSessionMode: "live_online" | "asynchronous" | "presentation";
+        /**
+         * @description AP-045. Makes a course event a teaching session. Units and sessions are independent: a unit may span
+         *     several sessions, a session may cover several units, and a presentation session may cover none.
+         */
+        TeachingSessionInput: {
+            /** @description Unique among the course's sessions that are not cancelled. */
+            number: number;
+            deliveryMode: components["schemas"]["TeachingSessionMode"];
+            /**
+             * @description External virtual classroom link (https:// only, no embedded credentials), for live_online and
+             *     presentation sessions. AcademiaPath does not host or check the meeting.
+             */
+            joinUrl?: string | null;
+            /** @description Units (course sections) of the same course. */
+            unitIds?: string[];
+            /**
+             * Format: uuid
+             * @description One activity of the same course to open (for example the material of an asynchronous session).
+             */
+            activityId?: string | null;
+        } | null;
+        /**
+         * @description AP-045. Session details as the caller may see them: students see only visible units, only activities they
+         *     can open, and the classroom link of published sessions only. Null for ordinary events.
+         */
+        TeachingSession: {
+            number: number;
+            deliveryMode: components["schemas"]["TeachingSessionMode"];
+            joinUrl: string | null;
+            /** @description In course order. */
+            units: {
+                /** Format: uuid */
+                id: string;
+                title: string;
+            }[];
+            activity: {
+                /** Format: uuid */
+                id: string;
+                title: string;
+                type: string;
+            } | null;
+        } | null;
         CalendarEvent: {
             /** Format: uuid */
             id: string;
@@ -4944,6 +5055,7 @@ export interface components {
             publishedAt: string | null;
             /** Format: date-time */
             cancelledAt: string | null;
+            session: components["schemas"]["TeachingSession"];
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -5719,6 +5831,29 @@ export interface components {
         ConversationPage: {
             items: components["schemas"]["Conversation"][];
             nextCursor: string | null;
+        };
+        /** @description AP-044. The BCC list for an e-mail composed in the caller's own e-mail application. Nothing is sent by AcademiaPath. */
+        CourseEmailRecipients: {
+            course: {
+                /** Format: uuid */
+                id: string;
+                code: string;
+                title: string;
+            };
+            /** @description The number of entries in `recipients`. */
+            recipientCount: number;
+            /** @description Active students with a valid, unique e-mail address, ordered by family name, given name and address. */
+            recipients: {
+                name: string;
+                email: string;
+            }[];
+            /** @description Active students left out of `recipients`. */
+            excluded: {
+                /** @description Students whose stored address is empty or not a valid e-mail address. */
+                invalidEmail: number;
+                /** @description Entries whose address repeats one already listed. */
+                duplicateEmail: number;
+            };
         };
         CourseMessaging: {
             course: components["schemas"]["CourseRef"];
@@ -10333,6 +10468,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CourseMessaging"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getCourseEmailRecipients: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The recipients. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseEmailRecipients"];
                 };
             };
             401: components["responses"]["Unauthorized"];

@@ -1,0 +1,2 @@
+ALTER TABLE "course_certificate_policies" ADD COLUMN "signatories" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "course_certificate_policies" ADD CONSTRAINT "course_certificate_policies_signatories_check" CHECK (CASE WHEN jsonb_typeof("course_certificate_policies"."signatories") = 'array' THEN jsonb_array_length("course_certificate_policies"."signatories") <= 3 ELSE false END);

@@ -1,5 +1,6 @@
 import { API_BASE, ApiError, apiRequest, apiUpload } from './client';
 import type {
+  CourseEmailRecipients,
   AccountInvitation,
   Activity,
   QualityReport,
@@ -188,6 +189,8 @@ export const api = {
 
   listCourses: (page?: PageRequest, filters: CourseFilters = {}) => apiRequest<CoursePage>('GET', withFilters(withPage('/courses', page), filters)),
   getCourse: (id: string) => apiRequest<Course>('GET', course(id)),
+  /** AP-044: the BCC list for an e-mail composed in the user's own e-mail application (instructors, administrators). */
+  getCourseEmailRecipients: (id: string) => apiRequest<CourseEmailRecipients>('GET', `${course(id)}/email-recipients`),
   listSections: (id: string, page?: PageRequest) => apiRequest<SectionPage>('GET', withPage(`${course(id)}/sections`, page)),
 
   listPrograms: (page?: PageRequest) => apiRequest<ProgramPage>('GET', withPage('/programs', page)),

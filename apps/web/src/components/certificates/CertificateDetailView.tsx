@@ -14,7 +14,7 @@ import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import { formatDate, formatDateTime, localizeTermName } from '@/lib/i18n/messages';
 import type { Certificate } from '@/lib/api/types';
-import { CertificateStatusBadge, DownloadCertificateButton } from './certificateDisplay';
+import { CertificateStatusBadge, DownloadCertificateButton, SignatoryList } from './certificateDisplay';
 
 type Load = { status: 'loading' } | { status: 'not-found' } | { status: 'error'; message: string } | { status: 'ready'; data: Certificate };
 
@@ -78,6 +78,14 @@ function Content({ certificateId }: { certificateId: string }) {
               <dd className="text-sm break-words text-slate-900">{value}</dd>
             </div>
           ))}
+          {certificate.signatories.length > 0 ? (
+            <div className="contents">
+              <dt className="text-sm font-medium text-slate-500">{c.verify.signatories}</dt>
+              <dd className="text-sm text-slate-900">
+                <SignatoryList signatories={certificate.signatories} />
+              </dd>
+            </div>
+          ) : null}
         </dl>
         <div className="space-y-1 border-t border-slate-200 pt-4">
           <Link href={certificate.verificationPath} className="text-sm font-medium break-all text-brand-700 hover:underline">

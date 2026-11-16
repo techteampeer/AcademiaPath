@@ -44,6 +44,8 @@ export function contentAbilities(user: CurrentUser, viewerRole: CourseRole | nul
     viewAllCommunications: admin || role === 'instructor' || role === 'non_editing_instructor',
     /** Create, publish, schedule, archive announcements and manage events: instructors and administrators. */
     manageCommunications: admin || role === 'instructor',
+    /** Compose an e-mail to the course's students in one's own e-mail application (AP-044): instructors and administrators. */
+    emailStudents: admin || role === 'instructor',
   };
 }
 

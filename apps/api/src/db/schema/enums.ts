@@ -51,6 +51,8 @@ export const communicationScopeEnum = pgEnum('communication_scope', ['course', '
 export const announcementStatusEnum = pgEnum('announcement_status', ['draft', 'published', 'archived']);
 /** Calendar event visibility: hidden from students, published, or cancelled (kept, shown as cancelled). */
 export const calendarEventStatusEnum = pgEnum('calendar_event_status', ['hidden', 'published', 'cancelled']);
+/** AP-045: how a teaching session (a course calendar event with session details) is delivered. */
+export const teachingSessionModeEnum = pgEnum('teaching_session_mode', ['live_online', 'asynchronous', 'presentation']);
 
 /** AP-026: a direct conversation joins two people of one course; a course conversation is the course's group. */
 export const conversationKindEnum = pgEnum('conversation_kind', ['direct', 'course']);

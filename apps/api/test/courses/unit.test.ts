@@ -58,8 +58,11 @@ describe('course role permissions', () => {
         'forum.moderate',
         'groups.view',
         'groups.manage',
+        'students.email',
       ].sort(),
     );
+    // AP-044: only instructors (and administrators, via the override) list students' addresses to compose an e-mail.
+    for (const role of ['non_editing_instructor', 'design_team', 'student'] as const) assert.equal(hasCoursePermission(role, 'students.email'), false, role);
     // AP-026: only instructors moderate; the design team has no messaging at all.
     assert.equal(hasCoursePermission('non_editing_instructor', 'messages.moderate'), false);
     for (const permission of ['messages.direct', 'messages.course', 'messages.moderate'] as const) assert.equal(hasCoursePermission('design_team', permission), false);

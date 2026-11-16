@@ -394,8 +394,8 @@ describe('course completion certificates (PostgreSQL)', { skip: testServerUrl ? 
     assert.equal(res.statusCode, 200);
     assert.equal(res.headers['cache-control'], 'no-store');
     const body = res.json();
-    assert.deepEqual(Object.keys(body).sort(), ['academicPeriod', 'certificateNumber', 'courseTitle', 'issuedAt', 'issuerName', 'recipientName', 'revokedAt', 'status']);
-    assert.deepEqual([body.status, body.certificateNumber, body.revokedAt], ['valid', certs.s1!.certificateNumber, null]);
+    assert.deepEqual(Object.keys(body).sort(), ['academicPeriod', 'certificateNumber', 'courseTitle', 'issuedAt', 'issuerName', 'recipientName', 'revokedAt', 'signatories', 'status']);
+    assert.deepEqual([body.status, body.certificateNumber, body.revokedAt, body.signatories], ['valid', certs.s1!.certificateNumber, null, []]);
     for (const bad of [randomBytes(32).toString('base64url'), 'abc', certs.s1!.id, `${token.slice(0, -1)}!`, "' OR 1=1 --", certs.s1!.certificateNumber]) {
       const miss = await request(null, 'GET', `/certificates/verify/${encodeURIComponent(bad)}`);
       problem(miss, 404, 'CERTIFICATE_NOT_FOUND');

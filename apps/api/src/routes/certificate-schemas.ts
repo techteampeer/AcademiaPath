@@ -27,6 +27,24 @@ export const verifyParamsSchema = {
   properties: { token: { type: 'string', maxLength: 200 } },
 } as const;
 
+/** AP-043: a printed name and official title; the API also tidies spacing and checks printable characters and duplicates. */
+const signatory = {
+  type: 'object',
+  required: ['name', 'title'],
+  additionalProperties: false,
+  properties: {
+    name: { type: 'string', minLength: 1, maxLength: 80, pattern: '\\S' },
+    title: { type: 'string', minLength: 1, maxLength: 100, pattern: '\\S' },
+  },
+} as const;
+const signatories = { type: 'array', maxItems: 3, items: signatory } as const;
+/** Signatories as returned (stored values; certificates issued before AP-043 have none). */
+const signatoriesView = {
+  type: 'array',
+  maxItems: 3,
+  items: { type: 'object', required: ['name', 'title'], additionalProperties: false, properties: { name: { type: 'string' }, title: { type: 'string' } } },
+} as const;
+
 const policyRules = {
   enabled: { type: 'boolean' },
   requireCompletion: { type: 'boolean' },
@@ -37,16 +55,17 @@ const policyRules = {
 
 export const certificatePolicySchema = {
   type: 'object',
-  required: ['configured', 'version', 'updatedAt', ...Object.keys(policyRules)],
+  required: ['configured', 'version', 'updatedAt', 'signatories', ...Object.keys(policyRules)],
   additionalProperties: false,
-  properties: { configured: { type: 'boolean' }, version: { type: 'integer', minimum: 0 }, updatedAt: nullableDateTime, ...policyRules },
+  properties: { configured: { type: 'boolean' }, version: { type: 'integer', minimum: 0 }, updatedAt: nullableDateTime, signatories: signatoriesView, ...policyRules },
 } as const;
 
+/** `signatories` is optional: when left out, the saved signatories are kept (clients from before AP-043). */
 export const certificatePolicyInputSchema = {
   type: 'object',
   required: ['expectedVersion', ...Object.keys(policyRules)],
   additionalProperties: false,
-  properties: { expectedVersion: { type: 'integer', minimum: 0 }, ...policyRules },
+  properties: { expectedVersion: { type: 'integer', minimum: 0 }, signatories, ...policyRules },
 } as const;
 
 const requirement = {
@@ -117,6 +136,7 @@ export const certificateSchema = {
     'termName',
     'academicYear',
     'issuerName',
+    'signatories',
     'issuedAt',
     'policyVersion',
     'policy',
@@ -138,6 +158,7 @@ export const certificateSchema = {
     termName: { type: 'string' },
     academicYear: { type: 'integer' },
     issuerName: { type: 'string' },
+    signatories: signatoriesView,
     issuedAt: dateTime,
     policyVersion: { type: 'integer' },
     policy: {
@@ -256,7 +277,7 @@ export const myCertificatesSchema = {
 
 export const verificationSchema = {
   type: 'object',
-  required: ['status', 'certificateNumber', 'recipientName', 'courseTitle', 'academicPeriod', 'issuerName', 'issuedAt', 'revokedAt'],
+  required: ['status', 'certificateNumber', 'recipientName', 'courseTitle', 'academicPeriod', 'issuerName', 'signatories', 'issuedAt', 'revokedAt'],
   additionalProperties: false,
   properties: {
     status: { type: 'string', enum: ['valid', 'revoked'] },
@@ -265,6 +286,7 @@ export const verificationSchema = {
     courseTitle: { type: 'string' },
     academicPeriod: { type: 'string' },
     issuerName: { type: 'string' },
+    signatories: signatoriesView,
     issuedAt: dateTime,
     revokedAt: nullableDateTime,
   },

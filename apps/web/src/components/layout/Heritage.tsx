@@ -27,6 +27,7 @@ export type IconName =
   | 'megaphone'
   | 'calendar'
   | 'chat'
+  | 'mail'
   | 'bell'
   | 'users'
   | 'award'
@@ -49,6 +50,7 @@ const ICON_PATHS: Record<IconName, ReactNode> = {
   megaphone: <path d="M4 10v4h3l7 4V6l-7 4H4zM17 9.5a3.5 3.5 0 0 1 0 5M8 14l1 5" />,
   calendar: <path d="M5 6.5h14v13H5zM5 10.5h14M9 4v4M15 4v4M8.5 14h2M13.5 14h2M8.5 17h2" />,
   chat: <path d="M4.5 6h15v10h-9l-4 3.5V16h-2z" />,
+  mail: <path d="M4 6.5h16v11H4zM4.5 7.2 12 13l7.5-5.8" />,
   bell: <path d="M6.5 16.5h11l-1.4-2V10a4.1 4.1 0 0 0-8.2 0v4.5zM10.3 19a1.9 1.9 0 0 0 3.4 0" />,
   users: <path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5M16 11a2.5 2.5 0 1 0-.6-4.9M17 14.2c1.9.5 3.1 2 3.5 4.8" />,
   award: <path d="M12 14.5a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM9 13.6 7.5 20l4.5-2.2 4.5 2.2L15 13.6" />,
@@ -88,6 +90,7 @@ export function navIconFor(href: string): IconName {
   if (href === '/admin/setup') return 'sliders';
   if (href === '/admin/communications' || href.endsWith('/announcements')) return 'megaphone';
   if (href === '/admin/messaging' || href.endsWith('/messages')) return 'chat';
+  if (href.endsWith('/email')) return 'mail';
   if (href === '/admin/forums' || href.endsWith('/forum')) return 'forum';
   if (href.endsWith('/calendar')) return 'calendar';
   if (href.endsWith('/groups')) return 'users';

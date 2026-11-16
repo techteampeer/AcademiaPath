@@ -5,13 +5,26 @@ import { courses, enrollments } from './courses.js';
 import { certificateStatusEnum } from './enums.js';
 import { users } from './users.js';
 
-/** The eligibility rules saved with every certificate (the policy version it was issued under). */
+/**
+ * A person whose printed name and official title appear on certificates (AP-043). Printed only: no
+ * handwritten, scanned, electronic or cryptographic signature is produced or implied.
+ */
+export type CertificateSignatory = { name: string; title: string };
+
+/** At most this many signatories per policy (and so per certificate). */
+export const MAX_CERTIFICATE_SIGNATORIES = 3;
+
+/**
+ * The eligibility rules saved with every certificate (the policy version it was issued under), and, from
+ * AP-043, its signatories in print order. Certificates issued before AP-043 have no `signatories`: none.
+ */
 export type CertificatePolicySnapshot = {
   version: number;
   requireCompletion: boolean;
   requireFinalGrade: boolean;
   minimumGradePercent: number | null;
   issuerName: string;
+  signatories?: CertificateSignatory[];
 };
 
 /**
@@ -30,6 +43,8 @@ export const courseCertificatePolicies = pgTable(
     requireFinalGrade: boolean('require_final_grade').notNull(),
     minimumGradePercent: integer('minimum_grade_percent'),
     issuerName: text('issuer_name').notNull(),
+    /** AP-043: up to three signatories in print order (validated by the API; the count is also checked here). */
+    signatories: jsonb('signatories').$type<CertificateSignatory[]>().notNull().default([]),
     version: integer('version').notNull().default(1),
     updatedByUserId: uuid('updated_by_user_id')
       .notNull()
@@ -44,6 +59,10 @@ export const courseCertificatePolicies = pgTable(
     ),
     check('course_certificate_policies_issuer_check', sql`char_length(${t.issuerName}) BETWEEN 1 AND 120`),
     check('course_certificate_policies_version_check', sql`${t.version} >= 1`),
+    check(
+      'course_certificate_policies_signatories_check',
+      sql`CASE WHEN jsonb_typeof(${t.signatories}) = 'array' THEN jsonb_array_length(${t.signatories}) <= 3 ELSE false END`,
+    ),
   ],
 );
 

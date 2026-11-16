@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.24.0
+  version: 0.26.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -3435,6 +3435,12 @@ paths:
         minimum grade needs a final grade (`422 CERTIFICATE_POLICY_INVALID`). `expectedVersion` is the version
         the edit was based on (0 when none exists; otherwise `409 CERTIFICATE_POLICY_CONFLICT`). Certificates
         already issued keep the policy version they were issued under. Audited as `certificate_policy.updated`.
+
+        AP-043: `signatories` (optional, 0–3, in print order) replaces the saved list; when it is left out the
+        saved signatories are kept. Names and titles are tidied (spacing collapsed, trimmed) and must print
+        exactly on the certificate (Latin letters, including Spanish accents); each person appears once
+        (case, accents and spacing ignored). Otherwise `422 CERTIFICATE_SIGNATORIES_INVALID`. Signatories are
+        printed names and titles only: no handwritten, scanned, electronic or cryptographic signature.
       tags: [Certificates]
       security:
         - sessionCookie: []
@@ -4150,6 +4156,12 @@ paths:
         with explicit offsets; all-day events send `startDate`/`endDate` (inclusive). `timeZone` defaults to the
         institution's. The end must follow the start (`422 EVENT_TIME_INVALID`); unknown zones are
         `422 INVALID_TIME_ZONE`. Audited as `calendar_event.created`.
+
+        AP-045: optional `session` makes the event a teaching session (number and delivery mode; an external
+        HTTPS classroom link for live and presentation sessions only; units and one activity of this course).
+        `422 SESSION_JOIN_URL_INVALID`, `422 SESSION_UNIT_INVALID` (a unit not of this course),
+        `422 SESSION_ACTIVITY_INVALID`, `409 SESSION_NUMBER_TAKEN` (another session of the course that is not
+        cancelled has this number).
       tags: [Calendar]
       security:
         - sessionCookie: []
@@ -4322,6 +4334,10 @@ paths:
       description: |
         Requires `calendar.manage` for the course (administrators for institution-wide events). Replaces the
         event's fields; cancelled events cannot change (`409 EVENT_CANCELLED`). Audited.
+
+        AP-045: `session` left out keeps the event's session details (so publishing or hiding never drops them);
+        `null` removes them; an object replaces them, with the same checks as on creation. Institution-wide events
+        cannot be sessions (`422 SESSION_NOT_ALLOWED`).
       tags: [Calendar]
       security:
         - sessionCookie: []
@@ -4892,6 +4908,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CourseMessaging"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/email-recipients:
+    get:
+      operationId: getCourseEmailRecipients
+      summary: BCC recipients to compose an e-mail to the course's students in one's own e-mail application
+      description: |
+        AP-044. The course's students with an active enrollment and an active account, one entry per e-mail
+        address (compared without case), for an e-mail the caller writes and sends from their own e-mail
+        application (the web app opens it with the addresses in BCC). AcademiaPath never sends, queues, delivers
+        or tracks that e-mail. Addresses that are not valid e-mail addresses, and repeated addresses, are left out
+        and only counted in `excluded`.
+
+        Requires `students.email`: instructors of the course, and administrators. Non-editing instructors, the
+        design team and students get `403 FORBIDDEN`; a course the caller cannot access gets `404`. Each request is
+        audited as `course.email_recipients_listed` with counts only (never addresses). Responses are `no-store`.
+      tags: [Messaging]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: The recipients.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseEmailRecipients"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -9206,12 +9254,40 @@ components:
           maxLength: 120
           pattern: "\\S"
           description: The issuing institution printed on certificates (for example "AcademiaPath").
+    CertificateSignatory:
+      type: object
+      description: |
+        AP-043. A person whose printed name and official title appear on certificates, under a signature line.
+        Text only: not linked to a user account, and no electronic or cryptographic signature is produced.
+      required: [name, title]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+          pattern: "\\S"
+          description: Full printed name (for example "María Fernanda Quispe Huamán").
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: "\\S"
+          description: Official title (for example "Decana de la Facultad de Ingeniería").
+    CertificateSignatories:
+      type: array
+      description: AP-043. Up to three signatories, in print order (left to right). Empty when there are none.
+      maxItems: 3
+      items:
+        $ref: "#/components/schemas/CertificateSignatory"
     CertificatePolicy:
       allOf:
         - $ref: "#/components/schemas/CertificatePolicyRules"
         - type: object
-          required: [configured, version, updatedAt]
+          required: [configured, version, updatedAt, signatories]
           properties:
+            signatories:
+              $ref: "#/components/schemas/CertificateSignatories"
             configured:
               type: boolean
             version:
@@ -9229,6 +9305,9 @@ components:
             expectedVersion:
               type: integer
               minimum: 0
+            signatories:
+              description: Optional; when left out, the saved signatories are kept.
+              $ref: "#/components/schemas/CertificateSignatories"
     CertificateRequirement:
       type: object
       required: [key, met, reason]
@@ -9305,7 +9384,7 @@ components:
     Certificate:
       type: object
       description: A certificate exactly as issued (snapshot). `history` is included for staff and administrators only.
-      required: [id, certificateNumber, status, courseId, userId, recipientName, courseTitle, courseCode, programName, termName, academicYear, issuerName, issuedAt, policyVersion, policy, verificationPath, revokedAt, revocationReason]
+      required: [id, certificateNumber, status, courseId, userId, recipientName, courseTitle, courseCode, programName, termName, academicYear, issuerName, signatories, issuedAt, policyVersion, policy, verificationPath, revokedAt, revocationReason]
       additionalProperties: false
       properties:
         id:
@@ -9337,6 +9416,9 @@ components:
           type: integer
         issuerName:
           type: string
+        signatories:
+          description: The signatories saved when the certificate was issued (empty for certificates issued before AP-043), never the current policy's.
+          $ref: "#/components/schemas/CertificateSignatories"
         issuedAt:
           type: string
           format: date-time
@@ -9486,7 +9568,7 @@ components:
     CertificateVerification:
       type: object
       description: The public verification record. Nothing else about the student or the course is revealed.
-      required: [status, certificateNumber, recipientName, courseTitle, academicPeriod, issuerName, issuedAt, revokedAt]
+      required: [status, certificateNumber, recipientName, courseTitle, academicPeriod, issuerName, signatories, issuedAt, revokedAt]
       additionalProperties: false
       properties:
         status:
@@ -9502,6 +9584,9 @@ components:
           type: string
         issuerName:
           type: string
+        signatories:
+          description: AP-043. The printed names and titles saved at issue time (empty before AP-043); nothing else about them.
+          $ref: "#/components/schemas/CertificateSignatories"
         issuedAt:
           type: string
           format: date-time
@@ -9655,9 +9740,87 @@ components:
         status:
           type: string
           enum: [hidden, published]
+        session:
+          $ref: "#/components/schemas/TeachingSessionInput"
+    TeachingSessionMode:
+      type: string
+      description: AP-045. How a teaching session is delivered.
+      enum: [live_online, asynchronous, presentation]
+    TeachingSessionInput:
+      type: [object, "null"]
+      description: |
+        AP-045. Makes a course event a teaching session. Units and sessions are independent: a unit may span
+        several sessions, a session may cover several units, and a presentation session may cover none.
+      required: [number, deliveryMode]
+      additionalProperties: false
+      properties:
+        number:
+          type: integer
+          minimum: 1
+          maximum: 999
+          description: Unique among the course's sessions that are not cancelled.
+        deliveryMode:
+          $ref: "#/components/schemas/TeachingSessionMode"
+        joinUrl:
+          type: [string, "null"]
+          maxLength: 2000
+          description: |
+            External virtual classroom link (https:// only, no embedded credentials), for live_online and
+            presentation sessions. AcademiaPath does not host or check the meeting.
+        unitIds:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          description: Units (course sections) of the same course.
+          items:
+            type: string
+            format: uuid
+        activityId:
+          type: [string, "null"]
+          format: uuid
+          description: One activity of the same course to open (for example the material of an asynchronous session).
+    TeachingSession:
+      type: [object, "null"]
+      description: |
+        AP-045. Session details as the caller may see them: students see only visible units, only activities they
+        can open, and the classroom link of published sessions only. Null for ordinary events.
+      required: [number, deliveryMode, joinUrl, units, activity]
+      additionalProperties: false
+      properties:
+        number:
+          type: integer
+        deliveryMode:
+          $ref: "#/components/schemas/TeachingSessionMode"
+        joinUrl:
+          type: [string, "null"]
+        units:
+          type: array
+          description: In course order.
+          items:
+            type: object
+            required: [id, title]
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+                format: uuid
+              title:
+                type: string
+        activity:
+          type: [object, "null"]
+          required: [id, title, type]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            title:
+              type: string
+            type:
+              type: string
     CalendarEvent:
       type: object
-      required: [id, scope, course, title, description, allDay, startsAt, endsAt, startDate, endDate, timeZone, status, publishedAt, cancelledAt, createdAt, updatedAt]
+      required: [id, scope, course, title, description, allDay, startsAt, endsAt, startDate, endDate, timeZone, status, publishedAt, cancelledAt, session, createdAt, updatedAt]
       additionalProperties: false
       properties:
         id:
@@ -9697,6 +9860,8 @@ components:
         cancelledAt:
           type: [string, "null"]
           format: date-time
+        session:
+          $ref: "#/components/schemas/TeachingSession"
         createdAt:
           type: string
           format: date-time
@@ -11323,6 +11488,54 @@ components:
             $ref: "#/components/schemas/Conversation"
         nextCursor:
           type: [string, "null"]
+    CourseEmailRecipients:
+      type: object
+      description: AP-044. The BCC list for an e-mail composed in the caller's own e-mail application. Nothing is sent by AcademiaPath.
+      required: [course, recipientCount, recipients, excluded]
+      additionalProperties: false
+      properties:
+        course:
+          type: object
+          required: [id, code, title]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            code:
+              type: string
+            title:
+              type: string
+        recipientCount:
+          type: integer
+          minimum: 0
+          description: The number of entries in `recipients`.
+        recipients:
+          type: array
+          description: Active students with a valid, unique e-mail address, ordered by family name, given name and address.
+          items:
+            type: object
+            required: [name, email]
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+              email:
+                type: string
+        excluded:
+          type: object
+          description: Active students left out of `recipients`.
+          required: [invalidEmail, duplicateEmail]
+          additionalProperties: false
+          properties:
+            invalidEmail:
+              type: integer
+              minimum: 0
+              description: Students whose stored address is empty or not a valid e-mail address.
+            duplicateEmail:
+              type: integer
+              minimum: 0
+              description: Entries whose address repeats one already listed.
     CourseMessaging:
       type: object
       required: [course, role, courseConversation, directConversations, contacts]
