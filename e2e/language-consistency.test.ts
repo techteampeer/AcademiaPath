@@ -6,11 +6,13 @@
  * 2. Messages already on screen (sign-in errors, validation errors, API errors) follow a language switch.
  * 3. Switching the language changes no stored data: enrollments, grades, course content, the account's stored
  *    language preference and what each role may open stay the same, and authored text is never translated.
- * 4. File pickers and deadlines are shown in the selected language.
+ * 4. File pickers and deadlines are shown in the selected language, and a document uploads through the localized picker.
+ * The SCORM inspection page (AP-033B) is part of the matrix; its own language tests are in e2e/scorm-inspection.test.ts.
  */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import type { Browser, Page } from 'playwright';
+import { makePdf } from '../apps/api/test/helpers/documents.ts';
 import { apiGet, BASE, context, launch, leaks, MESSAGES, settle, type Locale, type Role } from './support.ts';
 
 let browser: Browser;
@@ -48,6 +50,7 @@ describe('interface language across roles and screen sizes', () => {
     ['admin', `/courses/${itil}/certificates`],
     ['reviewer', '/dashboard'],
     ['reviewer', `/courses/${itil}`],
+    ['reviewer', `/courses/${itil}/scorm-inspection`],
     ['instructor', `/courses/${itil}/grades`],
     ['instructor', '/calendar'],
     ['instructor', `/courses/${itil}/certificates`],
@@ -57,6 +60,7 @@ describe('interface language across roles and screen sizes', () => {
     ['student', `/courses/${itil}/grades`],
     ['student', '/certificates'],
     ['student', '/calendar'],
+    ['student', `/courses/${itil}/scorm-inspection`],
   ];
   for (const locale of ['en', 'es'] as const) {
     for (const width of [390, 820, 1440]) {
@@ -141,12 +145,14 @@ describe('switching the language changes no stored data', () => {
     me: await apiGet<{ user: unknown }>('student', '/me'),
     courses: await apiGet<unknown>('student', '/courses?limit=100'),
     grades: await apiGet<unknown>('student', `/courses/${itil}/grades/mine`),
+    progress: await apiGet<unknown>('student', '/me/progress'),
+    courseProgress: await apiGet<unknown>('student', `/courses/${itil}/progress`),
     sections: await apiGet<{ items: Array<{ id: string; title: string }> }>('student', `/courses/${itil}/sections?limit=100`),
     gradebook: await apiGet<unknown>('instructor', `/courses/${itil}/gradebook?limit=100`),
     roster: await apiGet<unknown>('admin', `/courses/${itil}/enrollments?limit=100`),
   });
 
-  it('enrollments, grades, content, the stored preference and permissions are unchanged, and authored text is not translated', async () => {
+  it('enrollments, grades, student progress, content, the stored preference and permissions are unchanged, and authored text is not translated', async () => {
     const before = await snapshot();
     const navigation: Record<string, string[]> = {};
     for (const role of ['student', 'instructor', 'admin'] as const) {
@@ -189,6 +195,20 @@ describe('file pickers and deadlines', () => {
       assert.equal(await page.getByLabel(MESSAGES[locale].documents.library.file).count(), 1, 'the input keeps its label');
       await page.context().close();
     }
+  });
+
+  it('a document is uploaded through the localized picker (Spanish, 390 px)', async () => {
+    const page = await open('es', 'instructor', `/courses/${itil}`, 390);
+    const form = page.locator('form:has(#document-file)');
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), form.locator('[data-file-button]').click()]);
+    await chooser.setFiles({ name: 'guia-de-estudio.pdf', mimeType: 'application/pdf', buffer: makePdf([['Guía de estudio', 'Material sintético para la prueba de idioma.']]) });
+    assert.equal(await form.locator('[data-file-name]').innerText(), 'guia-de-estudio.pdf');
+    const title = 'Guía de estudio (prueba de idioma, borrador)';
+    await page.locator('#document-title').fill(title);
+    await form.locator('button[type="submit"]').click();
+    await page.getByText(MESSAGES.es.documents.library.uploadedDraft(title)).waitFor({ timeout: 30_000 });
+    assert.deepEqual(await leaks(page, 'es'), []);
+    await page.context().close();
   });
 
   it('deadlines name their time zone in both languages', async () => {

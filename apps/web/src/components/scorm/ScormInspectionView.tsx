@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react';
 import { contentAbilities } from '@/components/content/contentDisplay';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError } from '@/components/session/useCsrfAction';
@@ -11,6 +12,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { FileInput } from '@/components/ui/FileInput';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
@@ -89,12 +91,13 @@ function Content({ courseId, user }: { courseId: string; user: CurrentUser }) {
 
 function Inspector({ courseId }: { courseId: string }) {
   const { getCsrfToken, handleUnauthorized } = useSession();
-  const { t, locale } = useLocale();
+  const { t } = useLocale();
   const s = t.scorm;
   const [file, setFile] = useState<File | null>(null);
-  const [fileError, setFileError] = useState<string | undefined>();
+  // Messages follow the EN/ES switch while they are shown (AP-I18N-01 convention).
+  const [fileError, setFileError] = useLocalizedState<string | undefined>(undefined);
   const [pending, setPending] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useLocalizedState<string | null>(null);
   const [report, setReport] = useState<ScormInspectionReport | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const resultHeading = useRef<HTMLHeadingElement>(null);
@@ -107,16 +110,16 @@ function Inspector({ courseId }: { courseId: string }) {
     event.preventDefault();
     setFailure(null);
     setReport(null);
-    if (!file) return setFileError(s.chooseFile);
-    if (!/\.zip$/i.test(file.name)) return setFileError(s.onlyZip);
-    if (file.size > MAX_BYTES) return setFileError(s.tooLarge);
+    if (!file) return setFileError((m) => m.scorm.chooseFile);
+    if (!/\.zip$/i.test(file.name)) return setFileError((m) => m.scorm.onlyZip);
+    if (file.size > MAX_BYTES) return setFileError((m) => m.scorm.tooLarge);
     setFileError(undefined);
     setPending(true);
     try {
       setReport(await api.inspectScormPackage(courseId, file, await getCsrfToken()));
     } catch (error) {
       if (isApiError(error, 401)) handleUnauthorized();
-      setFailure(isApiError(error, 413) ? s.tooLarge : isApiError(error, 415) ? s.onlyZip : isApiError(error, 429) ? s.rateLimited : describeApiError(error, locale));
+      setFailure((m, ml) => (isApiError(error, 413) ? m.scorm.tooLarge : isApiError(error, 415) ? m.scorm.onlyZip : isApiError(error, 429) ? m.scorm.rateLimited : describeApiError(error, ml)));
     } finally {
       setPending(false);
     }
@@ -143,20 +146,19 @@ function Inspector({ courseId }: { courseId: string }) {
             <label htmlFor="scorm-file" className="block text-sm font-medium text-slate-800">
               {s.fileLabel}
             </label>
-            <input
+            <FileInput
               ref={fileInput}
               id="scorm-file"
-              type="file"
               accept=".zip,application/zip,application/x-zip-compressed"
               aria-invalid={fileError ? true : undefined}
               aria-describedby={fileError ? 'scorm-file-hint scorm-file-error' : 'scorm-file-hint'}
+              selectedName={file?.name ?? null}
               onChange={(event) => {
                 setFile(event.target.files?.[0] ?? null);
                 setFileError(undefined);
                 setReport(null);
                 setFailure(null);
               }}
-              className="mt-1 block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border file:border-slate-300 file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-800 hover:file:bg-slate-50"
             />
             <p id="scorm-file-hint" className="mt-1 text-xs text-slate-500">
               {s.fileHint}
