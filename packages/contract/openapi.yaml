@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.30.0
+  version: 0.31.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -292,6 +292,8 @@ tags:
     description: Course-grounded tutor (local mock provider) and usage
   - name: Documents
     description: Uploaded course documents, extracted text and mock summaries
+  - name: SCORM
+    description: SCORM package inspection (dry run; SCORM import and playback are not available yet)
   - name: Progress
     description: Server-calculated learning progress, completion marks and section prerequisites
 paths:
@@ -3566,6 +3568,67 @@ paths:
           $ref: "#/components/responses/PayloadTooLarge"
         "422":
           $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/scorm-inspections:
+    post:
+      operationId: inspectScormPackage
+      summary: Inspect a SCORM package (dry run, AP-033B)
+      description: |
+        Validates the structure of a SCORM 1.2 or SCORM 2004 package and returns an inspection report. This is a
+        **dry run**: nothing is written to the database or to storage, no activity is created, and nothing is
+        imported, published or launched. The package's HTML and JavaScript are never executed, nothing it refers to
+        is fetched, and no file is extracted to disk.
+
+        Requires `content.edit` (design team, instructor) or the administrator role; non-editing instructors and
+        students get 403, and callers who cannot see the course get 404. Send `multipart/form-data` with exactly one
+        `file` part: a `.zip` of at most 25 MB (larger: 413; another extension: 415 `UNSUPPORTED_FILE_TYPE`).
+
+        The package is inspected in an isolated worker with time and memory limits. The archive is checked for path
+        traversal, absolute and invalid names, symbolic links and special files, encrypted entries, duplicate names
+        and letter-case or Unicode collisions, unsupported compression, ZIP bombs (entry count, per-file and total
+        decompressed size, per-file expansion ratio, forged sizes) and damaged entries (CRC-32). `imsmanifest.xml`
+        must be at the root; it is parsed strictly, without a DTD (a DOCTYPE is refused) and within depth and
+        element limits. A package that fails any check is still answered with `200` and a report whose `status` is
+        `invalid`; `issues` explains why. Rate limited per user (30 inspections per 10 minutes).
+      tags:
+        - SCORM
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ScormPackageUpload"
+            encoding:
+              file:
+                contentType: application/zip, application/x-zip-compressed, application/octet-stream
+      responses:
+        "200":
+          description: The inspection report. Nothing was stored, imported or published.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScormInspectionReport"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/RateLimited"
   /api/v1/courses/{id}/export:
     get:
       operationId: exportCourse
@@ -6523,7 +6586,7 @@ components:
             detail: Only PDF (.pdf), Word (.docx) and PowerPoint (.pptx) files are accepted.
             code: UNSUPPORTED_FILE_TYPE
     RateLimited:
-      description: "Too many sign-in or activation attempts, tutor requests, messages, forum posts or polling requests (`code`: `RATE_LIMITED`)."
+      description: "Too many sign-in or activation attempts, tutor requests, messages, forum posts, polling requests or SCORM package inspections (`code`: `RATE_LIMITED`)."
       headers:
         Retry-After:
           description: Seconds until another attempt is allowed.
@@ -8309,6 +8372,250 @@ components:
           type: string
           contentMediaType: application/octet-stream
           description: One PDF, DOCX or PPTX file.
+    ScormPackageUpload:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          contentMediaType: application/zip
+          description: One SCORM package as a .zip file (at most 25 MB).
+    ScormInspectionIssue:
+      type: object
+      description: |
+        One finding. `message` is English; clients may show their own text for `code`. `path` is a package-relative
+        file path or manifest address and `line` a line in imsmanifest.xml; neither is ever a server path.
+      required: [code, severity, message, path, line, limit, value]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          enum:
+            - SCORM_PACKAGE_TOO_LARGE
+            - SCORM_ARCHIVE_INVALID
+            - SCORM_ARCHIVE_TOO_MANY_ENTRIES
+            - SCORM_ARCHIVE_TOO_LARGE
+            - SCORM_ENTRY_TOO_LARGE
+            - SCORM_ENTRY_EXPANSION_RATIO
+            - SCORM_ENTRY_CORRUPT
+            - SCORM_ENTRY_ENCRYPTED
+            - SCORM_ENTRY_SYMLINK
+            - SCORM_ENTRY_SPECIAL_FILE
+            - SCORM_ENTRY_COMPRESSION_UNSUPPORTED
+            - SCORM_PATH_TRAVERSAL
+            - SCORM_PATH_ABSOLUTE
+            - SCORM_PATH_INVALID
+            - SCORM_PATH_DUPLICATE
+            - SCORM_PATH_COLLISION
+            - SCORM_MANIFEST_MISSING
+            - SCORM_MANIFEST_NOT_AT_ROOT
+            - SCORM_MANIFEST_TOO_LARGE
+            - SCORM_MANIFEST_ENCODING
+            - SCORM_MANIFEST_MALFORMED
+            - SCORM_MANIFEST_DOCTYPE
+            - SCORM_MANIFEST_TOO_DEEP
+            - SCORM_MANIFEST_TOO_MANY_ELEMENTS
+            - SCORM_MANIFEST_NOT_A_MANIFEST
+            - SCORM_MANIFEST_NAMESPACE_UNKNOWN
+            - SCORM_COMMON_CARTRIDGE
+            - SCORM_VERSION_UNSUPPORTED
+            - SCORM_VERSION_UNKNOWN
+            - SCORM_VERSION_INFERRED
+            - SCORM_VERSION_MISMATCH
+            - SCORM_METADATA_SCHEMA_UNEXPECTED
+            - SCORM_NO_ORGANIZATIONS
+            - SCORM_DEFAULT_ORGANIZATION_INVALID
+            - SCORM_DEFAULT_ORGANIZATION_MISSING
+            - SCORM_IDENTIFIER_MISSING
+            - SCORM_IDENTIFIER_DUPLICATE
+            - SCORM_ITEM_REFERENCE_INVALID
+            - SCORM_ITEM_WITHOUT_RESOURCE
+            - SCORM_RESOURCE_TYPE_UNSUPPORTED
+            - SCORM_SCORMTYPE_MISSING
+            - SCORM_SCORMTYPE_INVALID
+            - SCORM_DEPENDENCY_INVALID
+            - SCORM_LAUNCH_HREF_MISSING
+            - SCORM_LAUNCH_FILE_MISSING
+            - SCORM_FILE_MISSING
+            - SCORM_FILE_CASE_MISMATCH
+            - SCORM_HREF_EXTERNAL
+            - SCORM_HREF_DANGEROUS
+            - SCORM_HREF_INVALID
+            - SCORM_HREF_OUTSIDE_PACKAGE
+            - SCORM_HREF_BACKSLASH
+            - SCORM_LAUNCH_NOT_HTML
+            - SCORM_LAUNCH_FLASH
+            - SCORM_NO_LAUNCHABLE_CONTENT
+            - SCORM_SEQUENCING_IGNORED
+            - SCORM_SUBMANIFEST_UNSUPPORTED
+            - SCORM_INSPECTION_LIMIT
+            - SCORM_INSPECTION_FAILED
+        severity:
+          type: string
+          enum: [error, warning]
+        message:
+          type: string
+        path:
+          type: [string, "null"]
+        line:
+          type: [integer, "null"]
+        limit:
+          type: [integer, "null"]
+          description: The limit that was exceeded (bytes, entries, depth or ratio, depending on `code`).
+        value:
+          type: [string, "null"]
+          description: A short value from the package, such as an identifier, a declared version or an address scheme.
+    ScormInspectionReport:
+      type: object
+      description: |
+        AP-033B structural inspection of a SCORM package. It does not promise runtime compatibility: SCORM playback
+        is not available in AcademiaPath yet (`runtime.playbackAvailable` is always false) and `imported` is always
+        false. Strings taken from the package are cleaned and shortened; lists are capped at 500 entries
+        (`listsTruncated`) and issues at 200 (`issuesTruncated`), while `counts` stay complete.
+      required: [reportVersion, status, imported, package, standard, title, manifestIdentifier, counts, organizations, launchable, resources, features, runtime, issues, issuesTruncated, listsTruncated]
+      additionalProperties: false
+      properties:
+        reportVersion:
+          type: integer
+          enum: [1]
+        status:
+          type: string
+          enum: [valid, valid_with_warnings, invalid]
+        imported:
+          type: boolean
+          enum: [false]
+        package:
+          type: object
+          required: [fileName, sha256, compressedBytes, uncompressedBytes, fileCount, folderCount]
+          additionalProperties: false
+          properties:
+            fileName:
+              type: [string, "null"]
+            sha256:
+              type: string
+            compressedBytes:
+              type: integer
+            uncompressedBytes:
+              type: [integer, "null"]
+              description: Verified total decompressed size; null when the archive could not be read.
+            fileCount:
+              type: integer
+            folderCount:
+              type: integer
+        standard:
+          type: object
+          required: [format, version, edition, schemaVersion]
+          additionalProperties: false
+          properties:
+            format:
+              type: string
+              enum: [scorm, common_cartridge, unknown]
+              description: "`common_cartridge`: an IMS Common Cartridge such as a Canvas course export, which is not SCORM."
+            version:
+              type: [string, "null"]
+              enum: [scorm_1_2, scorm_2004, null]
+            edition:
+              type: [string, "null"]
+              enum: [2nd, 3rd, 4th, null]
+            schemaVersion:
+              type: [string, "null"]
+              description: The manifest's declared schema version, as written.
+        title:
+          type: [string, "null"]
+        manifestIdentifier:
+          type: [string, "null"]
+        counts:
+          type: object
+          required: [organizations, items, resources, scos, assets, launchable, declaredFiles, missingFiles, undeclaredFiles]
+          additionalProperties: false
+          properties:
+            organizations: { type: integer }
+            items: { type: integer }
+            resources: { type: integer }
+            scos: { type: integer }
+            assets: { type: integer }
+            launchable: { type: integer }
+            declaredFiles: { type: integer }
+            missingFiles: { type: integer }
+            undeclaredFiles:
+              type: integer
+              description: Files in the archive that no resource lists (common, and not an error).
+        organizations:
+          type: array
+          items:
+            type: object
+            required: [identifier, title, isDefault, itemCount]
+            additionalProperties: false
+            properties:
+              identifier: { type: string }
+              title: { type: [string, "null"] }
+              isDefault: { type: boolean }
+              itemCount: { type: integer }
+        launchable:
+          type: array
+          description: Items that launch a file present in the package, default organization first.
+          items:
+            type: object
+            required: [organization, item, title, resource, scormType, launchPath, parameters, visible]
+            additionalProperties: false
+            properties:
+              organization: { type: string }
+              item: { type: string }
+              title: { type: [string, "null"] }
+              resource: { type: string }
+              scormType:
+                type: string
+                enum: [sco, asset]
+              launchPath:
+                type: string
+                description: Package-relative path of the launch file.
+              parameters:
+                type: [string, "null"]
+              visible: { type: boolean }
+        resources:
+          type: array
+          items:
+            type: object
+            required: [identifier, scormType, launchPath, fileCount, missingFileCount, dependencyCount]
+            additionalProperties: false
+            properties:
+              identifier: { type: string }
+              scormType:
+                type: string
+                enum: [sco, asset]
+              launchPath: { type: [string, "null"] }
+              fileCount: { type: integer }
+              missingFileCount: { type: integer }
+              dependencyCount: { type: integer }
+        features:
+          type: object
+          required: [sequencing, subManifests]
+          additionalProperties: false
+          properties:
+            sequencing:
+              type: boolean
+              description: SCORM 2004 sequencing rules are present (they will not be applied).
+            subManifests:
+              type: boolean
+        runtime:
+          type: object
+          required: [playbackAvailable, plannedSupport]
+          additionalProperties: false
+          properties:
+            playbackAvailable:
+              type: boolean
+              enum: [false]
+            plannedSupport:
+              type: string
+              enum: [planned, planned_without_sequencing, not_supported]
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScormInspectionIssue"
+        issuesTruncated:
+          type: boolean
+        listsTruncated:
+          type: boolean
     DocumentSegment:
       type: object
       description: |

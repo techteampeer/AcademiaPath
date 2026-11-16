@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { LocalizedCourseStatusBadge as CourseStatusBadge } from '@/components/courses/LocalizedCourseStatusBadge';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError, useCsrfAction } from '@/components/session/useCsrfAction';
@@ -109,15 +110,20 @@ export function YearPanel({ year, terms, onSelectTerm, onCreated }: { year: numb
   const [name, setName] = useState('');
   const [startsOn, setStartsOn] = useState('');
   const [endsOn, setEndsOn] = useState('');
-  const [errors, setErrors] = useState<Errors>({});
+  const [errors, setErrors] = useLocalizedState<Errors>({});
   const { run, pending, result } = useCsrfAction();
   const code = `${year}-${period}`;
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const next = datesError(startsOn, endsOn, t);
-    if (name.length > 200) next.name = t.errors.maxChars(200);
-    setErrors(next);
+    // Built with the catalog shown at render, so the messages follow the EN/ES switch (AP-I18N-01).
+    const check = (cat: Messages) => {
+      const next = datesError(startsOn, endsOn, cat);
+      if (name.length > 200) next.name = cat.errors.maxChars(200);
+      return next;
+    };
+    const next = check(t);
+    setErrors(check);
     if (Object.keys(next).length) return;
     const created = await run(
       (csrf) => api.createTerm({ code, name: name.trim() || defaultTermName(code, period), academicYear: year, startsOn, endsOn }, csrf),
@@ -191,7 +197,7 @@ export function TermPanel({
   const [name, setName] = useState(term.name);
   const [startsOn, setStartsOn] = useState(term.startsOn);
   const [endsOn, setEndsOn] = useState(term.endsOn);
-  const [errors, setErrors] = useState<Errors>({});
+  const [errors, setErrors] = useLocalizedState<Errors>({});
   const edit = useCsrfAction();
   const { t, locale } = useLocale();
   const h = t.setup.hierarchy;
@@ -199,10 +205,15 @@ export function TermPanel({
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const next = datesError(startsOn, endsOn, t);
-    const nameError = textError(name, t.errors.enterName, t);
-    if (nameError) next.name = nameError;
-    setErrors(next);
+    // Built with the catalog shown at render, so the messages follow the EN/ES switch (AP-I18N-01).
+    const check = (cat: Messages) => {
+      const next = datesError(startsOn, endsOn, cat);
+      const nameError = textError(name, cat.errors.enterName, cat);
+      if (nameError) next.name = nameError;
+      return next;
+    };
+    const next = check(t);
+    setErrors(check);
     if (Object.keys(next).length) return;
     const saved = await edit.run((csrf) => api.updateTerm(term.id, { name: name.trim(), startsOn, endsOn }, csrf), (saved) => h.termSaved(saved.code));
     if (saved) await onChanged();
@@ -268,20 +279,25 @@ function NewProgramForm({ onCreated }: { onCreated: () => Promise<void> }) {
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [errors, setErrors] = useState<Errors>({});
+  const [errors, setErrors] = useLocalizedState<Errors>({});
   const { run, pending, result } = useCsrfAction();
   const { t } = useLocale();
   const h = t.setup.hierarchy;
   const f = t.setup.fields;
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const next: Errors = {};
-    const c = codeError(code, t);
-    const n = textError(name, t.errors.enterName, t);
-    if (c) next.code = c;
-    if (n) next.name = n;
-    if (description.length > 2000) next.description = t.errors.maxChars(2000);
-    setErrors(next);
+    // Built with the catalog shown at render, so the messages follow the EN/ES switch (AP-I18N-01).
+    const check = (cat: Messages) => {
+      const next: Errors = {};
+      const c = codeError(code, cat);
+      const n = textError(name, cat.errors.enterName, cat);
+      if (c) next.code = c;
+      if (n) next.name = n;
+      if (description.length > 2000) next.description = cat.errors.maxChars(2000);
+      return next;
+    };
+    const next = check(t);
+    setErrors(check);
     if (Object.keys(next).length) return;
     const created = await run(
       (csrf) => api.createProgram({ code: code.trim(), name: name.trim(), ...(description.trim() ? { description: description.trim() } : {}) }, csrf),
@@ -332,7 +348,7 @@ export function ProgramPanel({
   const [name, setName] = useState(program.name);
   const [description, setDescription] = useState(program.description ?? '');
   const [isActive, setIsActive] = useState(program.isActive);
-  const [errors, setErrors] = useState<Errors>({});
+  const [errors, setErrors] = useLocalizedState<Errors>({});
   const edit = useCsrfAction();
   const { t } = useLocale();
   const h = t.setup.hierarchy;
@@ -340,11 +356,16 @@ export function ProgramPanel({
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const next: Errors = {};
-    const n = textError(name, t.errors.enterName, t);
-    if (n) next.name = n;
-    if (description.length > 2000) next.description = t.errors.maxChars(2000);
-    setErrors(next);
+    // Built with the catalog shown at render, so the messages follow the EN/ES switch (AP-I18N-01).
+    const check = (cat: Messages) => {
+      const next: Errors = {};
+      const n = textError(name, cat.errors.enterName, cat);
+      if (n) next.name = n;
+      if (description.length > 2000) next.description = cat.errors.maxChars(2000);
+      return next;
+    };
+    const next = check(t);
+    setErrors(check);
     if (Object.keys(next).length) return;
     const saved = await edit.run(
       (csrf) => api.updateProgram(program.id, { name: name.trim(), description: description.trim() || null, isActive }, csrf),
@@ -422,7 +443,7 @@ export function SubjectForm({ mode, onSaved }: { mode: SubjectFormMode; onSaved:
   const [title, setTitle] = useState(detail?.latestVersion?.title ?? detail?.title ?? '');
   const [description, setDescription] = useState(detail?.latestVersion?.description ?? '');
   const [sections, setSections] = useState((detail?.latestVersion?.sections ?? []).map((s) => s.title).join('\n'));
-  const [errors, setErrors] = useState<Errors>({});
+  const [errors, setErrors] = useLocalizedState<Errors>({});
   const { run, pending, result } = useCsrfAction();
   const { t } = useLocale();
   const h = t.setup.hierarchy;
@@ -431,17 +452,24 @@ export function SubjectForm({ mode, onSaved }: { mode: SubjectFormMode; onSaved:
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const next: Errors = {};
-    const c = detail ? undefined : codeError(code, t);
-    const titleProblem = textError(title, t.errors.enterTitle, t);
-    const lines = sectionLines(sections);
-    if (c) next.code = c;
-    if (titleProblem) next.title = titleProblem;
-    if (description.length > 2000) next.description = t.errors.maxChars(2000);
-    if (!lines.length) next.sections = h.sectionsRequired;
-    else if (lines.length > 100 || lines.some((line) => line.length > 200)) next.sections = h.sectionsLimit;
-    setErrors(next);
+    // Built with the catalog shown at render, so the messages follow the EN/ES switch (AP-I18N-01).
+    const check = (cat: Messages) => {
+      const h = cat.setup.hierarchy;
+      const next: Errors = {};
+      const c = detail ? undefined : codeError(code, cat);
+      const titleProblem = textError(title, cat.errors.enterTitle, cat);
+      const lines = sectionLines(sections);
+      if (c) next.code = c;
+      if (titleProblem) next.title = titleProblem;
+      if (description.length > 2000) next.description = cat.errors.maxChars(2000);
+      if (!lines.length) next.sections = h.sectionsRequired;
+      else if (lines.length > 100 || lines.some((line) => line.length > 200)) next.sections = h.sectionsLimit;
+      return next;
+    };
+    const next = check(t);
+    setErrors(check);
     if (Object.keys(next).length) return;
+    const lines = sectionLines(sections);
     const programId = detail ? detail.programId : mode.kind === 'create' ? mode.programId : null;
     // A new version keeps each existing section's visibility (matched by title); new sections are visible.
     const visibility = new Map((detail?.latestVersion?.sections ?? []).map((section) => [section.title, section.isVisible]));
@@ -601,19 +629,24 @@ function NewOfferingForm({ subject, program, term, onCreated }: { subject: Cours
   const [code, setCode] = useState(suggested);
   const [title, setTitle] = useState(subject.latestVersion?.title ?? subject.title);
   const [status, setStatus] = useState<'draft' | 'published'>('draft');
-  const [errors, setErrors] = useState<Errors>({});
+  const [errors, setErrors] = useLocalizedState<Errors>({});
   const { run, pending, result } = useCsrfAction();
   const { t } = useLocale();
   const h = t.setup.hierarchy;
   const f = t.setup.fields;
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const next: Errors = {};
-    const c = codeError(code, t);
-    const titleProblem = textError(title, t.errors.enterTitle, t);
-    if (c) next.code = c;
-    if (titleProblem) next.title = titleProblem;
-    setErrors(next);
+    // Built with the catalog shown at render, so the messages follow the EN/ES switch (AP-I18N-01).
+    const check = (cat: Messages) => {
+      const next: Errors = {};
+      const c = codeError(code, cat);
+      const titleProblem = textError(title, cat.errors.enterTitle, cat);
+      if (c) next.code = c;
+      if (titleProblem) next.title = titleProblem;
+      return next;
+    };
+    const next = check(t);
+    setErrors(check);
     if (Object.keys(next).length) return;
     const created = await run(
       (csrf) => api.createCourse({ programId: program.id, termId: term.id, templateId: subject.id, code: code.trim(), title: title.trim(), status }, csrf),

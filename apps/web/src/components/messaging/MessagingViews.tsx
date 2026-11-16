@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { useWorkspace } from '@/components/session/WorkspaceProvider';
@@ -445,11 +446,11 @@ function Composer({ conversationId, onSent }: { conversationId: string; onSent: 
   const m = t.messaging.messages;
   const { run, pending, result } = useCsrfAction();
   const [body, setBody] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useLocalizedState<string | null>(null);
   const key = useRef(newClientMessageId());
   const submit = async () => {
-    if (!body.trim()) return setError(m.empty);
-    if (body.length > MAX_LENGTH) return setError(m.tooLong(MAX_LENGTH));
+    if (!body.trim()) return setError((m) => m.messaging.messages.empty);
+    if (body.length > MAX_LENGTH) return setError((m) => m.messaging.messages.tooLong(MAX_LENGTH));
     setError(null);
     const message = await run((csrf) => api.sendMessage(conversationId, body, key.current, csrf));
     if (message) {

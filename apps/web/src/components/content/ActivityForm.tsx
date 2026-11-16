@@ -2,6 +2,8 @@
 
 import { useState, type FormEvent } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
+import type { Messages } from '@/lib/i18n/messages';
 import { Button } from '@/components/ui/Button';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { fromLocalInput, toLocalInput } from '@/components/assignments/assignmentDisplay';
@@ -85,18 +87,19 @@ export function ActivityForm({
   const [passingScore, setPassingScore] = useState(quiz?.passingScorePercent ? String(quiz.passingScorePercent) : '');
   const [showFeedback, setShowFeedback] = useState(quiz?.showFeedback ?? false);
   const [questionsPerAttempt, setQuestionsPerAttempt] = useState(quiz?.questionsPerAttempt ? String(quiz.questionsPerAttempt) : '');
-  const [errors, setErrors] = useState<Errors>({});
+  const [errors, setErrors] = useLocalizedState<Errors>({});
 
-  const validate = (): Errors => {
+  const validate = (cat: Messages = t): Errors => {
+    const f = cat.content.form;
     const next: Errors = {};
-    if (!title.trim()) next.title = t.errors.enterTitle;
-    else if (title.length > LIMITS.title) next.title = t.errors.maxChars(LIMITS.title);
+    if (!title.trim()) next.title = cat.errors.enterTitle;
+    else if (title.length > LIMITS.title) next.title = cat.errors.maxChars(LIMITS.title);
     if (type === 'page') {
       if (!body.trim()) next.body = f.enterLessonText;
-      else if (body.length > LIMITS.body) next.body = t.errors.maxChars(LIMITS.body);
+      else if (body.length > LIMITS.body) next.body = cat.errors.maxChars(LIMITS.body);
     } else if (type === 'assignment') {
       if (!instructions.trim()) next.instructions = f.enterInstructions;
-      else if (instructions.length > LIMITS.assignmentInstructions) next.instructions = t.errors.maxChars(LIMITS.assignmentInstructions);
+      else if (instructions.length > LIMITS.assignmentInstructions) next.instructions = cat.errors.maxChars(LIMITS.assignmentInstructions);
       const due = fromLocalInput(dueAt);
       const late = fromLocalInput(lateUntil);
       if (!due) next.dueAt = f.chooseDue;
@@ -104,21 +107,21 @@ export function ActivityForm({
       else if (due && late && (Date.parse(late) <= Date.parse(due) || Date.parse(late) - Date.parse(due) > LIMITS.lateWindowDays * 86_400_000)) {
         next.lateUntil = f.lateWindow(LIMITS.lateWindowDays);
       }
-      const rubricError = validateRubric(criteria, t.assignments.rubric);
+      const rubricError = validateRubric(criteria, cat.assignments.rubric);
       if (rubricError) next.rubric = rubricError;
     } else if (type === 'quiz') {
-      if (instructions.length > LIMITS.instructions) next.instructions = t.errors.maxChars(LIMITS.instructions);
-      if (wholeNumberIn(attemptLimit, 1, LIMITS.attemptLimit) === null) next.attemptLimit = t.errors.wholeNumber(1, LIMITS.attemptLimit);
+      if (instructions.length > LIMITS.instructions) next.instructions = cat.errors.maxChars(LIMITS.instructions);
+      if (wholeNumberIn(attemptLimit, 1, LIMITS.attemptLimit) === null) next.attemptLimit = cat.errors.wholeNumber(1, LIMITS.attemptLimit);
       if (timeLimit.trim() && wholeNumberIn(timeLimit, 1, LIMITS.timeLimitMinutes) === null) {
         next.timeLimitMinutes = f.timeLimitRange(LIMITS.timeLimitMinutes);
       }
-      if (passingScore.trim() && wholeNumberIn(passingScore, 1, 100) === null) next.passingScorePercent = t.assessment.passingRange;
-      if (questionsPerAttempt.trim() && wholeNumberIn(questionsPerAttempt, 1, 100) === null) next.questionsPerAttempt = t.assessment.poolRange;
+      if (passingScore.trim() && wholeNumberIn(passingScore, 1, 100) === null) next.passingScorePercent = cat.assessment.passingRange;
+      if (questionsPerAttempt.trim() && wholeNumberIn(questionsPerAttempt, 1, 100) === null) next.questionsPerAttempt = cat.assessment.poolRange;
     } else {
       if (!url.trim()) next.url = f.enterUrl;
       // Convenience check only: the API enforces https on a domain name for new and edited links.
       else if (url.length > LIMITS.url || !safeHttpUrl(url.trim()) || !url.trim().toLowerCase().startsWith('https://')) next.url = f.invalidUrl;
-      if (description.length > LIMITS.description) next.description = t.errors.maxChars(LIMITS.description);
+      if (description.length > LIMITS.description) next.description = cat.errors.maxChars(LIMITS.description);
     }
     return next;
   };
@@ -126,7 +129,8 @@ export function ActivityForm({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const next = validate();
-    setErrors(next);
+    // Re-validated with the catalog shown at render, so the messages follow the EN/ES switch (AP-I18N-01).
+    setErrors((cat) => validate(cat));
     if (Object.keys(next).length) return;
     const value: ActivityCreate =
       type === 'page'

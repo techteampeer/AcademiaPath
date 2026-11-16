@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { BrandMark } from '@/components/layout/Header';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
@@ -15,6 +16,14 @@ import { landingPathFor, safeNextPath } from './WorkspaceProvider';
 type FieldErrors = { email?: string; password?: string };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function validateCredentials(t: Messages, email: string, password: string): FieldErrors {
+  const errors: FieldErrors = {};
+  if (!email.trim()) errors.email = t.login.emailRequired;
+  else if (!EMAIL_PATTERN.test(email.trim())) errors.email = t.login.emailInvalid;
+  if (!password) errors.password = t.login.passwordRequired;
+  return errors;
+}
 
 /** Generic messages only: never reveal whether an account exists. */
 function loginErrorMessage(t: Messages, error: unknown): string {
@@ -34,8 +43,9 @@ export function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [error, setError] = useState<string | null>(null);
+  // Messages follow the EN/ES switch while they are shown (AP-I18N-01).
+  const [fieldErrors, setFieldErrors] = useLocalizedState<FieldErrors>({});
+  const [error, setError] = useLocalizedState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<{ next: string | null; expired: boolean }>({ next: null, expired: false });
   // The form only submits through script; until hydration the button stays disabled, so
@@ -52,18 +62,11 @@ export function LoginForm() {
     if (session.status === 'authenticated' && !submitting) router.replace(notice.next ?? landingPathFor(session.user));
   }, [session, submitting, notice.next, router]);
 
-  const validate = (): FieldErrors => {
-    const errors: FieldErrors = {};
-    if (!email.trim()) errors.email = t.login.emailRequired;
-    else if (!EMAIL_PATTERN.test(email.trim())) errors.email = t.login.emailInvalid;
-    if (!password) errors.password = t.login.passwordRequired;
-    return errors;
-  };
-
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const errors = validate();
-    setFieldErrors(errors);
+    const submitted = { email, password };
+    const errors = validateCredentials(t, submitted.email, submitted.password);
+    setFieldErrors((catalog) => validateCredentials(catalog, submitted.email, submitted.password));
     setError(null);
     if (errors.email || errors.password) return;
 
@@ -72,7 +75,7 @@ export function LoginForm() {
       const user = await signIn({ email: email.trim(), password });
       router.replace(notice.next ?? landingPathFor(user));
     } catch (signInError) {
-      setError(loginErrorMessage(t, signInError));
+      setError((catalog) => loginErrorMessage(catalog, signInError));
       setSubmitting(false);
     } finally {
       setPassword('');

@@ -2,6 +2,7 @@
 
 import { useState, type MouseEvent, type ReactNode } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { useSession } from '@/components/session/SessionProvider';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
@@ -16,7 +17,7 @@ export function DocumentDownloadLink({ courseId, activityId, className, children
   const { t } = useLocale();
   const { handleUnauthorized } = useSession();
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useLocalizedState<string | null>(null);
 
   const onClick = async (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -36,8 +37,8 @@ export function DocumentDownloadLink({ courseId, activityId, className, children
       URL.revokeObjectURL(url);
     } catch (error) {
       if (isApiError(error, 401)) handleUnauthorized();
-      const known = isApiError(error) && error.code ? t.errors.codes[error.code] : undefined;
-      setMessage(known ?? t.documents.panel.downloadFailed);
+      const code = isApiError(error) ? error.code : undefined;
+      setMessage((m) => (code ? m.errors.codes[code] : undefined) ?? m.documents.panel.downloadFailed);
     } finally {
       setBusy(false);
     }

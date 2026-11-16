@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
+import type { Messages } from '@/lib/i18n/messages';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { Alert } from '@/components/ui/Alert';
 import { Button, buttonClasses } from '@/components/ui/Button';
@@ -31,19 +33,19 @@ function NewUserContent() {
   const [systemRole, setSystemRole] = useState<'user' | 'administrator'>('user');
   const [rows, setRows] = useState<RoleRow[]>([]);
   const [nextKey, setNextKey] = useState(1);
-  const [errors, setErrors] = useState<Errors>({});
+  const [errors, setErrors] = useLocalizedState<Errors>({});
   const [created, setCreated] = useState<UserCreateResult | null>(null);
 
-  const validate = (): Errors => {
+  const validate = (c: Messages = t): Errors => {
     const found: Errors = {};
-    if (!givenName.trim()) found.givenName = t.users.givenNameRequired;
-    if (!familyName.trim()) found.familyName = t.users.familyNameRequired;
-    if (!EMAIL_PATTERN.test(email.trim())) found.email = t.users.emailInvalid;
+    if (!givenName.trim()) found.givenName = c.users.givenNameRequired;
+    if (!familyName.trim()) found.familyName = c.users.familyNameRequired;
+    if (!EMAIL_PATTERN.test(email.trim())) found.email = c.users.emailInvalid;
     const rowErrors: Record<number, string> = {};
     const seen = new Set<string>();
     for (const row of rows) {
-      if (!row.courseId) rowErrors[row.key] = t.users.courseRequired;
-      else if (seen.has(row.courseId)) rowErrors[row.key] = t.users.duplicateCourse;
+      if (!row.courseId) rowErrors[row.key] = c.users.courseRequired;
+      else if (seen.has(row.courseId)) rowErrors[row.key] = c.users.duplicateCourse;
       seen.add(row.courseId);
     }
     if (Object.keys(rowErrors).length) found.rows = rowErrors;
@@ -53,7 +55,7 @@ function NewUserContent() {
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const found = validate();
-    setErrors(found);
+    setErrors((c) => validate(c));
     if (Object.keys(found).length) return;
     const value = await run(
       (csrf) =>
@@ -152,6 +154,7 @@ function NewUserContent() {
             <SelectField
               id="new-locale"
               label={t.users.preferredLanguage}
+              hint={t.users.preferredLanguageHint}
               value={preferredLocale}
               onChange={(e) => setPreferredLocale(e.target.value as 'es' | 'en')}
               options={[

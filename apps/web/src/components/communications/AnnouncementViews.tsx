@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { contentAbilities } from '@/components/content/contentDisplay';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError, useCsrfAction } from '@/components/session/useCsrfAction';
@@ -360,11 +361,11 @@ function AnnouncementCreateForm({ target, onCreated }: { target: AnnouncementTar
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [pinned, setPinned] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useLocalizedState<string | null>(null);
   const prefix = target.kind === 'course' ? 'course' : 'institution';
   const submit = async () => {
-    if (!title.trim()) return setError(m.titleRequired);
-    if (!body.trim()) return setError(m.bodyRequired);
+    if (!title.trim()) return setError((m) => m.communications.announcements.manage.titleRequired);
+    if (!body.trim()) return setError((m) => m.communications.announcements.manage.bodyRequired);
     setError(null);
     const input = { title: title.trim(), body, pinned };
     const created = await run(
@@ -511,14 +512,14 @@ function EditForm({ item, pending, onSave, onCancel }: { item: Announcement; pen
   const m = t.communications.announcements.manage;
   const [title, setTitle] = useState(item.title);
   const [body, setBody] = useState(item.body);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useLocalizedState<string | null>(null);
   return (
     <form
       className="space-y-3 rounded-lg border border-slate-200 p-3"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!title.trim()) return setError(m.titleRequired);
-        if (!body.trim()) return setError(m.bodyRequired);
+        if (!title.trim()) return setError((m) => m.communications.announcements.manage.titleRequired);
+        if (!body.trim()) return setError((m) => m.communications.announcements.manage.bodyRequired);
         setError(null);
         onSave({ title: title.trim(), body });
       }}
@@ -550,16 +551,16 @@ function ScheduleForm({ pending, onSchedule, onCancel }: { pending: boolean; onS
   const [zone, setZone] = useState(DEFAULT_TIME_ZONE);
   const [date, setDate] = useState(() => addDays(todayIn(DEFAULT_TIME_ZONE), 1));
   const [time, setTime] = useState('08:00');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useLocalizedState<string | null>(null);
   return (
     <form
       className="space-y-3 rounded-lg border border-slate-200 p-3"
       data-schedule-form
       onSubmit={(event) => {
         event.preventDefault();
-        if (!date || !time) return setError(m.scheduleRequired);
+        if (!date || !time) return setError((m) => m.communications.announcements.manage.scheduleRequired);
         const instant = wallTimeToInstant(date, time, zone);
-        if (Date.parse(instant) <= Date.now()) return setError(m.scheduleRequired);
+        if (Date.parse(instant) <= Date.now()) return setError((m) => m.communications.announcements.manage.scheduleRequired);
         setError(null);
         onSchedule(instant);
       }}

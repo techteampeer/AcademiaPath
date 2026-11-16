@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { newClientMessageId } from '@/components/messaging/polling';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
@@ -73,7 +74,7 @@ function CourseForum({ courseId }: { courseId: string }) {
   const fetcher = useCallback(() => api.forumTopics(courseId, { q: active }), [courseId, active]);
   const { state, setState } = useLoader<ForumTopicPage>(fetcher);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [moreError, setMoreError] = useState<string | null>(null);
+  const [moreError, setMoreError] = useLocalizedState<string | null>(null);
 
   if (state.status === 'loading') return <Loading label={f.loading} />;
   if (state.status === 'forbidden') return <EmptyState titleAs="h1" title={f.notAvailableTitle} description={f.notAvailable} />;
@@ -89,7 +90,7 @@ function CourseForum({ courseId }: { courseId: string }) {
       const next = await api.forumTopics(courseId, { q: active, cursor: data.nextCursor });
       setState({ status: 'ready', data: { ...next, items: [...data.items, ...next.items.filter((item) => !data.items.some((known) => known.id === item.id))] } });
     } catch (error) {
-      setMoreError(describeApiError(error, locale));
+      setMoreError((_m, ml) => describeApiError(error, ml));
     } finally {
       setLoadingMore(false);
     }
@@ -198,12 +199,12 @@ export function NewTopicForm({ courseId, canAnnounce, groupId, heading }: { cour
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [announce, setAnnounce] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useLocalizedState<string | null>(null);
   const key = useRef(newClientMessageId());
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!title.trim()) return setError(f.emptyTitle);
-    if (!body.trim()) return setError(f.emptyBody);
+    if (!title.trim()) return setError((m) => m.forums.forum.emptyTitle);
+    if (!body.trim()) return setError((m) => m.forums.forum.emptyBody);
     setError(null);
     const input = { title, body, clientRequestId: key.current, announce: groupId ? false : announce };
     const topic = await run((csrf) => (groupId ? api.createGroupTopic(groupId, input, csrf) : api.createForumTopic(courseId, input, csrf)));
@@ -267,7 +268,7 @@ function TopicPage({ courseId, topicId }: { courseId: string; topicId: string })
   const fetcher = useCallback(() => api.getForumTopic(topicId), [topicId]);
   const { state, setState } = useLoader<ForumTopic>(fetcher);
   const [posts, setPosts] = useState<ForumPostPage | null>(null);
-  const [postsError, setPostsError] = useState<string | null>(null);
+  const [postsError, setPostsError] = useLocalizedState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
   /** Loads replies again, keeping at least as many pages as were already shown. */
@@ -283,7 +284,7 @@ function TopicPage({ courseId, topicId }: { courseId: string; topicId: string })
         setPosts({ ...page, items });
         setPostsError(null);
       } catch (error) {
-        setPostsError(describeApiError(error, locale));
+        setPostsError((_m, ml) => describeApiError(error, ml));
       }
     },
     [topicId, locale],
@@ -322,7 +323,7 @@ function TopicPage({ courseId, topicId }: { courseId: string; topicId: string })
       const next = await api.forumPosts(topicId, posts.nextCursor);
       setPosts({ ...next, items: [...posts.items, ...next.items] });
     } catch (error) {
-      setPostsError(describeApiError(error, locale));
+      setPostsError((_m, ml) => describeApiError(error, ml));
     } finally {
       setLoadingMore(false);
     }
@@ -680,11 +681,11 @@ function ReplyForm({ topicId, parentPostId, label, inputId, onPosted, onCancel }
   const f = t.forums.forum;
   const { run, pending, result } = useCsrfAction();
   const [body, setBody] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useLocalizedState<string | null>(null);
   const key = useRef(newClientMessageId());
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!body.trim()) return setError(f.emptyBody);
+    if (!body.trim()) return setError((m) => m.forums.forum.emptyBody);
     setError(null);
     const post = await run((csrf) => api.createForumPost(topicId, { body, clientRequestId: key.current, ...(parentPostId ? { parentPostId } : {}) }, csrf));
     if (post) {

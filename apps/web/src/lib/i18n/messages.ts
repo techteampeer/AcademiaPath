@@ -22,6 +22,7 @@ import { communications } from './catalog/communications';
 import { messaging } from './catalog/messaging';
 import { courseEmail } from './catalog/courseEmail';
 import { courseImport } from './catalog/courseImport';
+import { scorm } from './catalog/scorm';
 import { forums } from './catalog/forums';
 import { groups } from './catalog/groups';
 import { preview } from './catalog/preview';
@@ -36,6 +37,8 @@ const en = {
     appName: 'AcademiaPath',
     loading: 'Loading…',
     retry: 'Try again',
+    chooseFile: 'Choose file',
+    noFileChosen: 'No file chosen',
     open: 'Open',
     view: 'View',
     back: 'Back',
@@ -314,6 +317,7 @@ const en = {
   messaging: messaging.en,
   courseEmail: courseEmail.en,
   courseImport: courseImport.en,
+  scorm: scorm.en,
   forums: forums.en,
   groups: groups.en,
   preview: preview.en,
@@ -367,6 +371,7 @@ const en = {
     givenName: 'Given name(s)',
     familyName: 'Family name(s)',
     preferredLanguage: 'Preferred language',
+    preferredLanguageHint: 'Stored with the account. The interface language is chosen by each person with the EN/ES switch.',
     languageEs: 'Spanish',
     languageEn: 'English',
     systemRoleHint: 'Administrator grants institution-wide administration. Course roles are assigned per course.',
@@ -526,6 +531,8 @@ const es: Messages = {
     appName: 'AcademiaPath',
     loading: 'Cargando…',
     retry: 'Reintentar',
+    chooseFile: 'Elegir archivo',
+    noFileChosen: 'Ningún archivo seleccionado',
     open: 'Abrir',
     view: 'Ver',
     back: 'Volver',
@@ -804,6 +811,7 @@ const es: Messages = {
   messaging: messaging.es,
   courseEmail: courseEmail.es,
   courseImport: courseImport.es,
+  scorm: scorm.es,
   forums: forums.es,
   groups: groups.es,
   preview: preview.es,
@@ -857,6 +865,7 @@ const es: Messages = {
     givenName: 'Nombre(s)',
     familyName: 'Apellido(s)',
     preferredLanguage: 'Idioma preferido',
+    preferredLanguageHint: 'Se guarda con la cuenta. Cada persona elige el idioma de la interfaz con el selector EN/ES.',
     languageEs: 'Español',
     languageEn: 'Inglés',
     systemRoleHint: 'Administrador otorga la administración de toda la institución. Los roles por curso se asignan en cada curso.',
@@ -1045,6 +1054,15 @@ export function formatDate(value: string, locale: Locale): string {
 
 export function formatDateTime(value: string, locale: Locale): string {
   return new Date(value).toLocaleString(locale === 'es' ? 'es-PE' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+/**
+ * AP-I18N-01: a deadline (assignment due date, late-submission limit) with its time zone named, as on the calendar.
+ * Shown in the device's time zone, which the label makes explicit ("Dec 4, 2026, 11:59 PM GMT-5").
+ */
+export function formatDeadline(value: string | null | undefined, locale: Locale): string {
+  if (!value) return '—';
+  return new Date(value).toLocaleString(locale === 'es' ? 'es-PE' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
 }
 
 /** Date and time in the interface language, or an em dash when there is no value. */

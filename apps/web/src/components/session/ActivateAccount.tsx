@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { Alert } from '@/components/ui/Alert';
 import { Button, buttonClasses } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -11,7 +12,7 @@ import { TextField } from '@/components/ui/Field';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { ActivationPreview } from '@/lib/api/types';
-import { formatDateTime } from '@/lib/i18n/messages';
+import { formatDateTime, type Messages } from '@/lib/i18n/messages';
 
 type State =
   | { status: 'checking' }
@@ -30,8 +31,8 @@ export function ActivateAccount() {
   const [state, setState] = useState<State>({ status: 'checking' });
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [errors, setErrors] = useState<{ password?: string; confirm?: string }>({});
-  const [failure, setFailure] = useState<string | null>(null);
+  const [errors, setErrors] = useLocalizedState<{ password?: string; confirm?: string }>({});
+  const [failure, setFailure] = useLocalizedState<string | null>(null);
   const [pending, setPending] = useState(false);
   const tokenRef = useRef<string | null>(null);
 
@@ -55,10 +56,14 @@ export function ActivateAccount() {
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (state.status !== 'ready') return;
-    const found: typeof errors = {};
-    if (password.length < 12) found.password = t.activation.tooShort;
-    if (confirm !== password) found.confirm = t.activation.mismatch;
-    setErrors(found);
+    const check = (c: Messages) => {
+      const found: typeof errors = {};
+      if (password.length < 12) found.password = c.activation.tooShort;
+      if (confirm !== password) found.confirm = c.activation.mismatch;
+      return found;
+    };
+    const found = check(t);
+    setErrors(check);
     setFailure(null);
     if (Object.keys(found).length) return;
     setPending(true);
@@ -69,9 +74,9 @@ export function ActivateAccount() {
       setState({ status: 'done', email: state.preview.email });
     } catch (error) {
       if (isApiError(error, 400) && error.code === 'INVITATION_INVALID') setState({ status: 'invalid' });
-      else if (isApiError(error) && error.code === 'PASSWORD_TOO_WEAK') setErrors({ password: t.activation.weak });
-      else if (isApiError(error, 429)) setFailure(t.activation.rateLimited);
-      else setFailure(t.activation.failed);
+      else if (isApiError(error) && error.code === 'PASSWORD_TOO_WEAK') setErrors((c) => ({ password: c.activation.weak }));
+      else if (isApiError(error, 429)) setFailure((c) => c.activation.rateLimited);
+      else setFailure((c) => c.activation.failed);
     } finally {
       setPending(false);
     }

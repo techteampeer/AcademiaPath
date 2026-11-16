@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { useCsrfAction, type ActionResult } from '@/components/session/useCsrfAction';
@@ -111,15 +112,20 @@ function ProgramStep({ onCreated }: { onCreated: () => Promise<void> }) {
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [errors, setErrors] = useState<Errors>({});
+  const [errors, setErrors] = useLocalizedState<Errors>({});
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const next: Errors = {};
-    const codeProblem = codeError(code, t);
-    if (codeProblem) next.code = codeProblem;
-    if (!name.trim()) next.name = t.errors.enterName;
-    setErrors(next);
+    // Built with the catalog shown at render, so the messages follow the EN/ES switch (AP-I18N-01).
+    const check = (cat: Messages) => {
+      const next: Errors = {};
+      const codeProblem = codeError(code, cat);
+      if (codeProblem) next.code = codeProblem;
+      if (!name.trim()) next.name = cat.errors.enterName;
+      return next;
+    };
+    const next = check(t);
+    setErrors(check);
     if (Object.keys(next).length) return;
 
     const created = await run(
@@ -160,18 +166,23 @@ function TermStep({ onCreated }: { onCreated: () => Promise<void> }) {
   const [name, setName] = useState('');
   const [startsOn, setStartsOn] = useState('');
   const [endsOn, setEndsOn] = useState('');
-  const [errors, setErrors] = useState<Errors>({});
+  const [errors, setErrors] = useLocalizedState<Errors>({});
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const next: Errors = {};
-    const codeProblem = codeError(code, t);
-    if (codeProblem) next.code = codeProblem;
-    if (!name.trim()) next.name = t.errors.enterName;
-    if (!startsOn) next.startsOn = t.setup.dates.chooseStart;
-    if (!endsOn) next.endsOn = t.setup.dates.chooseEnd;
-    else if (startsOn && endsOn < startsOn) next.endsOn = t.setup.dates.endBeforeStart;
-    setErrors(next);
+    // Built with the catalog shown at render, so the messages follow the EN/ES switch (AP-I18N-01).
+    const check = (cat: Messages) => {
+      const next: Errors = {};
+      const codeProblem = codeError(code, cat);
+      if (codeProblem) next.code = codeProblem;
+      if (!name.trim()) next.name = cat.errors.enterName;
+      if (!startsOn) next.startsOn = cat.setup.dates.chooseStart;
+      if (!endsOn) next.endsOn = cat.setup.dates.chooseEnd;
+      else if (startsOn && endsOn < startsOn) next.endsOn = cat.setup.dates.endBeforeStart;
+      return next;
+    };
+    const next = check(t);
+    setErrors(check);
     if (Object.keys(next).length) return;
 
     const created = await run(
@@ -216,22 +227,28 @@ function TemplateStep({ programs, onCreated }: { programs: Program[]; onCreated:
   const [title, setTitle] = useState('');
   const [programId, setProgramId] = useState('');
   const [sections, setSections] = useState<SectionDraft[]>([{ title: '', isVisible: true }]);
-  const [errors, setErrors] = useState<Errors>({});
+  const [errors, setErrors] = useLocalizedState<Errors>({});
 
   const updateSection = (index: number, change: Partial<SectionDraft>) =>
     setSections((current) => current.map((section, i) => (i === index ? { ...section, ...change } : section)));
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const next: Errors = {};
-    const codeProblem = codeError(code, t);
-    if (codeProblem) next.code = codeProblem;
-    if (!title.trim()) next.title = t.errors.enterTitle;
-    sections.forEach((section, index) => {
-      if (!section.title.trim()) next[`section-${index}`] = s.sectionRequired;
-    });
-    if (sections.length === 0) next.sections = s.atLeastOneSection;
-    setErrors(next);
+    // Built with the catalog shown at render, so the messages follow the EN/ES switch (AP-I18N-01).
+    const check = (cat: Messages) => {
+      const s = cat.setup.setup;
+      const next: Errors = {};
+      const codeProblem = codeError(code, cat);
+      if (codeProblem) next.code = codeProblem;
+      if (!title.trim()) next.title = cat.errors.enterTitle;
+      sections.forEach((section, index) => {
+        if (!section.title.trim()) next[`section-${index}`] = s.sectionRequired;
+      });
+      if (sections.length === 0) next.sections = s.atLeastOneSection;
+      return next;
+    };
+    const next = check(t);
+    setErrors(check);
     if (Object.keys(next).length) return;
 
     const created = await run(
@@ -345,7 +362,7 @@ function CourseStep({
   const [code, setCode] = useState('');
   const [title, setTitle] = useState('');
   const [status, setStatus] = useState<'draft' | 'published'>('draft');
-  const [errors, setErrors] = useState<Errors>({});
+  const [errors, setErrors] = useLocalizedState<Errors>({});
 
   // Only templates of the selected program (or shared ones) are offered; the API enforces this too.
   const compatibleTemplates = templates.filter(
@@ -356,13 +373,19 @@ function CourseStep({
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const next: Errors = {};
-    if (!programId) next.programId = s.chooseProgram;
-    if (!termId) next.termId = s.chooseTerm;
-    if (!selectedTemplate) next.templateId = s.chooseTemplate;
-    const codeProblem = codeError(code, t);
-    if (codeProblem) next.code = codeProblem;
-    setErrors(next);
+    // Built with the catalog shown at render, so the messages follow the EN/ES switch (AP-I18N-01).
+    const check = (cat: Messages) => {
+      const s = cat.setup.setup;
+      const next: Errors = {};
+      if (!programId) next.programId = s.chooseProgram;
+      if (!termId) next.termId = s.chooseTerm;
+      if (!selectedTemplate) next.templateId = s.chooseTemplate;
+      const codeProblem = codeError(code, cat);
+      if (codeProblem) next.code = codeProblem;
+      return next;
+    };
+    const next = check(t);
+    setErrors(check);
     if (Object.keys(next).length) return;
 
     const created = await run(
@@ -473,15 +496,21 @@ function EnrollmentStep({ courses, onCreated }: { courses: Course[]; onCreated: 
   const [courseId, setCourseId] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<CourseRole>('student');
-  const [errors, setErrors] = useState<Errors>({});
+  const [errors, setErrors] = useLocalizedState<Errors>({});
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const next: Errors = {};
-    if (!courseId) next.courseId = s.chooseCourse;
-    if (!email.trim()) next.email = s.enterEmail;
-    else if (!EMAIL_PATTERN.test(email.trim())) next.email = t.errors.invalidEmail;
-    setErrors(next);
+    // Built with the catalog shown at render, so the messages follow the EN/ES switch (AP-I18N-01).
+    const check = (cat: Messages) => {
+      const s = cat.setup.setup;
+      const next: Errors = {};
+      if (!courseId) next.courseId = s.chooseCourse;
+      if (!email.trim()) next.email = s.enterEmail;
+      else if (!EMAIL_PATTERN.test(email.trim())) next.email = cat.errors.invalidEmail;
+      return next;
+    };
+    const next = check(t);
+    setErrors(check);
     if (Object.keys(next).length) return;
 
     const created = await run(
