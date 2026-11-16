@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 
 const STORAGE_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -9,6 +9,8 @@ export interface DocumentStorage {
   put(bytes: Uint8Array): Promise<string>;
   read(key: string): Promise<Buffer>;
   remove(key: string): Promise<void>;
+  /** Whether the stored file is present (AP-038A export reports missing files without reading them). */
+  exists(key: string): Promise<boolean>;
 }
 
 /**
@@ -46,5 +48,13 @@ export class LocalDocumentStorage implements DocumentStorage {
 
   async remove(key: string): Promise<void> {
     await rm(this.pathFor(key), { force: true });
+  }
+
+  async exists(key: string): Promise<boolean> {
+    try {
+      return (await stat(this.pathFor(key))).isFile();
+    } catch {
+      return false;
+    }
   }
 }

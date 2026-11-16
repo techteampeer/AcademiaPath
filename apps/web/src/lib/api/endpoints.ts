@@ -463,6 +463,18 @@ export const api = {
     return { blob: await response.blob(), fileName };
   },
 
+  /** AP-038A: the course content package as a Blob (same-origin, with the session cookie); the browser saves it as a file. */
+  exportCoursePackage: async (courseId: string) => {
+    const response = await fetch(`${API_BASE}${course(courseId)}/export`, { credentials: 'same-origin', headers: { accept: 'application/json' } });
+    if (!response.ok) {
+      const problem = await response.json().catch(() => null);
+      throw new ApiError(response.status, problem && typeof problem === 'object' && 'status' in problem ? problem : null);
+    }
+    const disposition = response.headers.get('content-disposition') ?? '';
+    const fileName = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'course.academiapath.json';
+    return { blob: await response.blob(), fileName };
+  },
+
   // Documents: uploaded and validated by the API, which extracts the text and creates mock summaries.
   uploadDocument: (courseId: string, sectionId: string, file: File, title: string, csrfToken: string) => {
     const form = new FormData();

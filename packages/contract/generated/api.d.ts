@@ -1814,6 +1814,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export the course content package (AP-038A)
+         * @description Requires `content.export` (design team, instructor) or the administrator role; non-editing
+         *     instructors and students get 403, and callers who cannot see the course get 404 (program-management
+         *     grants give no access). Returns the course's reusable content as one JSON `CoursePackage`
+         *     (`format` `academiapath.course-package`, `formatVersion` 1; see `docs/course-package-format.md`), as an
+         *     attachment named `course-<code>.academiapath.json`:
+         *     units in order with their prerequisites and resource folders, and every activity with its working copy
+         *     and, when approved, the approved version students see (`reviewStatus` tells them apart), including quiz
+         *     questions with answer keys and assignment rubrics. Documents are described as assets (name, format, size,
+         *     SHA-256) but their files are not included (`bundled: false`).
+         *
+         *     Never included: people or their work (enrollments, attempts, submissions, grades, completions,
+         *     messages, forum posts), credentials, audit records, review comments, database identifiers (every
+         *     reference is a package-local key such as `unit-1`, `activity-3`, `q2`, `o1`), the course's program,
+         *     term and template, calendar events, certificates, the grading policy and extracted document text.
+         *     Only rows of this course are read; references that do not resolve inside it are left out and reported
+         *     in `warnings`, as are missing stored files and activity types that are not portable yet.
+         *
+         *     Read-only and consistent (one repeatable-read snapshot). The same content always gives the same
+         *     package apart from `exportedAt`, and the same `contentHash`. At most 1000 activities and 20 MB:
+         *     larger courses get 422 `COURSE_EXPORT_TOO_LARGE`, never a partial package. Audited as
+         *     `course.exported` with counts and the content hash only.
+         */
+        get: operations["exportCourse"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{id}/certificate-policy": {
         parameters: {
             query?: never;
@@ -3457,7 +3497,7 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUALITY_CHECK_BLOCKED" | "QUALITY_REPORT_TOO_LARGE" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "INVITATION_CONFIRMATION_REQUIRED" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE" | "QUIZ_POOL_TOO_SMALL" | "QUIZ_POOL_POINTS_MIXED" | "QUIZ_SOURCE_INVALID" | "FEEDBACK_NOT_AVAILABLE" | "GRADE_CATEGORY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_INVALID" | "GRADE_WEIGHTS_INVALID" | "GRADE_RELEASE_DUPLICATE" | "GRADING_POLICY_CONFLICT" | "CERTIFICATE_POLICY_INVALID" | "CERTIFICATE_POLICY_CONFLICT" | "CERTIFICATE_NOT_ELIGIBLE" | "CERTIFICATE_ALREADY_REVOKED" | "CERTIFICATE_REVOKED" | "CERTIFICATE_NOT_FOUND" | "ANNOUNCEMENT_ARCHIVED" | "ANNOUNCEMENT_NOT_SCHEDULED" | "PUBLISH_AT_INVALID" | "EVENT_TIME_INVALID" | "INVALID_TIME_ZONE" | "RANGE_INVALID" | "EVENT_CANCELLED" | "EVENT_WAS_PUBLISHED";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUALITY_CHECK_BLOCKED" | "QUALITY_REPORT_TOO_LARGE" | "COURSE_EXPORT_TOO_LARGE" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "INVITATION_CONFIRMATION_REQUIRED" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE" | "QUIZ_POOL_TOO_SMALL" | "QUIZ_POOL_POINTS_MIXED" | "QUIZ_SOURCE_INVALID" | "FEEDBACK_NOT_AVAILABLE" | "GRADE_CATEGORY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_INVALID" | "GRADE_WEIGHTS_INVALID" | "GRADE_RELEASE_DUPLICATE" | "GRADING_POLICY_CONFLICT" | "CERTIFICATE_POLICY_INVALID" | "CERTIFICATE_POLICY_CONFLICT" | "CERTIFICATE_NOT_ELIGIBLE" | "CERTIFICATE_ALREADY_REVOKED" | "CERTIFICATE_REVOKED" | "CERTIFICATE_NOT_FOUND" | "ANNOUNCEMENT_ARCHIVED" | "ANNOUNCEMENT_NOT_SCHEDULED" | "PUBLISH_AT_INVALID" | "EVENT_TIME_INVALID" | "INVALID_TIME_ZONE" | "RANGE_INVALID" | "EVENT_CANCELLED" | "EVENT_WAS_PUBLISHED";
         };
         /**
          * @description What a link points to. Every kind is only a link opened in a new tab; nothing is embedded, fetched or executed.
@@ -5599,6 +5639,150 @@ export interface components {
             preferredLocale?: components["schemas"]["Locale"];
         };
         /**
+         * @description AP-038A course content package, format version 1 (`docs/course-package-format.md`). Readers must check
+         *     `format` and `formatVersion`, and ignore fields they do not know (later versions only add fields unless the
+         *     version changes). All references are package-local keys; an import creates new rows and maps each key.
+         */
+        CoursePackage: {
+            /** @constant */
+            format: "academiapath.course-package";
+            /** @constant */
+            formatVersion: 1;
+            /** Format: date-time */
+            exportedAt: string;
+            /** @description `sha256:` + hex digest of the canonical JSON of `formatVersion`, `course` and `assets`; equal content gives an equal hash. */
+            contentHash: string;
+            /** @description Informational only. An import assigns its own code, program and term. */
+            source: {
+                courseCode: string;
+                /** @enum {string} */
+                courseStatus: "draft" | "published" | "archived";
+            };
+            course: {
+                title: string;
+                description: string | null;
+                units: components["schemas"]["CoursePackageUnit"][];
+            };
+            assets: components["schemas"]["CoursePackageAsset"][];
+            warnings: components["schemas"]["CoursePackageWarning"][];
+            /** @description Categories of data a package never contains. */
+            excludedData: string[];
+            counts: {
+                units: number;
+                folders: number;
+                activities: number;
+                approvedActivities: number;
+                /** @description Questions in the working question banks of all quizzes. */
+                questions: number;
+                assets: number;
+            };
+        };
+        /** @description A course section, in course order. */
+        CoursePackageUnit: {
+            /** @description `unit-<n>`, numbered in course order. */
+            key: string;
+            title: string;
+            summary: string | null;
+            position: number;
+            visible: boolean;
+            /** @description Units that must be complete before this one opens. */
+            requiresUnitKeys: string[];
+            folders: {
+                key: string;
+                title: string;
+                position: number;
+            }[];
+            activities: components["schemas"]["CoursePackageActivity"][];
+        };
+        CoursePackageActivity: {
+            /** @description `activity-<n>`, numbered across the course in course order. */
+            key: string;
+            /**
+             * @description `scorm` and `lti` are not portable yet: their content is `null` (with a warning).
+             * @enum {string}
+             */
+            type: "page" | "link" | "quiz" | "assignment" | "file" | "scorm" | "lti";
+            position: number;
+            visible: boolean;
+            folderKey: string | null;
+            reviewStatus: components["schemas"]["ReviewStatus"];
+            working: components["schemas"]["CoursePackageVersion"];
+            /** @description The approved version students see, or null when the activity was never approved. */
+            approved: components["schemas"]["CoursePackageVersion"] | null;
+        };
+        CoursePackageVersion: {
+            title: string;
+            /**
+             * @description By type: page `{body}`; link `{url, description, kind}`; quiz settings plus `questions`; assignment
+             *     `{instructions, dueAt, lateUntil, rubric}`; file `{assetKey, fileName, format}` (`assetKey` null when the
+             *     reference is invalid); null for types that are not portable yet.
+             */
+            content: {
+                body: string;
+            } | {
+                url: string;
+                description: string | null;
+                kind: components["schemas"]["ResourceKind"];
+            } | {
+                instructions: string | null;
+                attemptLimit: number;
+                timeLimitMinutes: number | null;
+                shuffleQuestions: boolean;
+                shuffleOptions: boolean;
+                passingScorePercent: number | null;
+                showFeedback: boolean;
+                questionsPerAttempt: number | null;
+                questions: components["schemas"]["CoursePackageQuestion"][];
+            } | {
+                instructions: string;
+                /** Format: date-time */
+                dueAt: string;
+                /** Format: date-time */
+                lateUntil: string | null;
+                rubric: {
+                    key: string;
+                    title: string;
+                    description: string | null;
+                    maxPoints: number;
+                }[];
+            } | {
+                assetKey: string | null;
+                fileName: string;
+                format: components["schemas"]["DocumentFormat"];
+            } | null;
+        };
+        /** @description A quiz question with its answer key (`correctOptionKeys`). True/false options keep the keys `true` and `false`. */
+        CoursePackageQuestion: {
+            key: string;
+            type: components["schemas"]["QuizQuestionType"];
+            prompt: string;
+            points: number;
+            options: {
+                key: string;
+                text: string;
+            }[];
+            correctOptionKeys: string[];
+        };
+        /** @description A document file the package refers to. Version 1 never bundles file bytes (`bundled` is always false). */
+        CoursePackageAsset: {
+            key: string;
+            /** @enum {string} */
+            kind: "document";
+            fileName: string;
+            format: components["schemas"]["DocumentFormat"];
+            byteSize: number;
+            sha256: string;
+            /** @constant */
+            bundled: false;
+        };
+        CoursePackageWarning: {
+            /** @enum {string} */
+            code: "ASSET_NOT_BUNDLED" | "ASSET_MISSING" | "INVALID_REFERENCE" | "UNSUPPORTED_ACTIVITY_TYPE";
+            /** @description The package key (or key path) the warning is about. */
+            target: string;
+            detail: string;
+        };
+        /**
          * @description A single-use activation link, returned only once when issued. `activationPath` is relative to
          *     the web app origin; the token is in the URL fragment so browsers never send it to a server.
          *     `local_link`: synthetic local demonstration only. `administrator_handoff`: an administrator
@@ -6455,7 +6639,8 @@ export interface components {
          *     `INVALID_URL`, `CONTENT_TYPE_MISMATCH`, `REVIEW_COMMENT_REQUIRED`, `QUIZ_HAS_NO_QUESTIONS`,
          *     `INVALID_ANSWER_KEY`, `INVALID_ANSWER`, `INVALID_DUE_DATE`, `INVALID_RUBRIC_SCORES` or
          *     `QUALITY_CHECK_BLOCKED` (content with a blocking quality finding is neither submitted nor approved) or
-         *     `QUALITY_REPORT_TOO_LARGE` (a course too large for one quality report); or a refused
+         *     `QUALITY_REPORT_TOO_LARGE` (a course too large for one quality report) or `COURSE_EXPORT_TOO_LARGE`
+         *     (more than 1000 activities or 20 MB in one course package); or a refused
          *     document upload: `FILE_SIGNATURE_MISMATCH` (content does not match the extension),
          *     `DOCUMENT_ENCRYPTED`, `DOCUMENT_MALFORMED`, `DOCUMENT_LIMITS_EXCEEDED` (decompressed size,
          *     processing time or memory) or `MALWARE_DETECTED`; or an account or enrollment rule:
@@ -9164,6 +9349,33 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    exportCourse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The course package (`Content-Disposition` attachment, `Cache-Control` no-store). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursePackage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableContent"];
         };
     };
     getCertificatePolicy: {

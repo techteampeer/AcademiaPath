@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.27.0
+  version: 0.28.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -3418,6 +3418,54 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/v1/courses/{id}/export:
+    get:
+      operationId: exportCourse
+      summary: Export the course content package (AP-038A)
+      description: |
+        Requires `content.export` (design team, instructor) or the administrator role; non-editing
+        instructors and students get 403, and callers who cannot see the course get 404 (program-management
+        grants give no access). Returns the course's reusable content as one JSON `CoursePackage`
+        (`format` `academiapath.course-package`, `formatVersion` 1; see `docs/course-package-format.md`), as an
+        attachment named `course-<code>.academiapath.json`:
+        units in order with their prerequisites and resource folders, and every activity with its working copy
+        and, when approved, the approved version students see (`reviewStatus` tells them apart), including quiz
+        questions with answer keys and assignment rubrics. Documents are described as assets (name, format, size,
+        SHA-256) but their files are not included (`bundled: false`).
+
+        Never included: people or their work (enrollments, attempts, submissions, grades, completions,
+        messages, forum posts), credentials, audit records, review comments, database identifiers (every
+        reference is a package-local key such as `unit-1`, `activity-3`, `q2`, `o1`), the course's program,
+        term and template, calendar events, certificates, the grading policy and extracted document text.
+        Only rows of this course are read; references that do not resolve inside it are left out and reported
+        in `warnings`, as are missing stored files and activity types that are not portable yet.
+
+        Read-only and consistent (one repeatable-read snapshot). The same content always gives the same
+        package apart from `exportedAt`, and the same `contentHash`. At most 1000 activities and 20 MB:
+        larger courses get 422 `COURSE_EXPORT_TOO_LARGE`, never a partial package. Audited as
+        `course.exported` with counts and the content hash only.
+      tags: [Courses]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: The course package (`Content-Disposition` attachment, `Cache-Control` no-store).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoursePackage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
   /api/v1/courses/{id}/certificate-policy:
     get:
       operationId: getCertificatePolicy
@@ -6393,7 +6441,8 @@ components:
         `INVALID_URL`, `CONTENT_TYPE_MISMATCH`, `REVIEW_COMMENT_REQUIRED`, `QUIZ_HAS_NO_QUESTIONS`,
         `INVALID_ANSWER_KEY`, `INVALID_ANSWER`, `INVALID_DUE_DATE`, `INVALID_RUBRIC_SCORES` or
         `QUALITY_CHECK_BLOCKED` (content with a blocking quality finding is neither submitted nor approved) or
-        `QUALITY_REPORT_TOO_LARGE` (a course too large for one quality report); or a refused
+        `QUALITY_REPORT_TOO_LARGE` (a course too large for one quality report) or `COURSE_EXPORT_TOO_LARGE`
+        (more than 1000 activities or 20 MB in one course package); or a refused
         document upload: `FILE_SIGNATURE_MISMATCH` (content does not match the extension),
         `DOCUMENT_ENCRYPTED`, `DOCUMENT_MALFORMED`, `DOCUMENT_LIMITS_EXCEEDED` (decompressed size,
         processing time or memory) or `MALWARE_DETECTED`; or an account or enrollment rule:
@@ -6591,6 +6640,7 @@ components:
             - QUIZ_HAS_NO_QUESTIONS
             - QUALITY_CHECK_BLOCKED
             - QUALITY_REPORT_TOO_LARGE
+            - COURSE_EXPORT_TOO_LARGE
             - QUIZ_QUESTION_LIMIT
             - INVALID_ANSWER_KEY
             - INVALID_ANSWER
@@ -10987,6 +11037,305 @@ components:
           $ref: "#/components/schemas/SystemRole"
         preferredLocale:
           $ref: "#/components/schemas/Locale"
+    CoursePackage:
+      type: object
+      description: |
+        AP-038A course content package, format version 1 (`docs/course-package-format.md`). Readers must check
+        `format` and `formatVersion`, and ignore fields they do not know (later versions only add fields unless the
+        version changes). All references are package-local keys; an import creates new rows and maps each key.
+      required: [format, formatVersion, exportedAt, contentHash, source, course, assets, warnings, excludedData, counts]
+      additionalProperties: false
+      properties:
+        format:
+          type: string
+          const: academiapath.course-package
+        formatVersion:
+          type: integer
+          const: 1
+        exportedAt:
+          type: string
+          format: date-time
+        contentHash:
+          type: string
+          description: "`sha256:` + hex digest of the canonical JSON of `formatVersion`, `course` and `assets`; equal content gives an equal hash."
+          pattern: "^sha256:[0-9a-f]{64}$"
+        source:
+          type: object
+          description: Informational only. An import assigns its own code, program and term.
+          required: [courseCode, courseStatus]
+          additionalProperties: false
+          properties:
+            courseCode:
+              type: string
+            courseStatus:
+              type: string
+              enum: [draft, published, archived]
+        course:
+          type: object
+          required: [title, description, units]
+          additionalProperties: false
+          properties:
+            title:
+              type: string
+            description:
+              type: [string, "null"]
+            units:
+              type: array
+              items:
+                $ref: "#/components/schemas/CoursePackageUnit"
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoursePackageAsset"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoursePackageWarning"
+        excludedData:
+          type: array
+          description: Categories of data a package never contains.
+          items:
+            type: string
+        counts:
+          type: object
+          required: [units, folders, activities, approvedActivities, questions, assets]
+          additionalProperties: false
+          properties:
+            units:
+              type: integer
+            folders:
+              type: integer
+            activities:
+              type: integer
+            approvedActivities:
+              type: integer
+            questions:
+              type: integer
+              description: Questions in the working question banks of all quizzes.
+            assets:
+              type: integer
+    CoursePackageUnit:
+      type: object
+      description: A course section, in course order.
+      required: [key, title, summary, position, visible, requiresUnitKeys, folders, activities]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          description: "`unit-<n>`, numbered in course order."
+        title:
+          type: string
+        summary:
+          type: [string, "null"]
+        position:
+          type: integer
+        visible:
+          type: boolean
+        requiresUnitKeys:
+          type: array
+          description: Units that must be complete before this one opens.
+          items:
+            type: string
+        folders:
+          type: array
+          items:
+            type: object
+            required: [key, title, position]
+            additionalProperties: false
+            properties:
+              key:
+                type: string
+              title:
+                type: string
+              position:
+                type: integer
+        activities:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoursePackageActivity"
+    CoursePackageActivity:
+      type: object
+      required: [key, type, position, visible, folderKey, reviewStatus, working, approved]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          description: "`activity-<n>`, numbered across the course in course order."
+        type:
+          type: string
+          description: "`scorm` and `lti` are not portable yet: their content is `null` (with a warning)."
+          enum: [page, link, quiz, assignment, file, scorm, lti]
+        position:
+          type: integer
+        visible:
+          type: boolean
+        folderKey:
+          type: [string, "null"]
+        reviewStatus:
+          $ref: "#/components/schemas/ReviewStatus"
+        working:
+          $ref: "#/components/schemas/CoursePackageVersion"
+        approved:
+          description: The approved version students see, or null when the activity was never approved.
+          oneOf:
+            - $ref: "#/components/schemas/CoursePackageVersion"
+            - type: "null"
+    CoursePackageVersion:
+      type: object
+      required: [title, content]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+        content:
+          description: |
+            By type: page `{body}`; link `{url, description, kind}`; quiz settings plus `questions`; assignment
+            `{instructions, dueAt, lateUntil, rubric}`; file `{assetKey, fileName, format}` (`assetKey` null when the
+            reference is invalid); null for types that are not portable yet.
+          oneOf:
+            - type: object
+              required: [body]
+              additionalProperties: false
+              properties:
+                body:
+                  type: string
+            - type: object
+              required: [url, description, kind]
+              additionalProperties: false
+              properties:
+                url:
+                  type: string
+                description:
+                  type: [string, "null"]
+                kind:
+                  $ref: "#/components/schemas/ResourceKind"
+            - type: object
+              required: [instructions, attemptLimit, timeLimitMinutes, shuffleQuestions, shuffleOptions, passingScorePercent, showFeedback, questionsPerAttempt, questions]
+              additionalProperties: false
+              properties:
+                instructions:
+                  type: [string, "null"]
+                attemptLimit:
+                  type: integer
+                timeLimitMinutes:
+                  type: [integer, "null"]
+                shuffleQuestions:
+                  type: boolean
+                shuffleOptions:
+                  type: boolean
+                passingScorePercent:
+                  type: [integer, "null"]
+                showFeedback:
+                  type: boolean
+                questionsPerAttempt:
+                  type: [integer, "null"]
+                questions:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/CoursePackageQuestion"
+            - type: object
+              required: [instructions, dueAt, lateUntil, rubric]
+              additionalProperties: false
+              properties:
+                instructions:
+                  type: string
+                dueAt:
+                  type: string
+                  format: date-time
+                lateUntil:
+                  type: [string, "null"]
+                  format: date-time
+                rubric:
+                  type: array
+                  items:
+                    type: object
+                    required: [key, title, description, maxPoints]
+                    additionalProperties: false
+                    properties:
+                      key:
+                        type: string
+                      title:
+                        type: string
+                      description:
+                        type: [string, "null"]
+                      maxPoints:
+                        type: integer
+            - type: object
+              required: [assetKey, fileName, format]
+              additionalProperties: false
+              properties:
+                assetKey:
+                  type: [string, "null"]
+                fileName:
+                  type: string
+                format:
+                  $ref: "#/components/schemas/DocumentFormat"
+            - type: "null"
+    CoursePackageQuestion:
+      type: object
+      description: A quiz question with its answer key (`correctOptionKeys`). True/false options keep the keys `true` and `false`.
+      required: [key, type, prompt, points, options, correctOptionKeys]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        type:
+          $ref: "#/components/schemas/QuizQuestionType"
+        prompt:
+          type: string
+        points:
+          type: integer
+        options:
+          type: array
+          items:
+            type: object
+            required: [key, text]
+            additionalProperties: false
+            properties:
+              key:
+                type: string
+              text:
+                type: string
+        correctOptionKeys:
+          type: array
+          items:
+            type: string
+    CoursePackageAsset:
+      type: object
+      description: A document file the package refers to. Version 1 never bundles file bytes (`bundled` is always false).
+      required: [key, kind, fileName, format, byteSize, sha256, bundled]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        kind:
+          type: string
+          enum: [document]
+        fileName:
+          type: string
+        format:
+          $ref: "#/components/schemas/DocumentFormat"
+        byteSize:
+          type: integer
+        sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        bundled:
+          type: boolean
+          const: false
+    CoursePackageWarning:
+      type: object
+      required: [code, target, detail]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          enum: [ASSET_NOT_BUNDLED, ASSET_MISSING, INVALID_REFERENCE, UNSUPPORTED_ACTIVITY_TYPE]
+        target:
+          type: string
+          description: The package key (or key path) the warning is about.
+        detail:
+          type: string
     AccountInvitation:
       type: object
       description: |
