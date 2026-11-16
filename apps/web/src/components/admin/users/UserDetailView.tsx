@@ -246,11 +246,14 @@ function ActivationCard({ user, onIssued }: { user: UserDetail; onIssued: () => 
   const { t, locale } = useLocale();
   const { run, pending, result } = useUserAction();
   const [invitation, setInvitation] = useState<AccountInvitation | null>(null);
+  // The administrator confirms each link explicitly (required by administrator handoff delivery, AP-DEMO-02).
+  const [identityConfirmed, setIdentityConfirmed] = useState(false);
   const { activation } = user;
   const invite = async () => {
     const issued = await run((csrf) => api.issueInvitation(user.id, csrf));
     if (issued) {
       setInvitation(issued);
+      setIdentityConfirmed(false);
       onIssued();
     }
   };
@@ -269,11 +272,22 @@ function ActivationCard({ user, onIssued }: { user: UserDetail; onIssued: () => 
       <p className="text-sm text-slate-700">{text}</p>
       {activation.state === 'pending' ? (
         user.isActive ? (
-          <div className="space-y-1">
-            <Button variant="secondary" disabled={pending} onClick={() => void invite()}>
-              {t.users.newLink}
-            </Button>
-            <p className="text-xs text-slate-500">{t.users.newLinkHint}</p>
+          <div className="space-y-2">
+            <label className="flex items-start gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={identityConfirmed}
+                onChange={(event) => setIdentityConfirmed(event.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300"
+              />
+              {t.users.confirmIdentity}
+            </label>
+            <div className="space-y-1">
+              <Button variant="secondary" disabled={pending || !identityConfirmed} onClick={() => void invite()}>
+                {t.users.newLink}
+              </Button>
+              <p className="text-xs text-slate-500">{t.users.newLinkHint}</p>
+            </div>
           </div>
         ) : (
           <p className="text-sm text-slate-600">{t.users.inactiveNoLink}</p>
