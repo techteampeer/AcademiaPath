@@ -4,6 +4,7 @@ import type {
   CourseImportPreview,
   CourseImportRequest,
   CourseImportResult,
+  ScormInspectionReport,
   AccountInvitation,
   Activity,
   QualityReport,
@@ -491,6 +492,12 @@ export const api = {
     return apiUpload<DocumentDetail>(`${course(courseId)}/sections/${encodeURIComponent(sectionId)}/documents`, form, csrfToken);
   },
   getDocument: (courseId: string, activityId: string) => apiRequest<DocumentDetail>('GET', `${activity(courseId, activityId)}/document`),
+  /** AP-033B: dry-run SCORM package inspection. The API stores nothing and never runs the package. */
+  inspectScormPackage: (courseId: string, file: File, csrfToken: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    return apiUpload<ScormInspectionReport>(`${course(courseId)}/scorm-inspections`, form, csrfToken);
+  },
   /** AP-031D: extractive study brief of the readable document version (computed on the API; nothing stored). */
   getDocumentStudyBrief: (courseId: string, activityId: string) => apiRequest<DocumentStudyBrief>('GET', `${activity(courseId, activityId)}/document/brief`),
   refreshDocumentSummary: (courseId: string, activityId: string, csrfToken: string) =>

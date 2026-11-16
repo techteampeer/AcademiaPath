@@ -8,7 +8,7 @@ import { lessonHref } from '@/components/content/SectionActivities';
 import { useCsrfAction } from '@/components/session/useCsrfAction';
 import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
+import { Button, buttonClasses } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { api } from '@/lib/api/endpoints';
@@ -77,6 +77,15 @@ export function DocumentLibrary({
         <p className="text-sm text-slate-500">{l.empty}</p>
       )}
       {abilities.edit && sections.length ? <UploadForm courseId={courseId} sections={sections} onUploaded={onUploaded} /> : null}
+      {/* AP-033B: SCORM packages can be inspected (dry run) by the same content editors; they cannot be added yet. */}
+      {abilities.edit ? (
+        <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4">
+          <Link href={`/courses/${courseId}/scorm-inspection`} className={buttonClasses({ variant: 'secondary', size: 'sm' })} data-scorm-inspection-link>
+            {t.scorm.libraryLink}
+          </Link>
+          <p className="text-xs text-slate-500">{t.scorm.libraryHint}</p>
+        </div>
+      ) : null}
     </Card>
   );
 }

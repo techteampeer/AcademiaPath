@@ -14,14 +14,19 @@ function apiOrigin(): string {
   return url.origin;
 }
 
+/** The API's fixed SCORM package inspection limit (AP-033B, apps/api/src/scorm/limits.ts). */
+const SCORM_PACKAGE_MAX_MB = 25;
+
 /**
  * Request bodies the proxy forwards in full. Next.js truncates larger bodies silently instead of
- * rejecting them, so this stays above the API's document upload limit (DOCUMENT_MAX_UPLOAD_MB,
- * default 10) plus multipart overhead; the API then answers oversized uploads with 413.
+ * rejecting them, so this stays above the largest API upload limit — documents (DOCUMENT_MAX_UPLOAD_MB,
+ * default 10) or SCORM packages (25 MB) — plus multipart overhead; the API then answers oversized
+ * uploads with 413. 27 MB by default, below Cloud Run's 32 MiB HTTP/1 request limit.
  */
 function proxyBodyLimitBytes(): number {
   const uploadMb = Number(process.env.DOCUMENT_MAX_UPLOAD_MB ?? 10);
-  return (Number.isInteger(uploadMb) && uploadMb > 0 && uploadMb <= 100 ? uploadMb + 2 : 12) * 1024 * 1024;
+  const documentMb = Number.isInteger(uploadMb) && uploadMb > 0 && uploadMb <= 100 ? uploadMb : 10;
+  return (Math.max(documentMb, SCORM_PACKAGE_MAX_MB) + 2) * 1024 * 1024;
 }
 
 /**

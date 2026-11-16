@@ -8,6 +8,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { defaultTermName, localizeTermName, MESSAGES } from '../apps/web/src/lib/i18n/messages.ts';
 import { QUALITY_CODES } from '../apps/api/src/quality/rules.ts';
+import { ISSUE_CODES as SCORM_ISSUE_CODES } from '../apps/api/src/scorm/report.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
@@ -124,6 +125,15 @@ describe('content quality findings (AP-029)', () => {
     }
     assert.match(MESSAGES.es.quality.issues.PLACEHOLDER_TEXT.title('TODO revisar'), /«TODO revisar»/);
     assert.match(MESSAGES.en.quality.issues.LINK_URL_INVALID.title('javascript:alert(1)'), /javascript:alert\(1\)$/);
+  });
+});
+
+describe('SCORM inspection issues (AP-033B)', () => {
+  it('every issue code the inspector can report has its own English and Spanish message', () => {
+    for (const locale of ['en', 'es'] as const) {
+      assert.deepEqual(Object.keys(MESSAGES[locale].scorm.issues).sort(), [...SCORM_ISSUE_CODES].sort(), `${locale}: catalog codes match the API`);
+    }
+    for (const code of SCORM_ISSUE_CODES) assert.notEqual(MESSAGES.en.scorm.issues[code], MESSAGES.es.scorm.issues[code], code);
   });
 });
 
