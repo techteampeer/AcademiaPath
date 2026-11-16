@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { Alert } from '@/components/ui/Alert';
@@ -16,7 +17,7 @@ import { tableClasses } from '@/components/ui/table';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { AccountInvitation, CourseRole, CurrentUser, UserDetail, UserEnrollment, UserUpdate } from '@/lib/api/types';
-import { formatDateTime } from '@/lib/i18n/messages';
+import { formatDateTime, type Messages } from '@/lib/i18n/messages';
 import {
   AccountStatusBadge,
   ActivationBadge,
@@ -111,18 +112,22 @@ function DetailsForm({ user, isSelf, onSaved }: { user: UserDetail; isSelf: bool
   const [email, setEmail] = useState(user.email);
   const [preferredLocale, setPreferredLocale] = useState(user.preferredLocale);
   const [systemRole, setSystemRole] = useState(user.systemRole);
-  const [errors, setErrors] = useState<Partial<Record<'givenName' | 'familyName' | 'email', string>>>({});
-  const [notice, setNotice] = useState<string | null>(null);
+  const [errors, setErrors] = useLocalizedState<Partial<Record<'givenName' | 'familyName' | 'email', string>>>({});
+  const [notice, setNotice] = useLocalizedState<string | null>(null);
   const emailEditable = user.activationState === 'pending';
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setNotice(null);
-    const found: typeof errors = {};
-    if (!givenName.trim()) found.givenName = t.users.givenNameRequired;
-    if (!familyName.trim()) found.familyName = t.users.familyNameRequired;
-    if (emailEditable && !EMAIL_PATTERN.test(email.trim())) found.email = t.users.emailInvalid;
-    setErrors(found);
+    const check = (c: Messages) => {
+      const found: typeof errors = {};
+      if (!givenName.trim()) found.givenName = c.users.givenNameRequired;
+      if (!familyName.trim()) found.familyName = c.users.familyNameRequired;
+      if (emailEditable && !EMAIL_PATTERN.test(email.trim())) found.email = c.users.emailInvalid;
+      return found;
+    };
+    const found = check(t);
+    setErrors(check);
     if (Object.keys(found).length) return;
     const changes: UserUpdate = {};
     if (givenName.trim() !== user.givenName) changes.givenName = givenName.trim();
@@ -130,7 +135,7 @@ function DetailsForm({ user, isSelf, onSaved }: { user: UserDetail; isSelf: bool
     if (emailEditable && email.trim().toLowerCase() !== user.email) changes.email = email.trim();
     if (preferredLocale !== user.preferredLocale) changes.preferredLocale = preferredLocale;
     if (!isSelf && systemRole !== user.systemRole) changes.systemRole = systemRole;
-    if (Object.keys(changes).length === 0) return setNotice(t.users.noChanges);
+    if (Object.keys(changes).length === 0) return setNotice((c) => c.users.noChanges);
     const updated = await run((csrf) => api.updateUser(user.id, changes, csrf), () => t.users.saved);
     if (updated) onSaved(updated);
   };
@@ -160,6 +165,7 @@ function DetailsForm({ user, isSelf, onSaved }: { user: UserDetail; isSelf: bool
           <SelectField
             id="edit-locale"
             label={t.users.preferredLanguage}
+            hint={t.users.preferredLanguageHint}
             value={preferredLocale}
             onChange={(e) => setPreferredLocale(e.target.value as 'es' | 'en')}
             options={[

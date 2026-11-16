@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { contentAbilities } from '@/components/content/contentDisplay';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError, useCsrfAction } from '@/components/session/useCsrfAction';
@@ -210,16 +211,16 @@ function PolicyForm({ courseId, policy, canManage, onSaved }: { courseId: string
   const [minimum, setMinimum] = useState(policy.minimumGradePercent === null ? '' : String(policy.minimumGradePercent));
   const [issuer, setIssuer] = useState(policy.issuerName);
   const signers = useSignatoryList(policy.signatories);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useLocalizedState<string | null>(null);
   const save = async () => {
     const minimumValue = minimum.trim() === '' ? null : Number(minimum);
-    if (!requireCompletion && !requireFinalGrade) return setError(p.needOne);
-    if (minimumValue !== null && (!Number.isInteger(minimumValue) || minimumValue < 1 || minimumValue > 100)) return setError(p.minimumRange);
-    if (minimumValue !== null && !requireFinalGrade) return setError(p.minimumNeedsFinal);
-    if (!issuer.trim()) return setError(p.issuerRequired);
+    if (!requireCompletion && !requireFinalGrade) return setError((m) => m.certificates.policy.needOne);
+    if (minimumValue !== null && (!Number.isInteger(minimumValue) || minimumValue < 1 || minimumValue > 100)) return setError((m) => m.certificates.policy.minimumRange);
+    if (minimumValue !== null && !requireFinalGrade) return setError((m) => m.certificates.policy.minimumNeedsFinal);
+    if (!issuer.trim()) return setError((m) => m.certificates.policy.issuerRequired);
     const signatories = signers.cleaned();
     const problem = signatoryProblem(signatories);
-    if (problem) return setError(problem.kind === 'incomplete' ? p.signatoryIncomplete(problem.position) : p.signatoryDuplicate(problem.position));
+    if (problem) return setError((m) => problem.kind === 'incomplete' ? m.certificates.policy.signatoryIncomplete(problem.position) : m.certificates.policy.signatoryDuplicate(problem.position));
     setError(null);
     const saved = await run(
       (csrf) =>
@@ -246,6 +247,7 @@ function PolicyForm({ courseId, policy, canManage, onSaved }: { courseId: string
       {!policy.configured ? <Alert tone="info">{p.notConfigured}</Alert> : null}
       {!canManage ? <Alert tone="info">{p.readOnly}</Alert> : null}
       <form
+        noValidate
         className="space-y-3"
         onSubmit={(event) => {
           event.preventDefault();
@@ -415,9 +417,9 @@ function IssuedRow({ courseId, certificate, canManage, onRevoked }: { courseId: 
   const { run, pending, result } = useCsrfAction();
   const [confirming, setConfirming] = useState(false);
   const [reason, setReason] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useLocalizedState<string | null>(null);
   const revoke = async () => {
-    if (!reason.trim()) return setError(r.reasonRequired);
+    if (!reason.trim()) return setError((m) => m.certificates.issuedList.reasonRequired);
     setError(null);
     const revoked = await run((csrf) => api.revokeCertificate(courseId, certificate.id, reason.trim(), csrf), () => r.revoked);
     if (revoked) {

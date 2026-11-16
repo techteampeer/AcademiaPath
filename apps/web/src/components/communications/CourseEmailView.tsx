@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError } from '@/components/session/useCsrfAction';
@@ -14,6 +15,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { CourseEmailRecipients, CurrentUser } from '@/lib/api/types';
+import type { Messages } from '@/lib/i18n/messages';
 import { composePlan } from '@/lib/mailto';
 
 type Load = { status: 'loading' } | { status: 'forbidden' } | { status: 'not-found' } | { status: 'error'; message: string } | { status: 'ready'; data: CourseEmailRecipients };
@@ -67,18 +69,19 @@ function Composer({ data, self }: { data: CourseEmailRecipients; self: string })
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [showAddresses, setShowAddresses] = useState(false);
-  const [notice, setNotice] = useState<Notice>(null);
+  // Follows the EN/ES switch while shown (AP-I18N-01).
+  const [notice, setNotice] = useLocalizedState<Notice>(null);
   const addresses = useMemo(() => data.recipients.map((recipient) => recipient.email), [data.recipients]);
   const plan = useMemo(() => composePlan({ self, recipients: addresses, subject, body }), [self, addresses, subject, body]);
   const { course, recipientCount, excluded } = data;
 
-  const copy = async (text: string, done: string) => {
+  const copy = async (text: string, done: (catalog: Messages) => string) => {
     try {
       await navigator.clipboard.writeText(text);
-      setNotice({ tone: 'success', text: done });
+      setNotice((catalog) => ({ tone: 'success', text: done(catalog) }));
     } catch {
       setShowAddresses(true);
-      setNotice({ tone: 'error', text: m.send.copyFailed });
+      setNotice((catalog) => ({ tone: 'error', text: catalog.courseEmail.send.copyFailed }));
     }
   };
 
@@ -160,14 +163,14 @@ function Composer({ data, self }: { data: CourseEmailRecipients; self: string })
             {plan.mode === 'copy-all' ? <Alert tone="info">{m.send.longMessage}</Alert> : null}
             {recipientCount >= LARGE_CLASS || plan.mode !== 'complete' ? <p className="text-sm text-slate-600">{m.send.providerLimit}</p> : null}
             <div className="flex flex-wrap gap-2">
-              <a href={plan.href} className={buttonClasses({})} data-mailto onClick={() => setNotice({ tone: 'info', text: m.send.opened })}>
+              <a href={plan.href} className={buttonClasses({})} data-mailto onClick={() => setNotice((catalog) => ({ tone: 'info', text: catalog.courseEmail.send.opened }))}>
                 {m.send.open}
               </a>
-              <Button variant="secondary" onClick={() => void copy(plan.bccText, m.send.bccCopied)}>
+              <Button variant="secondary" onClick={() => void copy(plan.bccText, (catalog) => catalog.courseEmail.send.bccCopied)}>
                 {m.send.copyBcc}
               </Button>
               {plan.mode === 'copy-all' ? (
-                <Button variant="secondary" onClick={() => void copy(body, m.send.messageCopied)}>
+                <Button variant="secondary" onClick={() => void copy(body, (catalog) => catalog.courseEmail.send.messageCopied)}>
                   {m.send.copyMessage}
                 </Button>
               ) : null}

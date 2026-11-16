@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError, useCsrfAction } from '@/components/session/useCsrfAction';
 import { Alert } from '@/components/ui/Alert';
@@ -10,7 +11,7 @@ import { Card } from '@/components/ui/Card';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { StudentAssignmentStatus } from '@/lib/api/types';
-import { formatDateTimeOrDash } from '@/lib/i18n/messages';
+import { formatDateTimeOrDash, formatDeadline } from '@/lib/i18n/messages';
 import { ReleasedGradeView } from './assignmentDisplay';
 
 const BODY_LIMIT = 50000;
@@ -23,7 +24,7 @@ export function AssignmentStudentPanel({ courseId, assignmentId }: { courseId: s
   const a = t.assignments.student;
   const [state, setState] = useState<State>({ status: 'loading' });
   const [body, setBody] = useState('');
-  const [bodyError, setBodyError] = useState<string | null>(null);
+  const [bodyError, setBodyError] = useLocalizedState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const { run, pending, result } = useCsrfAction();
 
@@ -41,8 +42,8 @@ export function AssignmentStudentPanel({ courseId, assignmentId }: { courseId: s
   }, [load]);
 
   const review = () => {
-    if (!body.trim()) return setBodyError(a.writeFirst);
-    if (body.length > BODY_LIMIT) return setBodyError(t.errors.maxChars(BODY_LIMIT));
+    if (!body.trim()) return setBodyError((m) => m.assignments.student.writeFirst);
+    if (body.length > BODY_LIMIT) return setBodyError((m) => m.errors.maxChars(BODY_LIMIT));
     setBodyError(null);
     setConfirming(true);
   };
@@ -88,7 +89,7 @@ export function AssignmentStudentPanel({ courseId, assignmentId }: { courseId: s
       ) : state.data.acceptingSubmissions ? (
         <div className="space-y-3">
           <p className="text-sm text-slate-600">
-            {a.once} {state.data.lateUntil ? a.lateNote(formatDateTimeOrDash(state.data.dueAt, locale)) : ''}
+            {a.once} {state.data.lateUntil ? a.lateNote(formatDeadline(state.data.dueAt, locale)) : ''}
           </p>
           <div>
             <label htmlFor="submission-body" className="block text-sm font-medium text-slate-800">

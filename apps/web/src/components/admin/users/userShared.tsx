@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { isApiError } from '@/lib/api/client';
 import { api, loadAll } from '@/lib/api/endpoints';
 import type { AccountInvitation, Course, CourseRole } from '@/lib/api/types';
-import { formatDateTime } from '@/lib/i18n/messages';
+import { formatDateTime, type Locale } from '@/lib/i18n/messages';
 
 export const COURSE_ROLES: CourseRole[] = ['student', 'instructor', 'non_editing_instructor', 'design_team'];
 export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -28,24 +28,28 @@ export function useErrorMessage() {
   );
 }
 
-/** Like useCsrfAction, with localized errors and the failing API code (for field-level messages). */
+/**
+ * Like useCsrfAction, with localized errors and the failing API code (for field-level messages). As there
+ * (AP-I18N-01), a failure is described on every render and a success message is dropped on a language change.
+ */
 export function useUserAction() {
   const { getCsrfToken, handleUnauthorized } = useSession();
+  const { locale } = useLocale();
   const message = useErrorMessage();
   const [pending, setPending] = useState(false);
-  const [result, setResult] = useState<ActionResult>(null);
+  const [stored, setStored] = useState<{ tone: 'error'; error: unknown } | { tone: 'success'; message: string; locale: Locale } | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
 
   async function run<T>(action: (csrfToken: string) => Promise<T>, success?: (value: T) => string): Promise<T | null> {
     setPending(true);
-    setResult(null);
+    setStored(null);
     setErrorCode(null);
     try {
       const value = await action(await getCsrfToken());
-      if (success) setResult({ tone: 'success', message: success(value) });
+      if (success) setStored({ tone: 'success', message: success(value), locale });
       return value;
     } catch (error) {
-      setResult({ tone: 'error', message: message(error) });
+      setStored({ tone: 'error', error });
       setErrorCode(isApiError(error) ? (error.code ?? null) : null);
       if (isApiError(error, 401)) handleUnauthorized();
       return null;
@@ -54,7 +58,9 @@ export function useUserAction() {
     }
   }
 
-  return { run, pending, result, errorCode, clear: () => setResult(null) };
+  const result: ActionResult =
+    stored === null ? null : stored.tone === 'error' ? { tone: 'error', message: message(stored.error) } : stored.locale === locale ? { tone: 'success', message: stored.message } : null;
+  return { run, pending, result, errorCode, clear: () => setStored(null) };
 }
 
 /** Every course (administrators see all), for course pickers. */

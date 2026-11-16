@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { LocalizedCourseStatusBadge as CourseStatusBadge } from '@/components/courses/LocalizedCourseStatusBadge';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
+import type { Messages } from '@/lib/i18n/messages';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError, useCsrfAction } from '@/components/session/useCsrfAction';
@@ -188,8 +190,8 @@ function DetailsForm({ data, onSaved }: { data: CourseLifecycle; onSaved: () => 
   const [title, setTitle] = useState(course.title);
   const [code, setCode] = useState(course.code);
   const [description, setDescription] = useState(course.description ?? '');
-  const [errors, setErrors] = useState<{ title?: string; code?: string }>({});
-  const [notice, setNotice] = useState<string | null>(null);
+  const [errors, setErrors] = useLocalizedState<{ title?: string; code?: string }>({});
+  const [notice, setNotice] = useLocalizedState<string | null>(null);
   const codeEditable = course.status === 'draft';
 
   // After a save (or another change) the course reloads with a new version: show the stored values
@@ -203,16 +205,22 @@ function DetailsForm({ data, onSaved }: { data: CourseLifecycle; onSaved: () => 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setNotice(null);
-    const found: typeof errors = {};
-    if (!title.trim()) found.title = c.titleRequired;
-    if (codeEditable && !CODE_PATTERN.test(code.trim())) found.code = c.codeInvalid;
-    setErrors(found);
+    // Built with the catalog shown at render, so the messages follow the EN/ES switch (AP-I18N-01).
+    const check = (cat: Messages) => {
+      const c = cat.courseAdmin;
+      const found: typeof errors = {};
+      if (!title.trim()) found.title = c.titleRequired;
+      if (codeEditable && !CODE_PATTERN.test(code.trim())) found.code = c.codeInvalid;
+      return found;
+    };
+    const found = check(t);
+    setErrors(check);
     if (Object.keys(found).length) return;
     const body: CourseUpdate = { version: course.version };
     if (title.trim() !== course.title) body.title = title.trim();
     if (codeEditable && code.trim() !== course.code) body.code = code.trim();
     if ((description.trim() || null) !== course.description) body.description = description.trim() || null;
-    if (Object.keys(body).length === 1) return setNotice(c.noChanges);
+    if (Object.keys(body).length === 1) return setNotice((m) => m.courseAdmin.noChanges);
     const updated = await run((csrf) => api.updateCourse(course.id, body, csrf), () => c.saved);
     if (updated) onSaved();
   };
@@ -260,7 +268,7 @@ function SectionsCard({ courseId, sections, onChanged }: { courseId: string; sec
   const [renameValue, setRenameValue] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [newHidden, setNewHidden] = useState(false);
-  const [titleError, setTitleError] = useState<string | undefined>();
+  const [titleError, setTitleError] = useLocalizedState<string | undefined>(undefined);
 
   const move = async (index: number, delta: -1 | 1) => {
     const ids = sections.map((s) => s.id);
@@ -277,7 +285,7 @@ function SectionsCard({ courseId, sections, onChanged }: { courseId: string; sec
   };
   const add = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!newTitle.trim()) return setTitleError(c.titleRequired);
+    if (!newTitle.trim()) return setTitleError((m) => m.courseAdmin.titleRequired);
     setTitleError(undefined);
     const created = await run((csrf) => api.createSection(courseId, { title: newTitle.trim(), isVisible: !newHidden }, csrf), (value) => c.sectionAdded(value.title));
     if (created) {
@@ -390,7 +398,7 @@ function RosterCard({ courseId, counts, onChanged }: { courseId: string; counts:
   const [confirmingRemoval, setConfirmingRemoval] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<CourseRole>('student');
-  const [emailError, setEmailError] = useState<string | undefined>();
+  const [emailError, setEmailError] = useLocalizedState<string | undefined>(undefined);
 
   const load = useCallback(async () => {
     try {
@@ -425,7 +433,7 @@ function RosterCard({ courseId, counts, onChanged }: { courseId: string; counts:
   };
   const enroll = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!EMAIL_PATTERN.test(email.trim())) return setEmailError(c.emailInvalid);
+    if (!EMAIL_PATTERN.test(email.trim())) return setEmailError((m) => m.courseAdmin.emailInvalid);
     setEmailError(undefined);
     const created = await run((csrf) => api.createEnrollment(courseId, { email: email.trim(), role }, csrf), (value) => c.enrolled(value.user.email));
     if (created) {

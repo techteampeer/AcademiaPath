@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { ReleaseGradesButton } from '@/components/grades/ReleaseGradesButton';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError, useCsrfAction } from '@/components/session/useCsrfAction';
@@ -171,7 +172,7 @@ function GradingForm({
   const initial = new Map(submission.scores.map((score) => [score.criterionId, String(score.points)]));
   const [points, setPoints] = useState<Record<string, string>>(Object.fromEntries(submission.rubric.map((c) => [c.id, initial.get(c.id) ?? ''])));
   const [feedback, setFeedback] = useState(submission.feedback ?? '');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useLocalizedState<string | null>(null);
   const { run, pending, result } = useCsrfAction();
   const { t, locale } = useLocale();
   const g = t.assignments.grading;
@@ -182,12 +183,12 @@ function GradingForm({
       const value = points[criterion.id] ?? '';
       const n = Number(value);
       if (!/^\d+$/.test(value.trim()) || n > criterion.maxPoints) {
-        setError(g.scoreRange(criterion.title, criterion.maxPoints));
+        setError((m) => m.assignments.grading.scoreRange(criterion.title, criterion.maxPoints));
         return;
       }
     }
     if (feedback.length > FEEDBACK_LIMIT) {
-      setError(g.feedbackLength(FEEDBACK_LIMIT));
+      setError((m) => m.assignments.grading.feedbackLength(FEEDBACK_LIMIT));
       return;
     }
     setError(null);

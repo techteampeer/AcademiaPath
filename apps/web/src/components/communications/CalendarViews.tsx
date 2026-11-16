@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { contentAbilities } from '@/components/content/contentDisplay';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { useWorkspace } from '@/components/session/WorkspaceProvider';
@@ -566,7 +567,7 @@ function EventForm({ prefix, target, event, onSaved, onClose }: { prefix: string
   const [endTime, setEndTime] = useState(endWall?.time ?? '20:00');
   const [zone, setZone] = useState(initialZone);
   const [status, setStatus] = useState<'hidden' | 'published'>(event?.status === 'published' ? 'published' : 'hidden');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useLocalizedState<string | null>(null);
   const zones = TIME_ZONES.includes(zone) ? TIME_ZONES : [zone, ...TIME_ZONES];
   // AP-045: optional teaching session details (course events only).
   const sf = t.communications.calendar.session.form;
@@ -596,19 +597,19 @@ function EventForm({ prefix, target, event, onSaved, onClose }: { prefix: string
   };
 
   const submit = async () => {
-    if (!title.trim()) return setError(m.titleRequired);
-    if (!startDate || !endDate || (!allDay && (!startTime || !endTime))) return setError(m.datesRequired);
+    if (!title.trim()) return setError((m) => m.communications.calendar.manage.titleRequired);
+    if (!startDate || !endDate || (!allDay && (!startTime || !endTime))) return setError((m) => m.communications.calendar.manage.datesRequired);
     const session = sessionField();
-    if (session === 'invalid-number') return setError(sf.numberRange);
-    if (session === 'invalid-url') return setError(sf.joinUrlInvalid);
+    if (session === 'invalid-number') return setError((m) => m.communications.calendar.session.form.numberRange);
+    if (session === 'invalid-url') return setError((m) => m.communications.calendar.session.form.joinUrlInvalid);
     let body: CalendarEventInput;
     if (allDay) {
-      if (endDate < startDate) return setError(m.endBeforeStart);
+      if (endDate < startDate) return setError((m) => m.communications.calendar.manage.endBeforeStart);
       body = { title: title.trim(), description: description.trim() || null, allDay: true, startDate, endDate, timeZone: zone, status };
     } else {
       const startsAt = wallTimeToInstant(startDate, startTime, zone);
       const endsAt = wallTimeToInstant(endDate, endTime, zone);
-      if (Date.parse(endsAt) <= Date.parse(startsAt)) return setError(m.endBeforeStart);
+      if (Date.parse(endsAt) <= Date.parse(startsAt)) return setError((m) => m.communications.calendar.manage.endBeforeStart);
       body = { title: title.trim(), description: description.trim() || null, allDay: false, startsAt, endsAt, timeZone: zone, status };
     }
     if (session !== undefined) body = { ...body, session };

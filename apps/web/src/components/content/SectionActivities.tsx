@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { useCsrfAction } from '@/components/session/useCsrfAction';
 import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
@@ -49,7 +50,7 @@ export function SectionActivities({
   const [adding, setAdding] = useState(false);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderTitle, setFolderTitle] = useState('');
-  const [folderError, setFolderError] = useState<string | undefined>();
+  const [folderError, setFolderError] = useLocalizedState<string | undefined>(undefined);
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
   const { run, pending, result } = useCsrfAction();
   const editor = abilities.edit;
@@ -94,7 +95,7 @@ export function SectionActivities({
 
   const createFolder = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!folderTitle.trim()) return setFolderError(r.enterFolderTitle);
+    if (!folderTitle.trim()) return setFolderError((m) => m.resources.enterFolderTitle);
     setFolderError(undefined);
     const created = await run((csrf) => api.createResourceFolder(courseId, sectionId, folderTitle.trim(), csrf), (folder) => r.folderCreated(folder.title));
     if (created) {

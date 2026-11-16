@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { useCsrfAction } from '@/components/session/useCsrfAction';
@@ -253,7 +254,7 @@ function StaffPanel({
   const r = t.content.review;
   const [editing, setEditing] = useState(false);
   const [comment, setComment] = useState('');
-  const [commentError, setCommentError] = useState<string | null>(null);
+  const [commentError, setCommentError] = useLocalizedState<string | null>(null);
   const { run, pending, result } = useCsrfAction();
 
   const status = review.status;
@@ -296,7 +297,7 @@ function StaffPanel({
   const decide = async (decision: 'approve' | 'return') => {
     const trimmed = comment.trim();
     if (decision === 'return' && !trimmed) {
-      setCommentError(r.commentRequired);
+      setCommentError((m) => m.content.review.commentRequired);
       return;
     }
     setCommentError(null);

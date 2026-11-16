@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError, useCsrfAction } from '@/components/session/useCsrfAction';
 import { Alert } from '@/components/ui/Alert';
@@ -27,7 +28,7 @@ export function ProgramManagersPanel({ program }: { program: Program }) {
   const { run, pending, result } = useCsrfAction();
   const [state, setState] = useState<{ status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; items: ProgramManager[] }>({ status: 'loading' });
   const [email, setEmail] = useState('');
-  const [emailError, setEmailError] = useState<string | undefined>();
+  const [emailError, setEmailError] = useLocalizedState<string | undefined>(undefined);
   const [confirming, setConfirming] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -45,7 +46,7 @@ export function ProgramManagersPanel({ program }: { program: Program }) {
 
   const add = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!EMAIL_PATTERN.test(email.trim())) return setEmailError(p.emailInvalid);
+    if (!EMAIL_PATTERN.test(email.trim())) return setEmailError((m) => m.programs.emailInvalid);
     setEmailError(undefined);
     const granted = await run((csrf) => api.grantProgramManager(program.id, email.trim(), csrf), (value) => p.managerAdded(value.user.email));
     if (granted) {

@@ -25,25 +25,32 @@ export function describeApiError(error: unknown, locale: Locale = 'en'): string 
   return t.network;
 }
 
+/** What `run` last produced: the failed request itself (described at render), or a success message and its language. */
+type StoredResult = { tone: 'error'; error: unknown } | { tone: 'success'; message: string; locale: Locale } | null;
+
 /**
  * Runs one state-changing request with the session's in-memory CSRF token. Failures are shown to
  * the user (in the interface language) and are never retried automatically.
+ *
+ * AP-I18N-01: a failure is described on every render, so an error already on screen follows the EN/ES switch.
+ * A success message (built by the caller in the language of that moment) is dropped when the language changes
+ * instead of staying on screen in the previous language.
  */
 export function useCsrfAction() {
   const { getCsrfToken, handleUnauthorized } = useSession();
   const { locale } = useLocale();
   const [pending, setPending] = useState(false);
-  const [result, setResult] = useState<ActionResult>(null);
+  const [stored, setStored] = useState<StoredResult>(null);
 
   async function run<T>(action: (csrfToken: string) => Promise<T>, successMessage?: (value: T) => string): Promise<T | null> {
     setPending(true);
-    setResult(null);
+    setStored(null);
     try {
       const value = await action(await getCsrfToken());
-      if (successMessage) setResult({ tone: 'success', message: successMessage(value) });
+      if (successMessage) setStored({ tone: 'success', message: successMessage(value), locale });
       return value;
     } catch (error) {
-      setResult({ tone: 'error', message: describeApiError(error, locale) });
+      setStored({ tone: 'error', error });
       if (isApiError(error, 401)) handleUnauthorized();
       return null;
     } finally {
@@ -51,5 +58,13 @@ export function useCsrfAction() {
     }
   }
 
-  return { run, pending, result, clearResult: () => setResult(null) };
+  const result: ActionResult =
+    stored === null
+      ? null
+      : stored.tone === 'error'
+        ? { tone: 'error', message: describeApiError(stored.error, locale) }
+        : stored.locale === locale
+          ? { tone: 'success', message: stored.message }
+          : null;
+  return { run, pending, result, clearResult: () => setStored(null) };
 }

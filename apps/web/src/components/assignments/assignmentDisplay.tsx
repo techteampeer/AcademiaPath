@@ -4,7 +4,7 @@ import { useLocale } from '@/components/i18n/LocaleProvider';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { ScrollRegion } from '@/components/ui/ScrollRegion';
 import type { AssignmentContent, GradeStatus, ReleasedGrade } from '@/lib/api/types';
-import { formatDateTimeOrDash } from '@/lib/i18n/messages';
+import { formatDateTimeOrDash, formatDeadline } from '@/lib/i18n/messages';
 
 /** `datetime-local` value (browser time zone) for an ISO timestamp. */
 export function toLocalInput(iso: string | null): string {
@@ -54,12 +54,12 @@ export function AssignmentSummary({ content }: { content: AssignmentContent }) {
       <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
         <div>
           <dt className="text-slate-500">{s.due}</dt>
-          <dd className="font-medium text-slate-900">{formatDateTimeOrDash(content.dueAt, locale)}</dd>
+          <dd className="font-medium text-slate-900">{formatDeadline(content.dueAt, locale)}</dd>
         </div>
         <div>
           <dt className="text-slate-500">{s.late}</dt>
           <dd className="font-medium text-slate-900">
-            {content.lateUntil ? s.lateAccepted(formatDateTimeOrDash(content.lateUntil, locale)) : s.lateNotAccepted}
+            {content.lateUntil ? s.lateAccepted(formatDeadline(content.lateUntil, locale)) : s.lateNotAccepted}
           </dd>
         </div>
       </dl>
