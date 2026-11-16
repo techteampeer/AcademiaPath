@@ -201,9 +201,11 @@ describe('file pickers and deadlines', () => {
     const page = await open('es', 'instructor', `/courses/${itil}`, 390);
     const form = page.locator('form:has(#document-file)');
     const [chooser] = await Promise.all([page.waitForEvent('filechooser'), form.locator('[data-file-button]').click()]);
-    await chooser.setFiles({ name: 'guia-de-estudio.pdf', mimeType: 'application/pdf', buffer: makePdf([['Guía de estudio', 'Material sintético para la prueba de idioma.']]) });
-    assert.equal(await form.locator('[data-file-name]').innerText(), 'guia-de-estudio.pdf');
-    const title = 'Guía de estudio (prueba de idioma, borrador)';
+    await chooser.setFiles({ name: 'apuntes-sinteticos.pdf', mimeType: 'application/pdf', buffer: makePdf([['Apuntes sintéticos', 'Texto sintético para comprobar la subida de documentos.']]) });
+    assert.equal(await form.locator('[data-file-name]').innerText(), 'apuntes-sinteticos.pdf');
+    // The draft stays in this run's course (as document-integrity's do) and later suites scan its page for interface
+    // phrases of the other language, so its title and text deliberately contain none from either catalog.
+    const title = 'Apuntes sintéticos AP-I18N (borrador)';
     await page.locator('#document-title').fill(title);
     await form.locator('button[type="submit"]').click();
     await page.getByText(MESSAGES.es.documents.library.uploadedDraft(title)).waitFor({ timeout: 30_000 });
