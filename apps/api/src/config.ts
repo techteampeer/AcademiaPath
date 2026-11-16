@@ -2,6 +2,7 @@ import { isIP } from 'node:net';
 import { homedir } from 'node:os';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { StorageMountCheck } from './documents/readiness.js';
 
 export type AppConfig = {
   isProduction: boolean;
@@ -47,6 +48,14 @@ export type AppConfig = {
     maxUploadBytes: number;
     /** Hard limit for validating and extracting one document (the worker is terminated after it). */
     extractionTimeoutMs: number;
+    /**
+     * AP-040B storage readiness (`DOCUMENT_STORAGE_MOUNT_CHECK`): `off` (default outside production), `report`
+     * (default in production: checked and reported, never blocking) or `enforce` (the storage directory must be a
+     * mount point; the API does not start otherwise). See documents/readiness.ts.
+     */
+    mountCheck: StorageMountCheck;
+    /** Create the storage directory on first use (local development and tests only; never in production). */
+    createStorageDir: boolean;
   };
   /**
    * The institution (AP-025). `timeZone` is the IANA zone used for calendar dates that have none of their
@@ -85,6 +94,14 @@ const DEFAULT_DEV_ORIGIN = 'http://localhost:3000';
 
 /** Repository root (this file lives in apps/api/src or apps/api/dist). */
 const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
+
+function parseMountCheck(raw: string | undefined, isProduction: boolean): StorageMountCheck {
+  const value = raw?.trim() || (isProduction ? 'report' : 'off');
+  if (value !== 'off' && value !== 'report' && value !== 'enforce') throw new Error('DOCUMENT_STORAGE_MOUNT_CHECK must be off, report or enforce');
+  // Production always checks its storage; it may be stricter, never weaker.
+  if (isProduction && value === 'off') throw new Error('DOCUMENT_STORAGE_MOUNT_CHECK cannot be off in production');
+  return value;
+}
 
 function parseStorageDir(raw: string | undefined, isProduction: boolean): string {
   const value = raw?.trim();
@@ -217,6 +234,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       storageDir: parseStorageDir(env.DOCUMENT_STORAGE_DIR, isProduction),
       maxUploadBytes: readPositiveInt(env, 'DOCUMENT_MAX_UPLOAD_MB', 10, 100) * 1024 * 1024,
       extractionTimeoutMs: readPositiveInt(env, 'DOCUMENT_EXTRACTION_TIMEOUT_SECONDS', 20, 300) * 1000,
+      mountCheck: parseMountCheck(env.DOCUMENT_STORAGE_MOUNT_CHECK, isProduction),
+      createStorageDir: !isProduction,
     },
     institution: {
       timeZone: parseTimeZone(env.INSTITUTION_TIME_ZONE),

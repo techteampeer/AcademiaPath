@@ -17,6 +17,7 @@ import {
 } from '../documents/formats.js';
 import { buildStudyBrief } from '../documents/brief.js';
 import { readDocumentConfig, type DocumentConfig } from '../documents/model.js';
+import { acceptsUploads } from '../documents/readiness.js';
 import type { MalwareScanner } from '../documents/scanner.js';
 import type { DocumentStorage } from '../documents/storage.js';
 import type { DocumentSummaryProvider } from '../documents/summary.js';
@@ -38,6 +39,15 @@ const forbidden = () => new ApiProblem(403, 'FORBIDDEN', 'You do not have permis
 const MODE_LABELS: Record<string, string> = { mock: 'Mock AI summary — local demonstration' };
 
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+
+/** AP-040B: storage that cannot be used right now (missing or unwritable directory, not mounted when enforced, I/O errors). */
+const storageUnavailable = () =>
+  new ApiProblem(503, 'DOCUMENT_STORAGE_UNAVAILABLE', 'Document storage is temporarily unavailable. Try again later or contact an administrator.');
+/** AP-040B: the record exists but its stored file does not: the file is never served, and the cause is logged. */
+const fileMissing = () => new ApiProblem(500, 'DOCUMENT_FILE_MISSING', 'The stored file of this document is missing. Contact an administrator.');
+/** AP-040B: the stored file no longer matches the SHA-256 recorded at upload: nothing is sent. */
+const fileCorrupt = () => new ApiProblem(500, 'DOCUMENT_FILE_CORRUPT', 'The stored file of this document failed its integrity check and cannot be downloaded. Contact an administrator.');
+const errorCode = (error: unknown) => (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : 'UNKNOWN');
 
 function presentSummary(row: SummaryRow | null) {
   if (!row) return null;
@@ -179,6 +189,14 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
         .from(sections)
         .where(and(eq(sections.id, request.params.sectionId), eq(sections.courseId, access.course.id)));
       if (!section) throw notFound('Section');
+      // AP-040B: never accept a file that could not be kept (no storage directory, or not ready when enforced).
+      if (config.documents.mountCheck !== 'off') {
+        const readiness = await app.storageReadiness();
+        if (!acceptsUploads(readiness)) {
+          request.log.error({ storage: { status: readiness.status, directory: readiness.directory, access: readiness.access, mount: readiness.mount } }, 'Upload refused: document storage is not usable');
+          throw storageUnavailable();
+        }
+      }
       if (!request.isMultipart()) {
         throw new ApiProblem(415, 'UNSUPPORTED_MEDIA_TYPE', 'Upload the document as multipart/form-data with a "file" field.');
       }
@@ -226,7 +244,13 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
       const digest = sha256(bytes);
 
       // Store the original only after it passed validation; remove it again if the database write fails.
-      const storageKey = await storage.put(bytes);
+      let storageKey: string;
+      try {
+        storageKey = await storage.put(bytes);
+      } catch (error) {
+        request.log.error({ courseId: access.course.id, sectionId: section.id, errorCode: errorCode(error) }, 'Upload failed: the file could not be stored');
+        throw storageUnavailable();
+      }
       try {
         const detail = await db.transaction(async (tx) => {
           // Lock the section so concurrent additions get distinct positions.
@@ -454,9 +478,26 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
     '/courses/:id/activities/:activityId/document/file',
     { ...authenticated, schema: { params: courseActivityParamsSchema } },
     async (request, reply) => {
-      const { document } = await readableDocument(request, request.params);
-      const bytes = await storage.read(document.storageKey);
-      if (sha256(bytes) !== document.sha256) throw new Error('Stored document failed its integrity check');
+      // Access is decided first (unchanged); storage is only touched for callers who may read this document.
+      const { access, activity, document } = await readableDocument(request, request.params);
+      // Diagnostics name the records only: never the storage key, a path or the file's contents.
+      const where = { courseId: access.course.id, activityId: activity.id, documentId: document.id };
+      let bytes: Buffer;
+      try {
+        bytes = await storage.read(document.storageKey);
+      } catch (error) {
+        const code = errorCode(error);
+        if (code === 'ENOENT') {
+          request.log.error({ ...where, problem: 'DOCUMENT_FILE_MISSING' }, 'Stored document file is missing');
+          throw fileMissing();
+        }
+        request.log.error({ ...where, problem: 'DOCUMENT_STORAGE_UNAVAILABLE', errorCode: code }, 'Stored document file could not be read');
+        throw storageUnavailable();
+      }
+      if (bytes.length !== document.byteSize || sha256(bytes) !== document.sha256) {
+        request.log.error({ ...where, problem: 'DOCUMENT_FILE_CORRUPT', storedBytes: bytes.length, expectedBytes: document.byteSize }, 'Stored document file failed its integrity check');
+        throw fileCorrupt();
+      }
       return reply
         .header('content-type', DOCUMENT_MEDIA_TYPES[document.format])
         .header('content-disposition', contentDisposition(document.fileName))

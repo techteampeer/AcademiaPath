@@ -262,6 +262,7 @@ pending account on its page (this revokes its open links; after reactivation a n
 
 - [ ] Seed job for demo users and courses (needed for the November 20 demo): prepared; run it after the AP-025 release (see "Release sequence")
 - [ ] Remove the project-wide `roles/storage.objectAdmin` from `academiapath-runtime`; it keeps access to its own bucket
+- [ ] AP-040B: after deploying, confirm `GET /api/v1/system/storage` (administrator) shows `ready` / `mounted`, then set `DOCUMENT_STORAGE_MOUNT_CHECK=enforce` on the API in `deploy.yml` (see `docs/storage-integrity.md`)
 - [ ] Firebase Authentication on Identity Platform: console setup done; integration pending (see "Firebase Authentication" above and the functional spec)
 - [ ] Vertex AI for the tutor and document summaries (the API uses a local mock today)
 - [ ] Workload Identity Federation instead of the JSON key

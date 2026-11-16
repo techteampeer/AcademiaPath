@@ -14,7 +14,10 @@ import { courseExportRoutes } from './routes/course-export.js';
 import { courseImportRoutes } from './routes/course-import.js';
 import { documentRoutes, type DocumentRouteOptions } from './routes/documents.js';
 import { noMalwareScanner } from './documents/scanner.js';
+import { isMountPoint as detectMountPoint } from './documents/mounts.js';
+import { checkStorageReadiness } from './documents/readiness.js';
 import { LocalDocumentStorage } from './documents/storage.js';
+import { systemRoutes } from './routes/system.js';
 import { mockSummaryProvider } from './documents/summary.js';
 import { healthRoutes } from './routes/health.js';
 import { meRoutes } from './routes/me.js';
@@ -59,9 +62,24 @@ export type BuildAppOptions = {
   documents?: Partial<DocumentRouteOptions>;
   /** The API server clock (default: the system clock). Tests inject a controlled clock for timer boundaries. */
   clock?: () => Date;
+  /** AP-040B: mount detection used by the storage readiness check (tests replace it; default: the mount table). */
+  isMountPoint?: (path: string) => Promise<boolean>;
 };
 
-export function buildApp({ config, database, logger = false, documents = {}, clock = () => new Date() }: BuildAppOptions) {
+/** AP-040B: how long `enforce` waits for the startup storage check before refusing to start. */
+const STORAGE_STARTUP_CHECK_MS = 10_000;
+
+/** The promise's value, or null once `ms` have passed (the timer never keeps the process alive). */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timer: NodeJS.Timeout | undefined;
+  const expired = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+    timer.unref();
+  });
+  return Promise.race([promise, expired]).finally(() => clearTimeout(timer));
+}
+
+export function buildApp({ config, database, logger = false, documents = {}, clock = () => new Date(), isMountPoint = detectMountPoint }: BuildAppOptions) {
   const app = Fastify({
     logger: logger === false ? false : { ...logger, redact: { paths: LOG_REDACT_PATHS, censor: '[REDACTED]' } },
     trustProxy: config.trustProxy,
@@ -78,6 +96,38 @@ export function buildApp({ config, database, logger = false, documents = {}, clo
   app.decorate('requireAuth', hooks.requireAuth);
   app.decorate('requireCsrf', hooks.requireCsrf);
   app.decorate('requireAdministrator', hooks.requireAdministrator);
+  app.decorate('storageReadiness', () => checkStorageReadiness(config.documents.storageDir, config.documents.mountCheck, { isMountPoint, now: clock }));
+
+  // AP-040B: check document storage once at startup and say what was found (never the directory's contents). Only
+  // `enforce` waits for the check (at most STORAGE_STARTUP_CHECK_MS) and stops the API when storage is not ready.
+  // `report` (the production default) runs it in the background: an unverified check on the Cloud Storage mount can
+  // neither stop nor delay the API's startup.
+  app.addHook('onReady', async () => {
+    if (config.documents.mountCheck === 'off') return;
+    const check = withTimeout(app.storageReadiness(), STORAGE_STARTUP_CHECK_MS).then((readiness) => {
+      if (!readiness) {
+        app.log.error({ storage: { mountCheck: config.documents.mountCheck } }, `Document storage check did not finish within ${STORAGE_STARTUP_CHECK_MS / 1000} s`);
+        return null;
+      }
+      const summary = { storage: { status: readiness.status, mountCheck: readiness.mountCheck, directory: readiness.directory, access: readiness.access, mount: readiness.mount } };
+      if (readiness.status === 'ready') app.log.info(summary, 'Document storage is ready');
+      else if (readiness.status === 'degraded') app.log.warn(summary, 'Document storage is usable, but no mount was detected at its directory');
+      else app.log.error(summary, 'Document storage does not look usable: uploads and downloads are expected to fail');
+      return readiness;
+    });
+    if (config.documents.mountCheck === 'report') {
+      check.catch((error: unknown) => app.log.error({ err: error }, 'Document storage check failed'));
+      return;
+    }
+    const readiness = await check;
+    if (readiness?.status !== 'ready') {
+      throw new Error(
+        readiness
+          ? `Document storage is not ready (directory ${readiness.directory}, access ${readiness.access}, mount ${readiness.mount}); DOCUMENT_STORAGE_MOUNT_CHECK=enforce`
+          : 'Document storage is not ready (the check timed out); DOCUMENT_STORAGE_MOUNT_CHECK=enforce',
+      );
+    }
+  });
 
   registerErrorHandling(app);
   app.addHook('onRequest', createOriginCheck(config));
@@ -113,7 +163,8 @@ export function buildApp({ config, database, logger = false, documents = {}, clo
   app.register(tutorRoutes, { prefix: API_PREFIX });
   app.register(progressRoutes, { prefix: API_PREFIX });
   app.register(resourceRoutes, { prefix: API_PREFIX });
-  const documentStorage = documents.storage ?? new LocalDocumentStorage(config.documents.storageDir);
+  const documentStorage = documents.storage ?? new LocalDocumentStorage(config.documents.storageDir, { createRoot: config.documents.createStorageDir });
+  app.register(systemRoutes, { prefix: API_PREFIX });
   app.register(courseExportRoutes, { prefix: API_PREFIX, storage: documentStorage });
   app.register(courseImportRoutes, { prefix: API_PREFIX });
   app.register(documentRoutes, {

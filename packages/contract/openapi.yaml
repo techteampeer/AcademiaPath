@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.29.0
+  version: 0.30.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -308,6 +308,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
+  /api/v1/system/storage:
+    get:
+      operationId: getStorageReadiness
+      summary: Document storage readiness (administrators only)
+      description: |
+        Whether the document storage directory is usable, checked on each request: it exists, the API can read and
+        write it, and (unless `mountCheck` is `off`) whether it is a mount point, as the Cloud Storage volume must be
+        in the cloud deployment. Read-only: nothing is created, written or listed. No path, file name or file count is
+        returned.
+
+        `status` is `ready` (usable, and mounted when a mount is checked), `degraded` (usable, but no mount was
+        detected while `mountCheck` is `report`; uploads continue) or `unavailable` (missing, not a directory, not
+        writable, or not mounted while `mountCheck` is `enforce`).
+
+        Uploads are refused with `503 DOCUMENT_STORAGE_UNAVAILABLE` when the directory is missing or not a directory,
+        and, when `mountCheck` is `enforce`, whenever `status` is not `ready`. In `report` mode a permission problem is
+        reported here but left to the write itself, which refuses the upload in the same way if it fails.
+      tags:
+        - System
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The current storage readiness.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageReadiness"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/auth/login:
     post:
       operationId: login
@@ -2340,6 +2375,10 @@ paths:
         without selectable text (for example scanned pages) is stored with extraction status
         `no_text`; no OCR is performed. The new `file` activity is a `draft`. Audited as
         `activity.created`, `document.uploaded` and `document.summary_generated`.
+
+        When the storage directory is missing (or, with `DOCUMENT_STORAGE_MOUNT_CHECK=enforce`, storage is not ready;
+        see `GET /api/v1/system/storage`), or the file cannot be stored, the upload is refused with
+        `503 DOCUMENT_STORAGE_UNAVAILABLE` and nothing is created.
       tags:
         - Documents
       security:
@@ -2381,6 +2420,8 @@ paths:
           $ref: "#/components/responses/UnsupportedMediaType"
         "422":
           $ref: "#/components/responses/UnprocessableContent"
+        "503":
+          $ref: "#/components/responses/StorageUnavailable"
   /api/v1/courses/{id}/activities/{activityId}/document:
     get:
       operationId: getActivityDocument
@@ -2510,6 +2551,12 @@ paths:
         SHA-256 is verified before it is sent. Original files are never reachable through a public
         URL.
         Students receive `403 SECTION_LOCKED` (without content) while a section prerequisite locks the activity's section.
+
+        Access is checked before storage is read, so callers without access always receive the normal `401`, `403`
+        or `404`. If the stored file is missing the response is `500 DOCUMENT_FILE_MISSING`; if its size or SHA-256
+        does not match the values recorded at upload it is `500 DOCUMENT_FILE_CORRUPT` and no byte of it is sent;
+        if storage cannot be read it is `503 DOCUMENT_STORAGE_UNAVAILABLE`. These responses never contain the
+        storage path, the stored file's name or its content.
       tags:
         - Documents
       security:
@@ -2548,6 +2595,10 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/DocumentFileUnavailable"
+        "503":
+          $ref: "#/components/responses/StorageUnavailable"
   /api/v1/courses/{id}/activities/{activityId}/questions:
     get:
       operationId: listQuizQuestions
@@ -6569,6 +6620,37 @@ components:
             status: 422
             detail: The course template belongs to a different program.
             code: TEMPLATE_PROGRAM_MISMATCH
+    DocumentFileUnavailable:
+      description: |
+        The document's record exists but its stored file cannot be served: `DOCUMENT_FILE_MISSING` (the stored file
+        is gone) or `DOCUMENT_FILE_CORRUPT` (its size or SHA-256 differs from the values recorded at upload; nothing
+        is sent). An administrator must restore the file; the read-only `pnpm storage:audit` command lists every
+        affected document. The response never contains a path, the stored file's name or its content.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: about:blank
+            title: Internal Server Error
+            status: 500
+            detail: The stored file of this document is missing. Contact an administrator.
+            code: DOCUMENT_FILE_MISSING
+    StorageUnavailable:
+      description: |
+        Document storage cannot be used right now (`DOCUMENT_STORAGE_UNAVAILABLE`): the storage directory is
+        missing, not writable or (when the mount check is enforced) not mounted, or reading or writing it failed.
+        Nothing was created or sent; the request can be retried later.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: about:blank
+            title: Service Unavailable
+            status: 503
+            detail: Document storage is temporarily unavailable. Try again later or contact an administrator.
+            code: DOCUMENT_STORAGE_UNAVAILABLE
   schemas:
     HealthResponse:
       type: object
@@ -6587,6 +6669,35 @@ components:
           examples:
             - academiapath-api
         timestamp:
+          type: string
+          format: date-time
+    StorageReadiness:
+      type: object
+      description: |
+        Document storage readiness. `mountCheck` is the configured `DOCUMENT_STORAGE_MOUNT_CHECK` mode: `off` (local
+        development; no checks), `report` (production default; a missing mount is reported as `degraded` but does
+        not stop the API) or `enforce` (a missing mount makes storage `unavailable` and stops the API at startup).
+      required: [status, mountCheck, directory, access, mount, checkedAt]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [ready, degraded, unavailable]
+        mountCheck:
+          type: string
+          enum: ["off", report, enforce]
+        directory:
+          type: string
+          enum: [present, missing, not_a_directory]
+        access:
+          type: string
+          description: Whether the API may read and write the directory (`not_checked` when it does not exist).
+          enum: [read_write, denied, not_checked]
+        mount:
+          type: string
+          description: Whether the directory is a mount point (`not_checked` when it is unusable or the check is `off`).
+          enum: [mounted, not_mounted, not_checked]
+        checkedAt:
           type: string
           format: date-time
     LoginRequest:
@@ -6820,6 +6931,9 @@ components:
             - RANGE_INVALID
             - EVENT_CANCELLED
             - EVENT_WAS_PUBLISHED
+            - DOCUMENT_FILE_MISSING
+            - DOCUMENT_FILE_CORRUPT
+            - DOCUMENT_STORAGE_UNAVAILABLE
     ResourceKind:
       type: string
       description: What a link points to. Every kind is only a link opened in a new tab; nothing is embedded, fetched or executed.
