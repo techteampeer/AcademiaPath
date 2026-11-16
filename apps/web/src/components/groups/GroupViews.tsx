@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { NewTopicForm, TopicRow } from '@/components/forums/ForumViews';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError, useCsrfAction } from '@/components/session/useCsrfAction';
@@ -171,10 +172,10 @@ function CreateGroupForm({ courseId, onCreated }: { courseId: string; onCreated:
   const { run, pending, result } = useCsrfAction();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useLocalizedState<string | null>(null);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!name.trim()) return setError(c.emptyName);
+    if (!name.trim()) return setError((m) => m.groups.create.emptyName);
     setError(null);
     if (await run((csrf) => api.createGroup(courseId, { name, description: description.trim() || null }, csrf))) {
       setName('');
@@ -224,14 +225,14 @@ function GroupWorkspace({ groupId }: { groupId: string }) {
   const fetcher = useCallback(() => api.getGroup(groupId), [groupId]);
   const { state, load, setState } = useLoader<GroupDetail>(fetcher);
   const [topics, setTopics] = useState<ForumTopicPage | null>(null);
-  const [topicsError, setTopicsError] = useState<string | null>(null);
+  const [topicsError, setTopicsError] = useLocalizedState<string | null>(null);
   const canRead = state.status === 'ready' && state.data.viewer.canRead;
   const loadTopics = useCallback(async () => {
     try {
       setTopics(await api.groupTopics(groupId));
       setTopicsError(null);
     } catch (error) {
-      setTopicsError(describeApiError(error, locale));
+      setTopicsError((_m, ml) => describeApiError(error, ml));
     }
   }, [groupId, locale]);
   useEffect(() => {
@@ -399,7 +400,7 @@ function AddMembers({ groupId, candidates, onAdded }: { groupId: string; candida
   const w = t.groups.workspace;
   const { run, pending, result } = useCsrfAction();
   const [selected, setSelected] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useLocalizedState<string | null>(null);
   const toggle = (id: string) => setSelected((current) => (current.includes(id) ? current.filter((x) => x !== id) : [...current, id]));
   return (
     <form
@@ -407,7 +408,7 @@ function AddMembers({ groupId, candidates, onAdded }: { groupId: string; candida
       data-add-members
       onSubmit={async (event) => {
         event.preventDefault();
-        if (!selected.length) return setError(w.selectOne);
+        if (!selected.length) return setError((m) => m.groups.workspace.selectOne);
         setError(null);
         if (await run((csrf) => api.addGroupMembers(groupId, selected, csrf), (r) => w.added(r.added, r.alreadyMembers))) {
           setSelected([]);

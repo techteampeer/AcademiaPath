@@ -3,12 +3,15 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
+import type { Messages } from '@/lib/i18n/messages';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useCsrfAction } from '@/components/session/useCsrfAction';
 import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
 import { Button, buttonClasses } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { FileInput } from '@/components/ui/FileInput';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { api, loadAll } from '@/lib/api/endpoints';
@@ -36,12 +39,13 @@ function ImportContent() {
   const submit = useCsrfAction();
   const fileInput = useRef<HTMLInputElement>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
-  const [fileError, setFileError] = useState<string | null>(null);
+  const [fileError, setFileError] = useLocalizedState<string | null>(null);
+  const [chosenName, setChosenName] = useState<string | null>(null);
   const [done, setDone] = useState<CourseImportResult | null>(null);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [terms, setTerms] = useState<Term[]>([]);
   const [form, setForm] = useState({ programId: '', termId: '', code: '', title: '', versionPreference: 'approved' as 'approved' | 'working', dueAt: '', acknowledge: false });
-  const [errors, setErrors] = useState<Partial<Record<'programId' | 'termId' | 'code' | 'title' | 'dueAt' | 'acknowledge', string>>>({});
+  const [errors, setErrors] = useLocalizedState<Partial<Record<'programId' | 'termId' | 'code' | 'title' | 'dueAt' | 'acknowledge', string>>>({});
 
   useEffect(() => {
     void loadAll((page) => api.listPrograms(page)).then((items) => setPrograms(items.filter((program) => program.isActive)), () => setPrograms([]));
@@ -49,6 +53,7 @@ function ImportContent() {
   }, []);
 
   const reset = () => {
+    setChosenName(null);
     setLoaded(null);
     setDone(null);
     setFileError(null);
@@ -60,17 +65,18 @@ function ImportContent() {
   };
 
   const choose = async (file: File | undefined) => {
+    setChosenName(file?.name ?? null);
     setLoaded(null);
     setFileError(null);
     check.clearResult();
     submit.clearResult();
     if (!file) return;
-    if (file.size > MAX_BYTES) return setFileError(c.tooLarge);
+    if (file.size > MAX_BYTES) return setFileError((m) => m.courseImport.tooLarge);
     let pkg: unknown;
     try {
       pkg = JSON.parse(await file.text());
     } catch (error) {
-      return setFileError(error instanceof SyntaxError ? c.notJson : c.readFailed);
+      return setFileError((m) => error instanceof SyntaxError ? m.courseImport.notJson : m.courseImport.readFailed);
     }
     const preview = await check.run((csrf) => api.previewCourseImport(pkg, csrf));
     if (!preview) return;
@@ -88,14 +94,20 @@ function ImportContent() {
     event.preventDefault();
     if (!loaded) return;
     const { preview } = loaded;
-    const found: typeof errors = {};
-    if (!form.programId) found.programId = c.required.program;
-    if (!form.termId) found.termId = c.required.term;
-    if (!CODE_PATTERN.test(form.code.trim())) found.code = c.required.code;
-    if (!form.title.trim()) found.title = c.required.title;
-    if (preview.requiresDueDate && (!form.dueAt || Number.isNaN(Date.parse(form.dueAt)))) found.dueAt = c.required.dueDate;
-    if (preview.requiresAcknowledgement && !form.acknowledge) found.acknowledge = c.required.acknowledge;
-    setErrors(found);
+    // Built with the catalog shown at render, so the messages follow the EN/ES switch (AP-I18N-01).
+    const check = (cat: Messages) => {
+      const c = cat.courseImport;
+      const found: typeof errors = {};
+      if (!form.programId) found.programId = c.required.program;
+      if (!form.termId) found.termId = c.required.term;
+      if (!CODE_PATTERN.test(form.code.trim())) found.code = c.required.code;
+      if (!form.title.trim()) found.title = c.required.title;
+      if (preview.requiresDueDate && (!form.dueAt || Number.isNaN(Date.parse(form.dueAt)))) found.dueAt = c.required.dueDate;
+      if (preview.requiresAcknowledgement && !form.acknowledge) found.acknowledge = c.required.acknowledge;
+      return found;
+    };
+    const found = check(t);
+    setErrors(check);
     if (Object.keys(found).length) return;
     const result = await submit.run((csrf) =>
       api.importCourse(
@@ -172,13 +184,12 @@ function ImportContent() {
           <label htmlFor="import-file" className="block text-sm font-medium text-slate-800">
             {c.fileLabel}
           </label>
-          <input
+          <FileInput
             ref={fileInput}
             id="import-file"
-            type="file"
             accept=".json,application/json"
             aria-describedby="import-file-hint"
-            className="mt-1 block w-full max-w-full text-sm text-slate-700 file:mr-3 file:rounded-md file:border file:border-brand-600/35 file:bg-white file:px-3 file:py-1.5 file:text-brand-700"
+            selectedName={chosenName}
             disabled={check.pending || submit.pending}
             onChange={(event) => void choose(event.target.files?.[0])}
           />

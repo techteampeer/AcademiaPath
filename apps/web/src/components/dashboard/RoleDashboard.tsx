@@ -20,7 +20,7 @@ import { DashboardCommunity, DashboardRecentActivity } from './DashboardCommunit
 import { isApiError } from '@/lib/api/client';
 import { api, loadAll } from '@/lib/api/endpoints';
 import type { Activity, Course, CourseRole, CurrentUser, GradeStatus } from '@/lib/api/types';
-import { formatDateTime, type Messages } from '@/lib/i18n/messages';
+import { formatDeadline, type Messages } from '@/lib/i18n/messages';
 
 /** Detailed figures are loaded for at most this many courses per role (bounded requests). */
 const DETAIL_LIMIT = 8;
@@ -547,7 +547,7 @@ function StudentCard({ course }: { course: Course }) {
                     </Link>
                     <span className="text-xs text-slate-500">
                       {' '}
-                      · {item.kind === 'assignment' && item.due ? t.dashboard.assignmentDue(formatDateTime(item.due, locale)) : t.dashboard.quizAvailable}
+                      · {item.kind === 'assignment' && item.due ? t.dashboard.assignmentDue(formatDeadline(item.due, locale)) : t.dashboard.quizAvailable}
                     </span>
                   </li>
                 ))}

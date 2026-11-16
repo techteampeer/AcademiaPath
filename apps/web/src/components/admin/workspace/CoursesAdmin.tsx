@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { LocalizedCourseStatusBadge as CourseStatusBadge } from '@/components/courses/LocalizedCourseStatusBadge';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError, useCsrfAction } from '@/components/session/useCsrfAction';
@@ -178,7 +179,7 @@ function EnrollmentPanel({ course }: { course: Course }) {
   const [roster, setRoster] = useState<{ status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; items: Enrollment[] }>({ status: 'loading' });
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<CourseRole>('student');
-  const [emailError, setEmailError] = useState<string | undefined>();
+  const [emailError, setEmailError] = useLocalizedState<string | undefined>(undefined);
   const { run, pending, result } = useCsrfAction();
 
   const load = useCallback(async () => {
@@ -196,7 +197,7 @@ function EnrollmentPanel({ course }: { course: Course }) {
 
   const enroll = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!EMAIL_PATTERN.test(email.trim())) return setEmailError(t.admin.emailInvalid);
+    if (!EMAIL_PATTERN.test(email.trim())) return setEmailError((m) => m.admin.emailInvalid);
     setEmailError(undefined);
     const created = await run((csrf) => api.createEnrollment(course.id, { email: email.trim(), role }, csrf), (e) => t.admin.enrolled(e.user.email));
     if (created) {

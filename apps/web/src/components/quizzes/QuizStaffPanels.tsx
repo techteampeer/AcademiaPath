@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError, useCsrfAction } from '@/components/session/useCsrfAction';
 import { Alert } from '@/components/ui/Alert';
@@ -217,7 +218,7 @@ function QuestionForm({ pending, onSubmit }: { pending: boolean; onSubmit: (inpu
   const [points, setPoints] = useState('1');
   const [options, setOptions] = useState<OptionDraft[]>(emptyOptions);
   const [trueFalseAnswer, setTrueFalseAnswer] = useState<'true' | 'false'>('true');
-  const [errors, setErrors] = useState<QuestionErrors>({});
+  const [errors, setErrors] = useLocalizedState<QuestionErrors>({});
   const { t } = useLocale();
   const qf = t.quiz.form;
 
@@ -240,12 +241,13 @@ function QuestionForm({ pending, onSubmit }: { pending: boolean; onSubmit: (inpu
     }
   };
 
-  const validate = (): QuestionErrors => {
+  const validate = (cat: Messages = t): QuestionErrors => {
+    const qf = cat.quiz.form;
     const next: QuestionErrors = {};
     if (!prompt.trim()) next.prompt = qf.enterQuestion;
-    else if (prompt.length > QUESTION_LIMITS.prompt) next.prompt = t.errors.maxChars(QUESTION_LIMITS.prompt);
+    else if (prompt.length > QUESTION_LIMITS.prompt) next.prompt = cat.errors.maxChars(QUESTION_LIMITS.prompt);
     const value = Number(points);
-    if (!/^\d+$/.test(points.trim()) || value < 1 || value > QUESTION_LIMITS.points) next.points = t.errors.wholeNumber(1, QUESTION_LIMITS.points);
+    if (!/^\d+$/.test(points.trim()) || value < 1 || value > QUESTION_LIMITS.points) next.points = cat.errors.wholeNumber(1, QUESTION_LIMITS.points);
     if (type !== 'true_false') {
       const correct = options.filter((option) => option.isCorrect).length;
       if (options.some((option) => !option.text.trim())) next.options = qf.optionsEmpty;
@@ -259,7 +261,8 @@ function QuestionForm({ pending, onSubmit }: { pending: boolean; onSubmit: (inpu
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const next = validate();
-    setErrors(next);
+    // Re-validated with the catalog shown at render, so the messages follow the EN/ES switch (AP-I18N-01).
+    setErrors((cat) => validate(cat));
     if (Object.keys(next).length) return;
     const base = { prompt: prompt.trim(), points: Number(points) };
     const input: QuizQuestionInput =

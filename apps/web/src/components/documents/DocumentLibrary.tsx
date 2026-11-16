@@ -4,12 +4,14 @@ import Link from 'next/link';
 import { useRef, useState, type FormEvent } from 'react';
 import { ReviewStatusBadge, type ContentAbilities } from '@/components/content/contentDisplay';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { lessonHref } from '@/components/content/SectionActivities';
 import { useCsrfAction } from '@/components/session/useCsrfAction';
 import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { FileInput } from '@/components/ui/FileInput';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { api } from '@/lib/api/endpoints';
 import type { Activity, DocumentDetail, Section } from '@/lib/api/types';
@@ -85,7 +87,7 @@ function UploadForm({ courseId, sections, onUploaded }: { courseId: string; sect
   const [sectionId, setSectionId] = useState(sections[0]?.id ?? '');
   const [title, setTitle] = useState('');
   const [file, setFile] = useState<File | null>(null);
-  const [fileError, setFileError] = useState<string | undefined>();
+  const [fileError, setFileError] = useLocalizedState<string | undefined>(undefined);
   const [uploaded, setUploaded] = useState<{ detail: DocumentDetail; title: string } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const { run, pending, result, clearResult } = useCsrfAction();
@@ -96,9 +98,9 @@ function UploadForm({ courseId, sections, onUploaded }: { courseId: string; sect
     event.preventDefault();
     setUploaded(null);
     clearResult();
-    if (!file) return setFileError(l.chooseFile);
+    if (!file) return setFileError((m) => m.documents.library.chooseFile);
     // Convenience only: the API verifies the file's real content and enforces the size limit.
-    if (!ACCEPTED.test(file.name)) return setFileError(l.onlyAccepted);
+    if (!ACCEPTED.test(file.name)) return setFileError((m) => m.documents.library.onlyAccepted);
     setFileError(undefined);
     const chosenTitle = title.trim() || file.name.replace(ACCEPTED, '');
     const detail = await run((csrf) => api.uploadDocument(courseId, sectionId, file, title, csrf));
@@ -137,15 +139,14 @@ function UploadForm({ courseId, sections, onUploaded }: { courseId: string; sect
         <label htmlFor="document-file" className="block text-sm font-medium text-slate-800">
           {l.file}
         </label>
-        <input
+        <FileInput
           ref={fileInput}
           id="document-file"
-          type="file"
           accept=".pdf,.docx,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation"
           aria-invalid={fileError ? true : undefined}
           aria-describedby={fileError ? 'document-file-hint document-file-error' : 'document-file-hint'}
+          selectedName={file?.name ?? null}
           onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-          className="mt-1 block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border file:border-slate-300 file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-800 hover:file:bg-slate-50"
         />
         <p id="document-file-hint" className="mt-1 text-xs text-slate-500">
           {l.fileHint}

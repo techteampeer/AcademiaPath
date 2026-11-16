@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { contentAbilities } from '@/components/content/contentDisplay';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError } from '@/components/session/useCsrfAction';
@@ -58,11 +59,12 @@ function TutorContent({ courseId, initialActivityId, user }: { courseId: string;
   const [materials, setMaterials] = useState<Material[]>([]);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Interface messages follow the EN/ES switch; the conversation itself stays as it was asked (AP-I18N-01).
+  const [error, setError] = useLocalizedState<string | null>(null);
   // Shown (in the current language) when the requested lesson is not available to this person.
   const [lessonUnavailable, setLessonUnavailable] = useState(false);
   const [question, setQuestion] = useState('');
-  const [questionError, setQuestionError] = useState<string | null>(null);
+  const [questionError, setQuestionError] = useLocalizedState<string | null>(null);
   const nextId = useRef(1);
   const variants = useRef(new Map<string, number>());
   const focusTarget = useRef<string | null>(null);
@@ -103,7 +105,7 @@ function TutorContent({ courseId, initialActivityId, user }: { courseId: string;
         else if (lessonId && isApiError(failure, 404)) {
           setLessonUnavailable(true);
           setLessonId(null);
-        } else setError(describeApiError(failure, localeRef.current));
+        } else setError((_m, ml) => describeApiError(failure, ml));
         return null;
       } finally {
         setPending(false);
@@ -169,8 +171,8 @@ function TutorContent({ courseId, initialActivityId, user }: { courseId: string;
   const ask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const text = question.trim();
-    if (!text) return setQuestionError(t.empty);
-    if (text.length > QUESTION_LIMIT) return setQuestionError(messages.errors.maxChars(QUESTION_LIMIT));
+    if (!text) return setQuestionError((m) => m.tutor.empty);
+    if (text.length > QUESTION_LIMIT) return setQuestionError((m) => m.errors.maxChars(QUESTION_LIMIT));
     setQuestionError(null);
     const response = await send('ask', { question: text });
     if (response) {
@@ -188,7 +190,7 @@ function TutorContent({ courseId, initialActivityId, user }: { courseId: string;
       focusTarget.current = `tutor-feedback-${turnId}`;
     } catch (failure) {
       if (isApiError(failure, 401)) handleUnauthorized();
-      else setError(describeApiError(failure, localeRef.current));
+      else setError((_m, ml) => describeApiError(failure, ml));
     } finally {
       setPending(false);
     }

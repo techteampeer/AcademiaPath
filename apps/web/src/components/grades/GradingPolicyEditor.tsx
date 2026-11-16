@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { contentAbilities } from '@/components/content/contentDisplay';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { useLocalizedState } from '@/components/i18n/useLocalizedState';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError, useCsrfAction } from '@/components/session/useCsrfAction';
@@ -17,6 +18,7 @@ import { Breadcrumbs } from '@/components/ui/PageHeader';
 import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { Course, CurrentUser, Gradebook, GradingPolicy } from '@/lib/api/types';
+import type { Messages } from '@/lib/i18n/messages';
 
 type Ready = { course: Course; policy: GradingPolicy; columns: Gradebook['columns'] };
 type Load = { status: 'loading' } | { status: 'not-found' } | { status: 'error'; message: string } | { status: 'ready'; data: Ready };
@@ -41,7 +43,7 @@ function Content({ courseId, user }: { courseId: string; user: CurrentUser }) {
   const b = t.assignments.book;
   const [state, setState] = useState<Load>({ status: 'loading' });
   const [categories, setCategories] = useState<Draft[]>([]);
-  const [errors, setErrors] = useState<string[]>([]);
+  const [errors, setErrors] = useLocalizedState<string[]>([]);
   const { run, pending, result } = useCsrfAction();
 
   const load = useCallback(async () => {
@@ -85,18 +87,23 @@ function Content({ courseId, user }: { courseId: string; user: CurrentUser }) {
     );
 
   const save = async (status: 'draft' | 'published') => {
-    const problems: string[] = [];
-    const names = new Set<string>();
-    categories.forEach((category, index) => {
-      const name = category.name.trim();
-      const weight = Number(category.weight);
-      if (!name) problems.push(e.nameRequired(index + 1));
-      if (!Number.isInteger(weight) || weight < 1 || weight > 100) problems.push(e.weightRange(index + 1));
-      if (names.has(name.toLocaleLowerCase())) problems.push(e.duplicateName);
-      names.add(name.toLocaleLowerCase());
-    });
-    if (status === 'published' && (total !== 100 || !categories.length)) problems.push(e.totalNot(total));
-    setErrors([...new Set(problems)]);
+    // Checked with the catalog of the moment it is shown in, so the messages follow the EN/ES switch (AP-I18N-01).
+    const check = (c: Messages) => {
+      const found: string[] = [];
+      const names = new Set<string>();
+      categories.forEach((category, index) => {
+        const name = category.name.trim();
+        const weight = Number(category.weight);
+        if (!name) found.push(c.gradebook.editor.nameRequired(index + 1));
+        if (!Number.isInteger(weight) || weight < 1 || weight > 100) found.push(c.gradebook.editor.weightRange(index + 1));
+        if (names.has(name.toLocaleLowerCase())) found.push(c.gradebook.editor.duplicateName);
+        names.add(name.toLocaleLowerCase());
+      });
+      if (status === 'published' && (total !== 100 || !categories.length)) found.push(c.gradebook.editor.totalNot(total));
+      return [...new Set(found)];
+    };
+    const problems = check(t);
+    setErrors(check);
     if (problems.length) return;
     const saved = await run(
       (csrf) =>
@@ -140,6 +147,7 @@ function Content({ courseId, user }: { courseId: string; user: CurrentUser }) {
       {!canEdit ? <Alert tone="info">{e.readOnly}</Alert> : null}
       {columns.length === 0 ? <Alert tone="info">{e.noActivities}</Alert> : null}
       <form
+        noValidate
         className="space-y-4"
         onSubmit={(event) => {
           event.preventDefault();
