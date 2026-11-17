@@ -8,6 +8,7 @@ import { useWorkspace } from '@/components/session/WorkspaceProvider';
 import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
+import { ClearFilters } from '@/components/ui/ClearFilters';
 import { CourseEmblem } from '@/components/layout/Heritage';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SelectField, TextField } from '@/components/ui/Field';
@@ -71,9 +72,19 @@ function CourseListContent({ user }: { user: CurrentUser }) {
             <TextField id="courses-search" label={t.common.search} value={query} onChange={(e) => setQuery(e.target.value)} />
             <SelectField id="courses-role" label={t.courses.filterRole} value={role} onChange={(e) => setRole(e.target.value)} options={roleOptions} />
           </Card>
-          <p className="text-sm text-slate-500" aria-live="polite">
-            {t.common.showing(courses.length, workspace.courses.length)}
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-slate-500" aria-live="polite">
+              {t.common.showing(courses.length, workspace.courses.length)}
+            </p>
+            <ClearFilters
+              active={query !== '' || role !== ''}
+              focusId="courses-search"
+              onClear={() => {
+                setQuery('');
+                setRole('');
+              }}
+            />
+          </div>
           {courses.length === 0 ? (
             <p className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-600">{t.courses.empty}</p>
           ) : (

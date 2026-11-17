@@ -75,6 +75,8 @@ function LessonContent({ courseId, activityId, user }: { courseId: string; activ
   const [state, setState] = useState<ViewState>({ status: 'loading' });
   // AP-029: incremented when the API refuses a submission or approval for blocking quality findings.
   const [qualitySignal, setQualitySignal] = useState(0);
+  // Counts changes to a quiz's questions, so the review card drops a message about the previous questions (AP-QA-02).
+  const [questionsVersion, setQuestionsVersion] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -157,6 +159,7 @@ function LessonContent({ courseId, activityId, user }: { courseId: string; activ
           abilities={abilities}
           onChanged={(updated) => setState({ status: 'ready', course, activity: updated })}
           onQualityBlocked={() => setQualitySignal((n) => n + 1)}
+          questionsVersion={questionsVersion}
         />
       ) : null}
       {activity.review && (abilities.edit || abilities.review) ? (
@@ -182,7 +185,10 @@ function LessonContent({ courseId, activityId, user }: { courseId: string; activ
           quizId={activity.id}
           canEdit={abilities.edit && activity.review.status !== 'submitted'}
           hasLiveVersion={activity.liveVersion !== null}
-          onChanged={() => void load()}
+          onChanged={() => {
+            setQuestionsVersion((n) => n + 1);
+            void load();
+          }}
         />
       ) : null}
       {isQuiz && abilities.viewResults ? <QuizResultsPanel courseId={courseId} quizId={activity.id} canRelease={abilities.release} /> : null}
@@ -241,6 +247,7 @@ function StaffPanel({
   abilities,
   onChanged,
   onQualityBlocked,
+  questionsVersion,
 }: {
   courseId: string;
   activity: Activity;
@@ -248,6 +255,8 @@ function StaffPanel({
   abilities: ContentAbilities;
   onChanged: (activity: Activity) => void;
   onQualityBlocked: () => void;
+  /** Changes whenever a quiz question is added, removed or imported. */
+  questionsVersion: number;
 }) {
   const review = activity.review!;
   const { t } = useLocale();
@@ -255,7 +264,12 @@ function StaffPanel({
   const [editing, setEditing] = useState(false);
   const [comment, setComment] = useState('');
   const [commentError, setCommentError] = useLocalizedState<string | null>(null);
-  const { run, pending, result } = useCsrfAction();
+  const { run, pending, result, clearResult } = useCsrfAction();
+  // A message about the previous questions (e.g. "add at least one question") no longer describes the quiz once its
+  // questions change (TC-20). Submitting again shows the current answer; the API's rules are unchanged.
+  useEffect(() => {
+    if (questionsVersion > 0) clearResult();
+  }, [questionsVersion, clearResult]);
 
   const status = review.status;
   // Documents change through upload and "Refresh summary" (DocumentPanel), not the text editor.

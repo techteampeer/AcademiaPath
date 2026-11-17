@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
 import { isApiError } from '@/lib/api/client';
 import { MESSAGES, type Locale } from '@/lib/i18n/messages';
@@ -66,5 +66,7 @@ export function useCsrfAction() {
         : stored.locale === locale
           ? { tone: 'success', message: stored.message }
           : null;
-  return { run, pending, result, clearResult: () => setStored(null) };
+  // Stable, so components can clear an outdated message from an effect (AP-QA-02).
+  const clearResult = useCallback(() => setStored(null), []);
+  return { run, pending, result, clearResult };
 }

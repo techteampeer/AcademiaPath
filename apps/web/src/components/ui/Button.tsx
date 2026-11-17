@@ -1,4 +1,4 @@
-import type { ComponentPropsWithoutRef } from 'react';
+import type { ComponentPropsWithRef } from 'react';
 import { cn } from '@/lib/cn';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'inverse' | 'light';
@@ -39,7 +39,8 @@ export function buttonClasses({
   );
 }
 
-export type ButtonProps = ComponentPropsWithoutRef<'button'> & {
+/** `ref` reaches the underlying <button> (React 19 passes it as an ordinary prop), e.g. to move focus to it. */
+export type ButtonProps = ComponentPropsWithRef<'button'> & {
   variant?: ButtonVariant;
   size?: ButtonSize;
 };

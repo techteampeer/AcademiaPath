@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
@@ -17,6 +17,8 @@ import { formatDateTimeOrDash } from '@/lib/i18n/messages';
 
 type ViewState = { status: 'loading' } | { status: 'not-found' } | { status: 'error' } | { status: 'ready'; attempt: StudentQuizAttempt };
 type Selections = Record<string, string[]>;
+/** Where keyboard focus goes after a state change (AP-QA-02, TC-24); the first one present on the page is used. */
+type FocusTarget = 'heading' | 'confirm' | 'submit' | 'result';
 
 export function QuizAttemptView({ courseId, attemptId }: { courseId: string; attemptId: string }) {
   return <RequireAuth>{() => <AttemptContent courseId={courseId} attemptId={attemptId} />}</RequireAuth>;
@@ -57,18 +59,45 @@ function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: 
   const [confirming, setConfirming] = useState(false);
   const { run, pending, result } = useCsrfAction();
 
+  // AP-QA-02 (TC-24): focus follows each state change so keyboard and screen-reader users never land on the page body:
+  // the attempt heading on arrival, the confirmation's first button, Submit again after "Keep working" (or a failed
+  // submission), and the result heading once the attempt is recorded. Native controls keep their own keyboard behaviour.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
+  const resultRef = useRef<HTMLHeadingElement>(null);
+  const focusRequest = useRef<FocusTarget[] | null>(['heading']);
+  const [focusTick, setFocusTick] = useState(0);
+  const requestFocus = useCallback((...targets: FocusTarget[]) => {
+    focusRequest.current = targets;
+    setFocusTick((n) => n + 1);
+  }, []);
+  useEffect(() => {
+    const targets = focusRequest.current;
+    if (!targets || state.status !== 'ready') return;
+    const elements = { heading: headingRef, confirm: confirmRef, submit: submitRef, result: resultRef };
+    const element = targets.map((target) => elements[target].current).find((candidate) => candidate !== null);
+    if (element) {
+      element.focus();
+      focusRequest.current = null;
+    }
+  }, [state, confirming, pending, focusTick]);
+
   const show = useCallback((attempt: StudentQuizAttempt) => {
     setState({ status: 'ready', attempt });
     setSelections(selectionsOf(attempt));
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<StudentQuizAttempt | null> => {
     try {
-      show(await api.getQuizAttempt(courseId, attemptId));
+      const attempt = await api.getQuizAttempt(courseId, attemptId);
+      show(attempt);
+      return attempt;
     } catch (error) {
       if (isApiError(error, 401)) handleUnauthorized();
       else if (isApiError(error, 404) || isApiError(error, 400) || isApiError(error, 403)) setState({ status: 'not-found' });
       else setState({ status: 'error' });
+      return null;
     }
   }, [courseId, attemptId, handleUnauthorized, show]);
 
@@ -132,8 +161,19 @@ function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: 
   const submit = async () => {
     setConfirming(false);
     const submitted = await run((csrf) => api.submitQuizAttempt(courseId, attempt.id, { answers }, csrf));
-    if (submitted) show(submitted);
-    else void load();
+    if (submitted) {
+      show(submitted);
+      requestFocus('result');
+      return;
+    }
+    // Refused (the error is announced): back to Submit, or to the result if the server has closed the attempt.
+    const latest = await load();
+    requestFocus(latest?.status === 'submitted' ? 'result' : 'submit');
+  };
+
+  const keepWorking = () => {
+    setConfirming(false);
+    requestFocus('submit');
   };
 
   const header = (
@@ -141,7 +181,9 @@ function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: 
       <Link href={quizHref} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
         {a.backToQuiz}
       </Link>
-      <h1 className="mt-4 text-[1.75rem] leading-tight font-semibold text-brand-600 sm:text-[2.1rem]">{a.title(attempt.attemptNumber, attempt.attemptLimit)}</h1>
+      <h1 ref={headingRef} tabIndex={-1} className="mt-4 text-[1.75rem] leading-tight font-semibold text-brand-600 sm:text-[2.1rem]">
+        {a.title(attempt.attemptNumber, attempt.attemptLimit)}
+      </h1>
     </div>
   );
 
@@ -150,7 +192,7 @@ function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: 
       <div className="space-y-6">
         {header}
         <Card as="section" aria-labelledby="recorded-heading" className="space-y-3">
-          <h2 id="recorded-heading" className="text-lg font-semibold text-emerald-800">
+          <h2 id="recorded-heading" ref={resultRef} tabIndex={-1} className="text-lg font-semibold text-emerald-800">
             {a.recordedHeading}
           </h2>
           <p className="text-sm text-slate-700">{a.recordedAt(formatDateTimeOrDash(attempt.submittedAt, locale))}</p>
@@ -186,6 +228,7 @@ function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: 
         onSubmit={(event) => {
           event.preventDefault();
           setConfirming(true);
+          requestFocus('confirm');
         }}
         className="space-y-4"
       >
@@ -226,12 +269,12 @@ function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: 
         })}
         {confirming ? (
           <Alert tone="info" className="space-y-3">
-            <p>{a.confirm}</p>
+            <p id="attempt-confirm-text">{a.confirm}</p>
             <div className="flex flex-wrap gap-3">
-              <Button onClick={() => void submit()} disabled={pending}>
+              <Button ref={confirmRef} aria-describedby="attempt-confirm-text" onClick={() => void submit()} disabled={pending}>
                 {a.confirmSubmit}
               </Button>
-              <Button variant="secondary" onClick={() => setConfirming(false)} disabled={pending}>
+              <Button variant="secondary" onClick={keepWorking} disabled={pending}>
                 {a.keepWorking}
               </Button>
             </div>
@@ -241,7 +284,7 @@ function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: 
             <Button variant="secondary" onClick={() => void save()} disabled={pending}>
               {pending ? a.saving : a.save}
             </Button>
-            <Button type="submit" disabled={pending}>
+            <Button ref={submitRef} type="submit" disabled={pending}>
               {a.submit}
             </Button>
           </div>

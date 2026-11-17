@@ -11,6 +11,7 @@ import { describeApiError, useCsrfAction } from '@/components/session/useCsrfAct
 import { Alert } from '@/components/ui/Alert';
 import { Button, buttonClasses } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { ClearFilters } from '@/components/ui/ClearFilters';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { LoadingCards } from '@/components/ui/Skeleton';
@@ -117,9 +118,21 @@ function CoursesContent() {
           ]}
         />
       </Card>
-      <p className="text-sm text-slate-500" aria-live="polite">
-        {t.common.showing(filtered.length, data.courses.length)}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-slate-500" aria-live="polite">
+          {t.common.showing(filtered.length, data.courses.length)}
+        </p>
+        <ClearFilters
+          active={query !== '' || termId !== '' || programId !== '' || status !== ''}
+          focusId="course-search"
+          onClear={() => {
+            setQuery('');
+            setTermId('');
+            setProgramId('');
+            setStatus('');
+          }}
+        />
+      </div>
       {filtered.length === 0 ? (
         <p className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-600">{t.admin.noCourses}</p>
       ) : (
