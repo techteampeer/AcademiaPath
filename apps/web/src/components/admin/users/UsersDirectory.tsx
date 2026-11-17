@@ -8,6 +8,7 @@ import { useSession } from '@/components/session/SessionProvider';
 import { Alert } from '@/components/ui/Alert';
 import { Button, buttonClasses } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { ClearFilters } from '@/components/ui/ClearFilters';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { LoadingCards } from '@/components/ui/Skeleton';
@@ -123,6 +124,14 @@ function DirectoryContent() {
             ]}
           />
         </div>
+        <ClearFilters
+          active={search !== '' || Boolean(filters.q || filters.status || filters.activation)}
+          focusId="user-search"
+          onClear={() => {
+            setSearch('');
+            applyFilters({ q: '', status: '', activation: '' });
+          }}
+        />
       </Card>
 
       {state.status === 'loading' ? (

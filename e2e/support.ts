@@ -89,6 +89,41 @@ export async function apiGet<T>(role: Role, pathname: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/**
+ * A dedicated published course for one test file — the suite's established isolation pattern for tests that leave
+ * records the application cannot delete (quizzes, attempts): a unique `ZZ-` code, the given demo accounts enrolled,
+ * and `cleanup()` making those enrollments inactive so no later suite sees the course or its content.
+ */
+export async function isolatedCourse(
+  code: string,
+  title: string,
+  members: Array<[Role, 'instructor' | 'design_team' | 'non_editing_instructor' | 'student']>,
+): Promise<{ courseId: string; sectionId: string; cleanup: () => Promise<void> }> {
+  const program = (await apiGet<{ items: Array<{ id: string }> }>('admin', '/programs?limit=100')).items[0]!;
+  const term = (await apiGet<{ items: Array<{ id: string }> }>('admin', '/terms?limit=100')).items[0]!;
+  const template = await apiWrite<{ templateId: string }>('admin', 'POST', '/course-templates', { code: `${code}-T`, programId: program.id, title, sections: [{ title: 'Unit 1' }] });
+  const courseId = (await apiWrite<{ id: string }>('admin', 'POST', '/courses', { programId: program.id, termId: term.id, templateId: template.templateId, code, status: 'published' })).id;
+  const enrollmentIds: string[] = [];
+  for (const [role, courseRole] of members) {
+    enrollmentIds.push((await apiWrite<{ id: string }>('admin', 'POST', `/courses/${courseId}/enrollments`, { email: EMAIL[role], role: courseRole })).id);
+  }
+  const sectionId = (await apiGet<{ items: Array<{ id: string }> }>('admin', `/courses/${courseId}/sections`)).items[0]!.id;
+  return {
+    courseId,
+    sectionId,
+    cleanup: async () => {
+      for (const id of enrollmentIds) await apiWrite('admin', 'PUT', `/courses/${courseId}/enrollments/${id}`, { status: 'inactive' });
+    },
+  };
+}
+
+/** Clicks EN or ES in the header and waits until the page has switched. */
+export async function switchLocale(page: Page, locale: Locale): Promise<void> {
+  await page.locator(`button[lang="${locale}"]:visible`).first().click();
+  await page.waitForFunction((value) => document.documentElement.lang === value, locale);
+  await page.waitForTimeout(300);
+}
+
 /** Waits until the page's requests have finished and its level-1 heading is shown. */
 export async function settle(page: Page): Promise<void> {
   await page.waitForLoadState('networkidle');
