@@ -84,7 +84,8 @@ A recognized type is never reported as importable just because its type is known
 ## Safety
 
 - **Isolation:** each inspection runs in a worker thread, with a 30-second time limit, a 256 MB heap limit and
-  `fetch` disabled. At most two run at once. A crash or limit returns an `invalid` report, not a server error.
+  `fetch` disabled. Cartridge and SCORM inspections share one pool of two workers per API instance, so adding this
+  inspector does not raise the API's peak memory. A crash or limit returns an `invalid` report, not a server error.
 - **No execution, no network:** HTML and scripts are never rendered or run. Links, LTI launch URLs and external
   references are read as text only.
 - **Storage:** nothing is written to disk, object storage or the database. The upload and the descriptors are held in

@@ -20,6 +20,7 @@ import { CARTRIDGE_ISSUE_CODES, CARTRIDGE_LIMITS, type CartridgeInspectionReport
 import { loadConfig } from '../../src/config.js';
 import { userCredentials, users } from '../../src/db/schema/index.js';
 import { ARCHIVE_PROBLEMS } from '../../src/scorm/archive.js';
+import { withPackageSlot } from '../../src/scorm/inspection.js';
 import { CARTRIDGE_FIXTURES, type CartridgeFixture } from '../helpers/cartridge.js';
 import { createTestDatabase, testServerUrl } from '../helpers/database.js';
 import { multipartBody } from '../helpers/documents.js';
@@ -251,6 +252,22 @@ describe('Common Cartridge inspection worker', () => {
     assert.deepEqual(await inspectCartridgeInWorker(bytes, { fileName: 'course.imscc' }), await inspectCartridge(bytes, { fileName: 'course.imscc' }));
     const limited = await inspectCartridgeInWorker(CARTRIDGE_FIXTURES.manyResources(), { fileName: 'big.imscc', timeoutMs: 1 });
     refused(limited, 'CARTRIDGE_INSPECTION_LIMIT');
+  });
+
+  it('shares the SCORM inspection worker pool: no more than two package workers run at once in one API process', async () => {
+    const releases: Array<() => void> = [];
+    const held = [0, 1].map(() => withPackageSlot(() => new Promise<void>((resolve) => releases.push(resolve))));
+    let done = false;
+    const waiting = inspectCartridgeInWorker(CARTRIDGE_FIXTURES.cc13(), { fileName: 'course.imscc' }).then((report) => {
+      done = true;
+      return report;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(done, false, 'the cartridge inspection waits while two SCORM inspections hold both slots');
+    releases.shift()!();
+    assert.equal((await waiting).status, 'valid');
+    releases.shift()!();
+    await Promise.all(held);
   });
 });
 

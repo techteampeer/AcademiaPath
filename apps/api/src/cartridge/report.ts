@@ -20,7 +20,6 @@ export const CARTRIDGE_LIMITS = {
   maxLinkIssuesPerPage: 3,
   timeoutMs: 30_000,
   workerHeapMb: 256,
-  maxConcurrent: 2,
 } as const;
 
 export const CARTRIDGE_ISSUE_MESSAGES = {
