@@ -14,6 +14,7 @@ import { api } from '@/lib/api/endpoints';
 import { Badge } from '@/components/ui/Badge';
 import type { QuizFeedback, StudentQuizAttemptSummary } from '@/lib/api/types';
 import { formatDateTimeOrDash } from '@/lib/i18n/messages';
+import { optionLabel } from './quizDisplay';
 
 type State = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; summary: StudentQuizAttemptSummary };
 
@@ -57,7 +58,7 @@ function AttemptFeedback({ courseId, attemptId }: { courseId: string; attemptId:
       </p>
       <ol className="space-y-2">
         {feedback.questions.map((question, index) => {
-          const chosen = question.options.filter((option) => question.selectedOptionIds.includes(option.id)).map((option) => option.text);
+          const chosen = question.options.filter((option) => question.selectedOptionIds.includes(option.id)).map((option) => optionLabel(t, question.type, option));
           return (
             <li key={question.questionId} className="rounded-md bg-slate-50 p-3">
               <div className="flex flex-wrap items-start justify-between gap-2">

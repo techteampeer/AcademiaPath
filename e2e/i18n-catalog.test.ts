@@ -106,6 +106,22 @@ describe('interface text in components', () => {
   });
 });
 
+describe('quiz option labels (AP-QA-03)', () => {
+  it('quiz components label options through optionLabel, so system-generated true/false options follow the interface language', () => {
+    const quizzes = path.join(ROOT, 'apps/web/src/components/quizzes');
+    // A stored option's text shown directly (not an <input value> the instructor is editing) would bypass the
+    // localization of the canonical true/false options ("true" / "false"), whose stored text is the English default.
+    const direct = files(quizzes).flatMap((file) =>
+      readFileSync(file, 'utf8')
+        .split('\n')
+        .flatMap((line, index) => (/(?<!=)\{\s*option\.text\s*\}|=>\s*option\.text\s*\)/.test(line) ? [`${path.relative(ROOT, file)}:${index + 1}`] : [])),
+    );
+    assert.deepEqual(direct, []);
+    assert.deepEqual([MESSAGES.en.quiz.form.trueLabel, MESSAGES.en.quiz.form.falseLabel], ['True', 'False']);
+    assert.deepEqual([MESSAGES.es.quiz.form.trueLabel, MESSAGES.es.quiz.form.falseLabel], ['Verdadero', 'Falso']);
+  });
+});
+
 describe('content quality findings (AP-029)', () => {
   it('every quality code the API can report has an English and a Spanish description and correction guidance', () => {
     for (const locale of ['en', 'es'] as const) {

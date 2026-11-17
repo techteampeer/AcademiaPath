@@ -14,6 +14,7 @@ import { isApiError } from '@/lib/api/client';
 import { api } from '@/lib/api/endpoints';
 import type { StudentQuizAttempt } from '@/lib/api/types';
 import { formatDateTimeOrDash } from '@/lib/i18n/messages';
+import { optionLabel } from './quizDisplay';
 
 type ViewState = { status: 'loading' } | { status: 'not-found' } | { status: 'error' } | { status: 'ready'; attempt: StudentQuizAttempt };
 type Selections = Record<string, string[]>;
@@ -258,7 +259,7 @@ function AttemptContent({ courseId, attemptId }: { courseId: string; attemptId: 
                         disabled={pending}
                       />
                       <label htmlFor={inputId} className="text-sm text-slate-800">
-                        {option.text}
+                        {optionLabel(t, question.type, option)}
                       </label>
                     </div>
                   );

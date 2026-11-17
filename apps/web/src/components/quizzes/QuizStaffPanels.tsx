@@ -14,6 +14,7 @@ import { isApiError } from '@/lib/api/client';
 import { api, loadAll } from '@/lib/api/endpoints';
 import type { QuizAttemptResult, QuizQuestion, QuizQuestionInput, QuizQuestionType, QuizResult } from '@/lib/api/types';
 import { formatDateTimeOrDash, type Messages } from '@/lib/i18n/messages';
+import { optionLabel } from './quizDisplay';
 
 type Load<T> = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; data: T };
 
@@ -118,7 +119,7 @@ export function QuizQuestionsPanel({
                 {question.options.map((option) => (
                   <li key={option.id} className={option.isCorrect ? 'font-medium text-emerald-800' : 'text-slate-700'}>
                     {option.isCorrect ? '✓ ' : '• '}
-                    {option.text}
+                    {optionLabel(t, question.type, option)}
                     {option.isCorrect ? <span className="sr-only"> {qb.correctAnswerSr}</span> : null}
                   </li>
                 ))}
@@ -556,7 +557,7 @@ function AttemptDetail({ detail, onClose }: { detail: Load<QuizAttemptResult>; o
                 {question.options.map((option) => (
                   <li key={option.id} className="text-slate-700">
                     {selected.has(option.id) ? '☑ ' : '☐ '}
-                    {option.text}
+                    {optionLabel(t, question.type, option)}
                     {selected.has(option.id) ? ` ${r.selected}` : ''}
                     {option.isCorrect ? ` ${r.correctAnswer}` : ''}
                   </li>
