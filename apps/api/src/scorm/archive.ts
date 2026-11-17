@@ -2,13 +2,52 @@ import { crc32 } from 'node:zlib';
 import yauzl, { type Entry, type ZipFile } from 'yauzl';
 import { SCORM_LIMITS } from './limits.js';
 import { checkEntryName, collisionKey } from './paths.js';
-import type { IssueList } from './report.js';
 
 /**
  * AP-033B: structural and safety inspection of an untrusted ZIP archive, entirely in memory. Entry names are decoded
  * and checked by this module (never by an extractor), every entry is decompressed only to count its bytes and verify
- * its CRC-32, and only imsmanifest.xml is kept. Nothing is written to disk.
+ * its CRC-32, and only imsmanifest.xml (plus any small file the caller asks to keep) is kept. Nothing is written to disk.
+ * Shared by the SCORM (AP-033B) and Common Cartridge (AP-038D) inspectors, which report its problems under their own
+ * issue codes.
  */
+export type ArchiveProblem =
+  | 'ARCHIVE_INVALID'
+  | 'ARCHIVE_TOO_MANY_ENTRIES'
+  | 'ARCHIVE_TOO_LARGE'
+  | 'PATH_TRAVERSAL'
+  | 'PATH_ABSOLUTE'
+  | 'PATH_INVALID'
+  | 'PATH_DUPLICATE'
+  | 'PATH_COLLISION'
+  | 'ENTRY_ENCRYPTED'
+  | 'ENTRY_SYMLINK'
+  | 'ENTRY_SPECIAL_FILE'
+  | 'ENTRY_COMPRESSION_UNSUPPORTED'
+  | 'ENTRY_TOO_LARGE'
+  | 'ENTRY_EXPANSION_RATIO'
+  | 'ENTRY_CORRUPT';
+export const ARCHIVE_PROBLEMS: readonly ArchiveProblem[] = [
+  'ARCHIVE_INVALID',
+  'ARCHIVE_TOO_MANY_ENTRIES',
+  'ARCHIVE_TOO_LARGE',
+  'PATH_TRAVERSAL',
+  'PATH_ABSOLUTE',
+  'PATH_INVALID',
+  'PATH_DUPLICATE',
+  'PATH_COLLISION',
+  'ENTRY_ENCRYPTED',
+  'ENTRY_SYMLINK',
+  'ENTRY_SPECIAL_FILE',
+  'ENTRY_COMPRESSION_UNSUPPORTED',
+  'ENTRY_TOO_LARGE',
+  'ENTRY_EXPANSION_RATIO',
+  'ENTRY_CORRUPT',
+];
+/** Receives archive problems; each package format maps them to its own issue codes. */
+export type ArchiveIssueSink = { error(problem: ArchiveProblem, details?: { path?: string | null; limit?: number | null; value?: string | null }): void };
+/** Small files a caller wants to read after verification (e.g. resource descriptors); bounded by the caller. */
+export type ArchiveScanOptions = { keep?: (path: string, size: number) => boolean };
+
 export type ArchiveFile = { path: string; size: number };
 
 export type ArchiveScan = {
@@ -25,6 +64,8 @@ export type ArchiveScan = {
   /** Bytes of the root imsmanifest.xml, when present and within the size limit. */
   manifest: Buffer | null;
   manifestTooLarge: boolean;
+  /** Verified bytes of the other files the caller asked to keep. */
+  kept: Map<string, Buffer>;
 };
 
 export const MANIFEST_PATH = 'imsmanifest.xml';
@@ -96,27 +137,28 @@ const emptyScan = (): ArchiveScan => ({
   byKey: new Map(),
   manifest: null,
   manifestTooLarge: false,
+  kept: new Map(),
 });
 
-export async function scanArchive(bytes: Buffer, issues: IssueList): Promise<ArchiveScan> {
+export async function scanArchive(bytes: Buffer, issues: ArchiveIssueSink, options: ArchiveScanOptions = {}): Promise<ArchiveScan> {
   const scan = emptyScan();
   if (!ZIP_SIGNATURES.some((signature) => bytes.subarray(0, 4).equals(signature))) {
-    issues.error('SCORM_ARCHIVE_INVALID');
+    issues.error('ARCHIVE_INVALID');
     return scan;
   }
   const zip = await open(bytes);
   if (!zip) {
-    issues.error('SCORM_ARCHIVE_INVALID');
+    issues.error('ARCHIVE_INVALID');
     return scan;
   }
   try {
     if (zip.entryCount > SCORM_LIMITS.maxEntries) {
-      issues.error('SCORM_ARCHIVE_TOO_MANY_ENTRIES', { limit: SCORM_LIMITS.maxEntries });
+      issues.error('ARCHIVE_TOO_MANY_ENTRIES', { limit: SCORM_LIMITS.maxEntries });
       return scan;
     }
     const entries = await listEntries(zip);
     if (!entries) {
-      issues.error('SCORM_ARCHIVE_INVALID');
+      issues.error('ARCHIVE_INVALID');
       return scan;
     }
 
@@ -133,12 +175,12 @@ export async function scanArchive(bytes: Buffer, issues: IssueList): Promise<Arc
       const problem = checkEntryName(name);
       if (problem) {
         safe = false;
-        issues.error(problem === 'traversal' ? 'SCORM_PATH_TRAVERSAL' : problem === 'absolute' ? 'SCORM_PATH_ABSOLUTE' : 'SCORM_PATH_INVALID', { path: name });
+        issues.error(problem === 'traversal' ? 'PATH_TRAVERSAL' : problem === 'absolute' ? 'PATH_ABSOLUTE' : 'PATH_INVALID', { path: name });
         continue;
       }
       if (entry.isEncrypted()) {
         safe = false;
-        issues.error('SCORM_ENTRY_ENCRYPTED', { path: name });
+        issues.error('ENTRY_ENCRYPTED', { path: name });
         continue;
       }
       const isFolder = name.endsWith('/');
@@ -146,7 +188,7 @@ export async function scanArchive(bytes: Buffer, issues: IssueList): Promise<Arc
       const fileType = ((entry.externalFileAttributes >>> 16) & 0xffff) & S_IFMT;
       if (UNIX_HOSTS.has(host) && fileType !== 0 && fileType !== S_IFREG && fileType !== S_IFDIR) {
         safe = false;
-        issues.error(fileType === S_IFLNK ? 'SCORM_ENTRY_SYMLINK' : 'SCORM_ENTRY_SPECIAL_FILE', { path: name });
+        issues.error(fileType === S_IFLNK ? 'ENTRY_SYMLINK' : 'ENTRY_SPECIAL_FILE', { path: name });
         continue;
       }
 
@@ -157,14 +199,14 @@ export async function scanArchive(bytes: Buffer, issues: IssueList): Promise<Arc
         // Repeated folder entries are harmless; a repeated file name is ambiguous.
         if (!(previous === 'folder' && isFolder)) {
           safe = false;
-          issues.error('SCORM_PATH_DUPLICATE', { path });
+          issues.error('PATH_DUPLICATE', { path });
         }
         continue;
       }
       const sameKey = keys.get(key);
       if (sameKey !== undefined && sameKey !== path) {
         safe = false;
-        issues.error('SCORM_PATH_COLLISION', { path, value: sameKey });
+        issues.error('PATH_COLLISION', { path, value: sameKey });
         continue;
       }
       exact.set(path, isFolder ? 'folder' : 'file');
@@ -178,24 +220,24 @@ export async function scanArchive(bytes: Buffer, issues: IssueList): Promise<Arc
 
       if (entry.compressionMethod !== 0 && entry.compressionMethod !== 8) {
         safe = false;
-        issues.error('SCORM_ENTRY_COMPRESSION_UNSUPPORTED', { path, value: String(entry.compressionMethod) });
+        issues.error('ENTRY_COMPRESSION_UNSUPPORTED', { path, value: String(entry.compressionMethod) });
         continue;
       }
       if (entry.uncompressedSize > SCORM_LIMITS.maxEntryBytes) {
         safe = false;
-        issues.error('SCORM_ENTRY_TOO_LARGE', { path, limit: SCORM_LIMITS.maxEntryBytes });
+        issues.error('ENTRY_TOO_LARGE', { path, limit: SCORM_LIMITS.maxEntryBytes });
         continue;
       }
       if (entry.uncompressedSize >= SCORM_LIMITS.ratioCheckFromBytes && entry.uncompressedSize / Math.max(entry.compressedSize, 1) > SCORM_LIMITS.maxExpansionRatio) {
         safe = false;
-        issues.error('SCORM_ENTRY_EXPANSION_RATIO', { path, limit: SCORM_LIMITS.maxExpansionRatio });
+        issues.error('ENTRY_EXPANSION_RATIO', { path, limit: SCORM_LIMITS.maxExpansionRatio });
         continue;
       }
       declaredTotal += entry.uncompressedSize;
       if (declaredTotal > SCORM_LIMITS.maxTotalBytes && !totalReported) {
         safe = false;
         totalReported = true;
-        issues.error('SCORM_ARCHIVE_TOO_LARGE', { limit: SCORM_LIMITS.maxTotalBytes });
+        issues.error('ARCHIVE_TOO_LARGE', { limit: SCORM_LIMITS.maxTotalBytes });
       }
       fileEntries.push({ entry, path });
     }
@@ -205,7 +247,7 @@ export async function scanArchive(bytes: Buffer, issues: IssueList): Promise<Arc
       const clash = keys.get(collisionKey(folder));
       if (clash !== undefined && exact.get(clash) === 'file') {
         safe = false;
-        issues.error('SCORM_PATH_COLLISION', { path: clash });
+        issues.error('PATH_COLLISION', { path: clash });
       }
     }
 
@@ -218,14 +260,15 @@ export async function scanArchive(bytes: Buffer, issues: IssueList): Promise<Arc
     for (const { entry, path } of fileEntries) {
       const isManifest = path === MANIFEST_PATH;
       const tooLargeManifest = isManifest && entry.uncompressedSize > SCORM_LIMITS.maxManifestBytes;
-      const result = await verifyEntry(zip, entry, isManifest && !tooLargeManifest);
+      const keep = !isManifest && options.keep?.(path, entry.uncompressedSize) === true;
+      const result = await verifyEntry(zip, entry, (isManifest && !tooLargeManifest) || keep);
       if (!result.ok) {
-        issues.error('SCORM_ENTRY_CORRUPT', { path });
+        issues.error('ENTRY_CORRUPT', { path });
         return scan;
       }
       verifiedTotal += result.size;
       if (verifiedTotal > SCORM_LIMITS.maxTotalBytes) {
-        issues.error('SCORM_ARCHIVE_TOO_LARGE', { limit: SCORM_LIMITS.maxTotalBytes });
+        issues.error('ARCHIVE_TOO_LARGE', { limit: SCORM_LIMITS.maxTotalBytes });
         return scan;
       }
       scan.files.set(path, { path, size: result.size });
@@ -233,6 +276,8 @@ export async function scanArchive(bytes: Buffer, issues: IssueList): Promise<Arc
       if (isManifest) {
         scan.manifest = result.bytes;
         scan.manifestTooLarge = tooLargeManifest;
+      } else if (keep && result.bytes) {
+        scan.kept.set(path, result.bytes);
       }
     }
     scan.uncompressedBytes = verifiedTotal;

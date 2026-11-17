@@ -88,6 +88,15 @@ export function DocumentLibrary({
           <p className="text-xs text-slate-500">{t.scorm.libraryHint}</p>
         </div>
       ) : null}
+      {/* AP-038D: Common Cartridge (.imscc) exports can be inspected (dry run) by the same content editors. */}
+      {abilities.edit ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <Link href={`/courses/${courseId}/cartridge-inspection`} className={buttonClasses({ variant: 'secondary', size: 'sm' })} data-cartridge-inspection-link>
+            {t.cartridge.libraryLink}
+          </Link>
+          <p className="text-xs text-slate-500">{t.cartridge.libraryHint}</p>
+        </div>
+      ) : null}
     </Card>
   );
 }

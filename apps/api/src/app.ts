@@ -19,6 +19,7 @@ import { checkStorageReadiness } from './documents/readiness.js';
 import { LocalDocumentStorage } from './documents/storage.js';
 import { systemRoutes } from './routes/system.js';
 import { scormRoutes } from './routes/scorm.js';
+import { cartridgeRoutes } from './routes/cartridge.js';
 import { mockSummaryProvider } from './documents/summary.js';
 import { healthRoutes } from './routes/health.js';
 import { meRoutes } from './routes/me.js';
@@ -167,6 +168,7 @@ export function buildApp({ config, database, logger = false, documents = {}, clo
   const documentStorage = documents.storage ?? new LocalDocumentStorage(config.documents.storageDir, { createRoot: config.documents.createStorageDir });
   app.register(systemRoutes, { prefix: API_PREFIX });
   app.register(scormRoutes, { prefix: API_PREFIX });
+  app.register(cartridgeRoutes, { prefix: API_PREFIX });
   app.register(courseExportRoutes, { prefix: API_PREFIX, storage: documentStorage });
   app.register(courseImportRoutes, { prefix: API_PREFIX });
   app.register(documentRoutes, {

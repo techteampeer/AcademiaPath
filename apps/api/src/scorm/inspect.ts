@@ -1,8 +1,14 @@
 import { createHash } from 'node:crypto';
-import { MANIFEST_PATH, scanArchive, type ArchiveScan } from './archive.js';
+import { MANIFEST_PATH, scanArchive, type ArchiveIssueSink, type ArchiveProblem, type ArchiveScan } from './archive.js';
 import { SCORM_LIMITS } from './limits.js';
 import { analyzeManifest, decodeManifest, ManifestFailure, parseManifestXml, type ManifestAnalysis } from './manifest.js';
-import { clean, IssueList, type ScormInspectionReport, type ScormIssueCode } from './report.js';
+import { clean, ISSUE_MESSAGES, IssueList, type ScormInspectionReport, type ScormIssueCode } from './report.js';
+
+/** Every archive problem has its SCORM issue code (checked by the compiler). */
+const ARCHIVE_CODES: Pick<typeof ISSUE_MESSAGES, `SCORM_${ArchiveProblem}`> = ISSUE_MESSAGES;
+const archiveIssues = (issues: IssueList): ArchiveIssueSink => ({
+  error: (problem, details) => issues.error(`SCORM_${problem}` satisfies keyof typeof ARCHIVE_CODES, details),
+});
 
 /**
  * AP-033B: inspects one untrusted SCORM package held in memory and returns a bounded report. Read-only: nothing is
@@ -14,7 +20,7 @@ export async function inspectPackage(bytes: Buffer, options: { fileName?: string
     issues.error('SCORM_PACKAGE_TOO_LARGE', { limit: SCORM_LIMITS.maxPackageBytes });
     return buildReport(factsOf(bytes), options.fileName, null, null, issues);
   }
-  const archive = await scanArchive(bytes, issues);
+  const archive = await scanArchive(bytes, archiveIssues(issues));
   if (!archive.safe) return buildReport(factsOf(bytes), options.fileName, archive, null, issues);
 
   if (!archive.manifest) {

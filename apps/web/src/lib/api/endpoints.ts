@@ -5,6 +5,7 @@ import type {
   CourseImportRequest,
   CourseImportResult,
   ScormInspectionReport,
+  CartridgeInspectionReport,
   AccountInvitation,
   Activity,
   QualityReport,
@@ -497,6 +498,12 @@ export const api = {
     const form = new FormData();
     form.append('file', file);
     return apiUpload<ScormInspectionReport>(`${course(courseId)}/scorm-inspections`, form, csrfToken);
+  },
+  // AP-038D: dry-run Common Cartridge (.imscc) inspection; nothing is imported or stored.
+  inspectCommonCartridge: (courseId: string, file: File, csrfToken: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    return apiUpload<CartridgeInspectionReport>(`${course(courseId)}/cartridge-inspections`, form, csrfToken);
   },
   /** AP-031D: extractive study brief of the readable document version (computed on the API; nothing stored). */
   getDocumentStudyBrief: (courseId: string, activityId: string) => apiRequest<DocumentStudyBrief>('GET', `${activity(courseId, activityId)}/document/brief`),
