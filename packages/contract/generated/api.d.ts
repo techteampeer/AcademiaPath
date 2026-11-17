@@ -1961,6 +1961,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{id}/cartridge-inspections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inspect an IMS Common Cartridge (dry run, AP-038D)
+         * @description Inspects an IMS Common Cartridge package (`.imscc`), such as a Canvas course export, and returns a
+         *     compatibility report. This is a **dry run**: nothing is written to the database or to storage, nothing is
+         *     imported or published, no HTML, JavaScript or other embedded content is executed, no address in the package
+         *     is fetched, and no file is extracted to disk. The package is not kept.
+         *
+         *     The version is identified from the manifest (schema, schema version and namespace), never from the file
+         *     name. Common Cartridge 1.0, 1.1, 1.2 and 1.3 are inspected; any other version (e.g. 1.4) is answered with an
+         *     unsupported-version report and is not parsed as a known version. SCORM packages and plain IMS content
+         *     packages are recognised and refused with an explanation. Canvas-specific extensions are detected and reported.
+         *
+         *     Requires `content.edit` (design team, instructor) or the administrator role; non-editing instructors and
+         *     students get 403, and callers who cannot see the course get 404. Send `multipart/form-data` with exactly one
+         *     `file` part: an `.imscc` (or `.zip`) of at most 25 MB (larger: 413; another extension: 415
+         *     `UNSUPPORTED_FILE_TYPE`).
+         *
+         *     The package is inspected in an isolated worker with time and memory limits, with the archive checks of the
+         *     SCORM inspection (path traversal, absolute and invalid names, symbolic links and special files, encryption,
+         *     duplicate and colliding names, unsupported compression, ZIP bombs, damaged entries). Every XML file is
+         *     parsed without a DTD (a DOCTYPE is refused, so entities are never expanded or fetched) and within depth and
+         *     element limits. A package that fails any check is still answered with `200` and a report whose `status` is
+         *     `invalid`; `issues` explains why. Classifications describe potential mappings only: no import exists yet.
+         *     Rate limited per user (30 inspections per 10 minutes).
+         */
+        post: operations["inspectCommonCartridge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{id}/export": {
         parameters: {
             query?: never;
@@ -4341,6 +4382,156 @@ export interface components {
             title?: string;
             /** @description One PDF, DOCX or PPTX file. */
             file: string;
+        };
+        CartridgeUpload: {
+            /** @description One IMS Common Cartridge as an .imscc (or .zip) file (at most 25 MB). */
+            file: string;
+        };
+        /**
+         * @description What a resource is, from its declared type and (for Canvas variants) its files.
+         * @enum {string}
+         */
+        CartridgeResourceKind: "page" | "file" | "assessment" | "question_bank" | "assignment" | "discussion" | "web_link" | "lti_link" | "canvas_settings" | "learning_application" | "other_standard" | "unknown";
+        /**
+         * @description `recognized`: understood, with no counterpart of its own (supporting files, Canvas settings).
+         *     `mappable`: could map to an existing AcademiaPath feature (not imported: no import exists yet).
+         *     `transform`: would need conversion first. `unsupported`: no counterpart. `invalid`: broken or unsafe.
+         * @enum {string}
+         */
+        CartridgeClassification: "recognized" | "mappable" | "transform" | "unsupported" | "invalid";
+        /**
+         * @description The AcademiaPath feature a resource could map to.
+         * @enum {string|null}
+         */
+        CartridgeTarget: "section" | "lesson" | "document" | "quiz" | "assignment" | "forum" | "link" | null;
+        /**
+         * @description One finding. `message` is English; clients show their own text for `code`. `path` is a package-relative
+         *     path; `line` a line in imsmanifest.xml; neither is ever a server path.
+         */
+        CartridgeInspectionIssue: {
+            /** @enum {string} */
+            code: "CARTRIDGE_ARCHIVE_INVALID" | "CARTRIDGE_ARCHIVE_TOO_MANY_ENTRIES" | "CARTRIDGE_ARCHIVE_TOO_LARGE" | "CARTRIDGE_ARCHIVE_EMPTY" | "CARTRIDGE_PATH_TRAVERSAL" | "CARTRIDGE_PATH_ABSOLUTE" | "CARTRIDGE_PATH_INVALID" | "CARTRIDGE_PATH_DUPLICATE" | "CARTRIDGE_PATH_COLLISION" | "CARTRIDGE_ENTRY_ENCRYPTED" | "CARTRIDGE_ENTRY_SYMLINK" | "CARTRIDGE_ENTRY_SPECIAL_FILE" | "CARTRIDGE_ENTRY_COMPRESSION_UNSUPPORTED" | "CARTRIDGE_ENTRY_TOO_LARGE" | "CARTRIDGE_ENTRY_EXPANSION_RATIO" | "CARTRIDGE_ENTRY_CORRUPT" | "CARTRIDGE_MANIFEST_MISSING" | "CARTRIDGE_MANIFEST_NESTED" | "CARTRIDGE_MANIFEST_TOO_LARGE" | "CARTRIDGE_MANIFEST_ENCODING" | "CARTRIDGE_MANIFEST_MALFORMED" | "CARTRIDGE_MANIFEST_DOCTYPE" | "CARTRIDGE_MANIFEST_TOO_DEEP" | "CARTRIDGE_MANIFEST_TOO_MANY_ELEMENTS" | "CARTRIDGE_MANIFEST_ROOT_INVALID" | "CARTRIDGE_IS_SCORM" | "CARTRIDGE_NOT_CARTRIDGE" | "CARTRIDGE_VERSION_UNSUPPORTED" | "CARTRIDGE_VERSION_UNDECLARED" | "CARTRIDGE_VERSION_MISMATCH" | "CARTRIDGE_THIN" | "CARTRIDGE_CANVAS_EXTENSIONS" | "CARTRIDGE_ORGANIZATION_MISSING" | "CARTRIDGE_ORGANIZATION_MULTIPLE" | "CARTRIDGE_ORGANIZATION_NESTED" | "CARTRIDGE_ITEM_RESOURCE_MISSING" | "CARTRIDGE_RESOURCES_EMPTY" | "CARTRIDGE_RESOURCE_IDENTIFIER_MISSING" | "CARTRIDGE_RESOURCE_IDENTIFIER_DUPLICATE" | "CARTRIDGE_RESOURCE_FILE_MISSING" | "CARTRIDGE_RESOURCE_HREF_OUTSIDE" | "CARTRIDGE_RESOURCE_HREF_DANGEROUS" | "CARTRIDGE_RESOURCE_HREF_INVALID" | "CARTRIDGE_RESOURCE_HREF_EXTERNAL" | "CARTRIDGE_DEPENDENCY_MISSING" | "CARTRIDGE_RESOURCE_TYPE_UNKNOWN" | "CARTRIDGE_RESOURCE_INLINE" | "CARTRIDGE_DESCRIPTOR_MALFORMED" | "CARTRIDGE_DESCRIPTOR_DOCTYPE" | "CARTRIDGE_DESCRIPTOR_LIMIT" | "CARTRIDGE_QTI_VERSION_UNSUPPORTED" | "CARTRIDGE_QUESTION_TYPE_UNSUPPORTED" | "CARTRIDGE_ASSESSMENT_EMPTY" | "CARTRIDGE_LINK_BROKEN" | "CARTRIDGE_LINK_DANGEROUS" | "CARTRIDGE_WEBLINK_INSECURE" | "CARTRIDGE_INSPECTION_FAILED" | "CARTRIDGE_INSPECTION_LIMIT";
+            /** @enum {string} */
+            severity: "error" | "warning";
+            message: string;
+            path: string | null;
+            line: number | null;
+            limit: number | null;
+            value: string | null;
+        };
+        CartridgeResource: {
+            identifier: string | null;
+            /** @description The declared resource type, as written. */
+            type: string | null;
+            kind: components["schemas"]["CartridgeResourceKind"];
+            classification: components["schemas"]["CartridgeClassification"];
+            target: components["schemas"]["CartridgeTarget"];
+            title: string | null;
+            href: string | null;
+            /** @description A Canvas-specific variant or file, not defined by the Common Cartridge standard. */
+            canvas: boolean;
+            inOutline: boolean;
+            fileCount: number;
+            missingFileCount: number;
+            dependencyCount: number;
+            questionCount: number | null;
+            questionTypes: {
+                type: string;
+                count: number;
+                supported: boolean;
+            }[];
+            /** @description Web link or LTI launch address as written (never fetched). */
+            url: string | null;
+            submissionTypes: string[];
+            externalLinks: number;
+            brokenLinks: number;
+            canvasLinks: number;
+        };
+        CartridgeOutlineModule: {
+            title: string | null;
+            itemCount: number;
+            items: {
+                title: string | null;
+                identifierref: string | null;
+                kind: components["schemas"]["CartridgeResourceKind"] | null;
+                classification: components["schemas"]["CartridgeClassification"] | null;
+                depth: number;
+            }[];
+        };
+        /**
+         * @description The dry-run inspection of one Common Cartridge (AP-038D). `imported` is always false. Lists are capped at
+         *     500 entries and issues at 200 (`listsTruncated`, `issuesTruncated`); counts are always complete.
+         */
+        CartridgeInspectionReport: {
+            /** @enum {string} */
+            status: "valid" | "valid_with_warnings" | "invalid";
+            /** @enum {boolean} */
+            imported: false;
+            /** @enum {string} */
+            format: "common_cartridge" | "thin_common_cartridge" | "scorm" | "ims_content_package" | "unknown";
+            /** @enum {string|null} */
+            version: "1.0" | "1.1" | "1.2" | "1.3" | null;
+            declared: {
+                schema: string | null;
+                schemaVersion: string | null;
+                namespace: string | null;
+            };
+            canvas: {
+                detected: boolean;
+                signals: string[];
+            };
+            title: string | null;
+            description: string | null;
+            language: string | null;
+            package: {
+                fileName: string | null;
+                compressedBytes: number;
+                uncompressedBytes: number | null;
+                fileCount: number;
+                folderCount: number;
+            };
+            counts: {
+                modules: number;
+                outlineItems: number;
+                resources: number;
+                questions: number;
+                externalLinks: number;
+                brokenReferences: number;
+                byKind: {
+                    page: number;
+                    file: number;
+                    assessment: number;
+                    question_bank: number;
+                    assignment: number;
+                    discussion: number;
+                    web_link: number;
+                    lti_link: number;
+                    canvas_settings: number;
+                    learning_application: number;
+                    other_standard: number;
+                    unknown: number;
+                };
+                byClassification: {
+                    recognized: number;
+                    mappable: number;
+                    transform: number;
+                    unsupported: number;
+                    invalid: number;
+                };
+            };
+            modules: components["schemas"]["CartridgeOutlineModule"][];
+            resources: components["schemas"]["CartridgeResource"][];
+            /** @description Resources grouped by kind and how they relate to AcademiaPath (recognized and invalid ones excluded). */
+            compatibility: {
+                kind: components["schemas"]["CartridgeResourceKind"] | "module";
+                count: number;
+                target: components["schemas"]["CartridgeTarget"];
+                /** @enum {string} */
+                support: "direct" | "transform" | "new_functionality" | "unsupported";
+            }[];
+            issues: components["schemas"]["CartridgeInspectionIssue"][];
+            issuesTruncated: boolean;
+            listsTruncated: boolean;
         };
         ScormPackageUpload: {
             /** @description One SCORM package as a .zip file (at most 25 MB). */
@@ -9906,6 +10097,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScormInspectionReport"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    inspectCommonCartridge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["CartridgeUpload"];
+            };
+        };
+        responses: {
+            /** @description The inspection report. Nothing was stored, imported or published. */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartridgeInspectionReport"];
                 };
             };
             400: components["responses"]["ValidationError"];

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.31.0
+  version: 0.32.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -294,6 +294,8 @@ tags:
     description: Uploaded course documents, extracted text and mock summaries
   - name: SCORM
     description: SCORM package inspection (dry run; SCORM import and playback are not available yet)
+  - name: Common Cartridge
+    description: IMS Common Cartridge (.imscc) inspection, e.g. Canvas course exports (dry run; import is not available yet)
   - name: Progress
     description: Server-calculated learning progress, completion marks and section prerequisites
 paths:
@@ -3615,6 +3617,73 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ScormInspectionReport"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/courses/{id}/cartridge-inspections:
+    post:
+      operationId: inspectCommonCartridge
+      summary: Inspect an IMS Common Cartridge (dry run, AP-038D)
+      description: |
+        Inspects an IMS Common Cartridge package (`.imscc`), such as a Canvas course export, and returns a
+        compatibility report. This is a **dry run**: nothing is written to the database or to storage, nothing is
+        imported or published, no HTML, JavaScript or other embedded content is executed, no address in the package
+        is fetched, and no file is extracted to disk. The package is not kept.
+
+        The version is identified from the manifest (schema, schema version and namespace), never from the file
+        name. Common Cartridge 1.0, 1.1, 1.2 and 1.3 are inspected; any other version (e.g. 1.4) is answered with an
+        unsupported-version report and is not parsed as a known version. SCORM packages and plain IMS content
+        packages are recognised and refused with an explanation. Canvas-specific extensions are detected and reported.
+
+        Requires `content.edit` (design team, instructor) or the administrator role; non-editing instructors and
+        students get 403, and callers who cannot see the course get 404. Send `multipart/form-data` with exactly one
+        `file` part: an `.imscc` (or `.zip`) of at most 25 MB (larger: 413; another extension: 415
+        `UNSUPPORTED_FILE_TYPE`).
+
+        The package is inspected in an isolated worker with time and memory limits, with the archive checks of the
+        SCORM inspection (path traversal, absolute and invalid names, symbolic links and special files, encryption,
+        duplicate and colliding names, unsupported compression, ZIP bombs, damaged entries). Every XML file is
+        parsed without a DTD (a DOCTYPE is refused, so entities are never expanded or fetched) and within depth and
+        element limits. A package that fails any check is still answered with `200` and a report whose `status` is
+        `invalid`; `issues` explains why. Classifications describe potential mappings only: no import exists yet.
+        Rate limited per user (30 inspections per 10 minutes).
+      tags:
+        - Common Cartridge
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CartridgeUpload"
+            encoding:
+              file:
+                contentType: application/zip, application/x-zip-compressed, application/octet-stream
+      responses:
+        "200":
+          description: The inspection report. Nothing was stored, imported or published.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CartridgeInspectionReport"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -8372,6 +8441,413 @@ components:
           type: string
           contentMediaType: application/octet-stream
           description: One PDF, DOCX or PPTX file.
+    CartridgeUpload:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          contentMediaType: application/zip
+          description: One IMS Common Cartridge as an .imscc (or .zip) file (at most 25 MB).
+    CartridgeResourceKind:
+      type: string
+      description: What a resource is, from its declared type and (for Canvas variants) its files.
+      enum:
+        - page
+        - file
+        - assessment
+        - question_bank
+        - assignment
+        - discussion
+        - web_link
+        - lti_link
+        - canvas_settings
+        - learning_application
+        - other_standard
+        - unknown
+    CartridgeClassification:
+      type: string
+      description: |
+        `recognized`: understood, with no counterpart of its own (supporting files, Canvas settings).
+        `mappable`: could map to an existing AcademiaPath feature (not imported: no import exists yet).
+        `transform`: would need conversion first. `unsupported`: no counterpart. `invalid`: broken or unsafe.
+      enum:
+        - recognized
+        - mappable
+        - transform
+        - unsupported
+        - invalid
+    CartridgeTarget:
+      type: [string, "null"]
+      description: The AcademiaPath feature a resource could map to.
+      enum: [section, lesson, document, quiz, assignment, forum, link, null]
+    CartridgeInspectionIssue:
+      type: object
+      description: |
+        One finding. `message` is English; clients show their own text for `code`. `path` is a package-relative
+        path; `line` a line in imsmanifest.xml; neither is ever a server path.
+      required: [code, severity, message, path, line, limit, value]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          enum:
+            - CARTRIDGE_ARCHIVE_INVALID
+            - CARTRIDGE_ARCHIVE_TOO_MANY_ENTRIES
+            - CARTRIDGE_ARCHIVE_TOO_LARGE
+            - CARTRIDGE_ARCHIVE_EMPTY
+            - CARTRIDGE_PATH_TRAVERSAL
+            - CARTRIDGE_PATH_ABSOLUTE
+            - CARTRIDGE_PATH_INVALID
+            - CARTRIDGE_PATH_DUPLICATE
+            - CARTRIDGE_PATH_COLLISION
+            - CARTRIDGE_ENTRY_ENCRYPTED
+            - CARTRIDGE_ENTRY_SYMLINK
+            - CARTRIDGE_ENTRY_SPECIAL_FILE
+            - CARTRIDGE_ENTRY_COMPRESSION_UNSUPPORTED
+            - CARTRIDGE_ENTRY_TOO_LARGE
+            - CARTRIDGE_ENTRY_EXPANSION_RATIO
+            - CARTRIDGE_ENTRY_CORRUPT
+            - CARTRIDGE_MANIFEST_MISSING
+            - CARTRIDGE_MANIFEST_NESTED
+            - CARTRIDGE_MANIFEST_TOO_LARGE
+            - CARTRIDGE_MANIFEST_ENCODING
+            - CARTRIDGE_MANIFEST_MALFORMED
+            - CARTRIDGE_MANIFEST_DOCTYPE
+            - CARTRIDGE_MANIFEST_TOO_DEEP
+            - CARTRIDGE_MANIFEST_TOO_MANY_ELEMENTS
+            - CARTRIDGE_MANIFEST_ROOT_INVALID
+            - CARTRIDGE_IS_SCORM
+            - CARTRIDGE_NOT_CARTRIDGE
+            - CARTRIDGE_VERSION_UNSUPPORTED
+            - CARTRIDGE_VERSION_UNDECLARED
+            - CARTRIDGE_VERSION_MISMATCH
+            - CARTRIDGE_THIN
+            - CARTRIDGE_CANVAS_EXTENSIONS
+            - CARTRIDGE_ORGANIZATION_MISSING
+            - CARTRIDGE_ORGANIZATION_MULTIPLE
+            - CARTRIDGE_ORGANIZATION_NESTED
+            - CARTRIDGE_ITEM_RESOURCE_MISSING
+            - CARTRIDGE_RESOURCES_EMPTY
+            - CARTRIDGE_RESOURCE_IDENTIFIER_MISSING
+            - CARTRIDGE_RESOURCE_IDENTIFIER_DUPLICATE
+            - CARTRIDGE_RESOURCE_FILE_MISSING
+            - CARTRIDGE_RESOURCE_HREF_OUTSIDE
+            - CARTRIDGE_RESOURCE_HREF_DANGEROUS
+            - CARTRIDGE_RESOURCE_HREF_INVALID
+            - CARTRIDGE_RESOURCE_HREF_EXTERNAL
+            - CARTRIDGE_DEPENDENCY_MISSING
+            - CARTRIDGE_RESOURCE_TYPE_UNKNOWN
+            - CARTRIDGE_RESOURCE_INLINE
+            - CARTRIDGE_DESCRIPTOR_MALFORMED
+            - CARTRIDGE_DESCRIPTOR_DOCTYPE
+            - CARTRIDGE_DESCRIPTOR_LIMIT
+            - CARTRIDGE_QTI_VERSION_UNSUPPORTED
+            - CARTRIDGE_QUESTION_TYPE_UNSUPPORTED
+            - CARTRIDGE_ASSESSMENT_EMPTY
+            - CARTRIDGE_LINK_BROKEN
+            - CARTRIDGE_LINK_DANGEROUS
+            - CARTRIDGE_WEBLINK_INSECURE
+            - CARTRIDGE_INSPECTION_FAILED
+            - CARTRIDGE_INSPECTION_LIMIT
+        severity:
+          type: string
+          enum: [error, warning]
+        message:
+          type: string
+        path:
+          type: [string, "null"]
+        line:
+          type: [integer, "null"]
+        limit:
+          type: [integer, "null"]
+        value:
+          type: [string, "null"]
+    CartridgeResource:
+      type: object
+      required: [identifier, type, kind, classification, target, title, href, canvas, inOutline, fileCount, missingFileCount, dependencyCount, questionCount, questionTypes, url, submissionTypes, externalLinks, brokenLinks, canvasLinks]
+      additionalProperties: false
+      properties:
+        identifier:
+          type: [string, "null"]
+        type:
+          type: [string, "null"]
+          description: The declared resource type, as written.
+        kind:
+          $ref: "#/components/schemas/CartridgeResourceKind"
+        classification:
+          $ref: "#/components/schemas/CartridgeClassification"
+        target:
+          $ref: "#/components/schemas/CartridgeTarget"
+        title:
+          type: [string, "null"]
+        href:
+          type: [string, "null"]
+        canvas:
+          type: boolean
+          description: A Canvas-specific variant or file, not defined by the Common Cartridge standard.
+        inOutline:
+          type: boolean
+        fileCount:
+          type: integer
+          minimum: 0
+        missingFileCount:
+          type: integer
+          minimum: 0
+        dependencyCount:
+          type: integer
+          minimum: 0
+        questionCount:
+          type: [integer, "null"]
+        questionTypes:
+          type: array
+          items:
+            type: object
+            required: [type, count, supported]
+            additionalProperties: false
+            properties:
+              type:
+                type: string
+              count:
+                type: integer
+                minimum: 0
+              supported:
+                type: boolean
+        url:
+          type: [string, "null"]
+          description: Web link or LTI launch address as written (never fetched).
+        submissionTypes:
+          type: array
+          items:
+            type: string
+        externalLinks:
+          type: integer
+          minimum: 0
+        brokenLinks:
+          type: integer
+          minimum: 0
+        canvasLinks:
+          type: integer
+          minimum: 0
+    CartridgeOutlineModule:
+      type: object
+      required: [title, itemCount, items]
+      additionalProperties: false
+      properties:
+        title:
+          type: [string, "null"]
+        itemCount:
+          type: integer
+          minimum: 0
+        items:
+          type: array
+          items:
+            type: object
+            required: [title, identifierref, kind, classification, depth]
+            additionalProperties: false
+            properties:
+              title:
+                type: [string, "null"]
+              identifierref:
+                type: [string, "null"]
+              kind:
+                oneOf:
+                  - $ref: "#/components/schemas/CartridgeResourceKind"
+                  - type: "null"
+              classification:
+                oneOf:
+                  - $ref: "#/components/schemas/CartridgeClassification"
+                  - type: "null"
+              depth:
+                type: integer
+                minimum: 0
+    CartridgeInspectionReport:
+      type: object
+      description: |
+        The dry-run inspection of one Common Cartridge (AP-038D). `imported` is always false. Lists are capped at
+        500 entries and issues at 200 (`listsTruncated`, `issuesTruncated`); counts are always complete.
+      required: [status, imported, format, version, declared, canvas, title, description, language, package, counts, modules, resources, compatibility, issues, issuesTruncated, listsTruncated]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [valid, valid_with_warnings, invalid]
+        imported:
+          type: boolean
+          enum: [false]
+        format:
+          type: string
+          enum: [common_cartridge, thin_common_cartridge, scorm, ims_content_package, unknown]
+        version:
+          type: [string, "null"]
+          enum: ["1.0", "1.1", "1.2", "1.3", null]
+        declared:
+          type: object
+          required: [schema, schemaVersion, namespace]
+          additionalProperties: false
+          properties:
+            schema:
+              type: [string, "null"]
+            schemaVersion:
+              type: [string, "null"]
+            namespace:
+              type: [string, "null"]
+        canvas:
+          type: object
+          required: [detected, signals]
+          additionalProperties: false
+          properties:
+            detected:
+              type: boolean
+            signals:
+              type: array
+              items:
+                type: string
+        title:
+          type: [string, "null"]
+        description:
+          type: [string, "null"]
+        language:
+          type: [string, "null"]
+        package:
+          type: object
+          required: [fileName, compressedBytes, uncompressedBytes, fileCount, folderCount]
+          additionalProperties: false
+          properties:
+            fileName:
+              type: [string, "null"]
+            compressedBytes:
+              type: integer
+              minimum: 0
+            uncompressedBytes:
+              type: [integer, "null"]
+            fileCount:
+              type: integer
+              minimum: 0
+            folderCount:
+              type: integer
+              minimum: 0
+        counts:
+          type: object
+          required: [modules, outlineItems, resources, questions, externalLinks, brokenReferences, byKind, byClassification]
+          additionalProperties: false
+          properties:
+            modules:
+              type: integer
+              minimum: 0
+            outlineItems:
+              type: integer
+              minimum: 0
+            resources:
+              type: integer
+              minimum: 0
+            questions:
+              type: integer
+              minimum: 0
+            externalLinks:
+              type: integer
+              minimum: 0
+            brokenReferences:
+              type: integer
+              minimum: 0
+            byKind:
+              type: object
+              required: [page, file, assessment, question_bank, assignment, discussion, web_link, lti_link, canvas_settings, learning_application, other_standard, unknown]
+              additionalProperties: false
+              properties:
+                page:
+                  type: integer
+                  minimum: 0
+                file:
+                  type: integer
+                  minimum: 0
+                assessment:
+                  type: integer
+                  minimum: 0
+                question_bank:
+                  type: integer
+                  minimum: 0
+                assignment:
+                  type: integer
+                  minimum: 0
+                discussion:
+                  type: integer
+                  minimum: 0
+                web_link:
+                  type: integer
+                  minimum: 0
+                lti_link:
+                  type: integer
+                  minimum: 0
+                canvas_settings:
+                  type: integer
+                  minimum: 0
+                learning_application:
+                  type: integer
+                  minimum: 0
+                other_standard:
+                  type: integer
+                  minimum: 0
+                unknown:
+                  type: integer
+                  minimum: 0
+            byClassification:
+              type: object
+              required: [recognized, mappable, transform, unsupported, invalid]
+              additionalProperties: false
+              properties:
+                recognized:
+                  type: integer
+                  minimum: 0
+                mappable:
+                  type: integer
+                  minimum: 0
+                transform:
+                  type: integer
+                  minimum: 0
+                unsupported:
+                  type: integer
+                  minimum: 0
+                invalid:
+                  type: integer
+                  minimum: 0
+        modules:
+          type: array
+          items:
+            $ref: "#/components/schemas/CartridgeOutlineModule"
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/CartridgeResource"
+        compatibility:
+          type: array
+          description: Resources grouped by kind and how they relate to AcademiaPath (recognized and invalid ones excluded).
+          items:
+            type: object
+            required: [kind, count, target, support]
+            additionalProperties: false
+            properties:
+              kind:
+                oneOf:
+                  - $ref: "#/components/schemas/CartridgeResourceKind"
+                  - type: string
+                    enum: [module]
+              count:
+                type: integer
+                minimum: 0
+              target:
+                $ref: "#/components/schemas/CartridgeTarget"
+              support:
+                type: string
+                enum: [direct, transform, new_functionality, unsupported]
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/CartridgeInspectionIssue"
+        issuesTruncated:
+          type: boolean
+        listsTruncated:
+          type: boolean
     ScormPackageUpload:
       type: object
       required: [file]

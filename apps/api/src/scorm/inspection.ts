@@ -4,7 +4,11 @@ import { SCORM_LIMITS } from './limits.js';
 import type { ScormInspectionReport } from './report.js';
 
 const WORKER_URL = siblingWorker('inspect-worker', import.meta.url);
-const withSlot = createSlots(SCORM_LIMITS.maxConcurrent);
+/**
+ * One pool for every package-inspection worker in this API process (SCORM here, Common Cartridge in AP-038D): at most
+ * SCORM_LIMITS.maxConcurrent run at once, so adding an inspector does not raise the instance's peak memory.
+ */
+export const withPackageSlot = createSlots(SCORM_LIMITS.maxConcurrent);
 
 /**
  * AP-033B: inspects a SCORM package in a worker thread with a hard time and memory limit (shared isolation with
@@ -12,7 +16,7 @@ const withSlot = createSlots(SCORM_LIMITS.maxConcurrent);
  */
 export function inspectInWorker(bytes: Uint8Array, options: { fileName?: string | null; timeoutMs?: number } = {}): Promise<ScormInspectionReport> {
   const fileName = options.fileName ?? null;
-  return withSlot(async () => {
+  return withPackageSlot(async () => {
     const copy = transferableCopy(bytes);
     const result = await runIsolated<ScormInspectionReport>(WORKER_URL, { bytes: copy, fileName }, [copy], {
       timeoutMs: options.timeoutMs ?? SCORM_LIMITS.timeoutMs,

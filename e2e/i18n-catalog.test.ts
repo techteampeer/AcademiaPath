@@ -9,6 +9,7 @@ import { describe, it } from 'node:test';
 import { defaultTermName, localizeTermName, MESSAGES } from '../apps/web/src/lib/i18n/messages.ts';
 import { QUALITY_CODES } from '../apps/api/src/quality/rules.ts';
 import { ISSUE_CODES as SCORM_ISSUE_CODES } from '../apps/api/src/scorm/report.ts';
+import { CARTRIDGE_ISSUE_CODES, CLASSIFICATIONS, RESOURCE_KINDS } from '../apps/api/src/cartridge/report.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
@@ -150,6 +151,30 @@ describe('SCORM inspection issues (AP-033B)', () => {
       assert.deepEqual(Object.keys(MESSAGES[locale].scorm.issues).sort(), [...SCORM_ISSUE_CODES].sort(), `${locale}: catalog codes match the API`);
     }
     for (const code of SCORM_ISSUE_CODES) assert.notEqual(MESSAGES.en.scorm.issues[code], MESSAGES.es.scorm.issues[code], code);
+  });
+});
+
+describe('Common Cartridge inspection issues (AP-038D)', () => {
+  it('every issue code the inspector can report has its own English and Spanish message', () => {
+    for (const locale of ['en', 'es'] as const) {
+      assert.deepEqual(Object.keys(MESSAGES[locale].cartridge.issues).sort(), [...CARTRIDGE_ISSUE_CODES].sort(), `${locale}: catalog codes match the API`);
+    }
+    for (const code of CARTRIDGE_ISSUE_CODES) assert.notEqual(MESSAGES.en.cartridge.issues[code], MESSAGES.es.cartridge.issues[code], code);
+  });
+
+  it('every resource kind, classification, target and support level has an English and a Spanish label', () => {
+    const groups = {
+      kinds: ['module', ...RESOURCE_KINDS],
+      classifications: [...CLASSIFICATIONS],
+      targets: ['section', 'lesson', 'document', 'quiz', 'assignment', 'forum', 'link', 'none'],
+      support: ['direct', 'transform', 'new_functionality', 'unsupported'],
+    } as const;
+    for (const [group, keys] of Object.entries(groups)) {
+      for (const locale of ['en', 'es'] as const) {
+        const labels = MESSAGES[locale].cartridge[group as keyof typeof groups] as Record<string, string>;
+        assert.deepEqual(Object.keys(labels).sort(), [...keys].sort(), `${locale}: ${group}`);
+      }
+    }
   });
 });
 

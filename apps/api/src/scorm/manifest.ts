@@ -54,25 +54,49 @@ export function decodeManifest(bytes: Buffer): string | null {
   }
 }
 
-/** Parses the manifest into a bounded element tree. */
+/** Why a bounded XML parse was refused (shared with the Common Cartridge inspector, AP-038D). */
+export class XmlFailure extends Error {
+  constructor(
+    readonly kind: 'MALFORMED' | 'DOCTYPE' | 'TOO_DEEP' | 'TOO_MANY_ELEMENTS',
+    readonly line: number | null,
+    readonly limit: number | null = null,
+  ) {
+    super(kind);
+  }
+}
+
+/** Parses the manifest into a bounded element tree (SCORM issue codes). */
 export function parseManifestXml(xml: string): XmlNode {
+  try {
+    return parseXml(xml);
+  } catch (error) {
+    if (error instanceof XmlFailure) throw new ManifestFailure(`SCORM_MANIFEST_${error.kind}`, error.line, error.limit);
+    throw error;
+  }
+}
+
+/**
+ * Parses untrusted XML into a bounded element tree: no DTD (a DOCTYPE is refused, so no entity is declared, expanded
+ * or fetched), and the depth, element, attribute and text limits of SCORM_LIMITS.
+ */
+export function parseXml(xml: string): XmlNode {
   const parser = new SaxesParser({ xmlns: true, position: true });
   const stack: XmlNode[] = [];
   let root: XmlNode | null = null;
   let elements = 0;
-  let failure: ManifestFailure | null = null;
-  const fail = (error: ManifestFailure) => {
+  let failure: XmlFailure | null = null;
+  const fail = (error: XmlFailure) => {
     failure ??= error;
     throw error;
   };
-  parser.on('error', () => fail(new ManifestFailure('SCORM_MANIFEST_MALFORMED', parser.line)));
-  parser.on('doctype', () => fail(new ManifestFailure('SCORM_MANIFEST_DOCTYPE', parser.line)));
+  parser.on('error', () => fail(new XmlFailure('MALFORMED', parser.line)));
+  parser.on('doctype', () => fail(new XmlFailure('DOCTYPE', parser.line)));
   parser.on('opentag', (tag: SaxesTagNS) => {
     elements += 1;
-    if (elements > SCORM_LIMITS.maxXmlElements) fail(new ManifestFailure('SCORM_MANIFEST_TOO_MANY_ELEMENTS', parser.line, SCORM_LIMITS.maxXmlElements));
-    if (stack.length + 1 > SCORM_LIMITS.maxXmlDepth) fail(new ManifestFailure('SCORM_MANIFEST_TOO_DEEP', parser.line, SCORM_LIMITS.maxXmlDepth));
+    if (elements > SCORM_LIMITS.maxXmlElements) fail(new XmlFailure('TOO_MANY_ELEMENTS', parser.line, SCORM_LIMITS.maxXmlElements));
+    if (stack.length + 1 > SCORM_LIMITS.maxXmlDepth) fail(new XmlFailure('TOO_DEEP', parser.line, SCORM_LIMITS.maxXmlDepth));
     const attributes = Object.values(tag.attributes);
-    if (attributes.length > SCORM_LIMITS.maxXmlAttributes) fail(new ManifestFailure('SCORM_MANIFEST_TOO_MANY_ELEMENTS', parser.line, SCORM_LIMITS.maxXmlAttributes));
+    if (attributes.length > SCORM_LIMITS.maxXmlAttributes) fail(new XmlFailure('TOO_MANY_ELEMENTS', parser.line, SCORM_LIMITS.maxXmlAttributes));
     const node: XmlNode = {
       uri: tag.uri,
       local: tag.local,
@@ -98,20 +122,20 @@ export function parseManifestXml(xml: string): XmlNode {
   try {
     parser.write(xml).close();
   } catch (error) {
-    throw failure ?? (error instanceof ManifestFailure ? error : new ManifestFailure('SCORM_MANIFEST_MALFORMED', parser.line));
+    throw failure ?? (error instanceof XmlFailure ? error : new XmlFailure('MALFORMED', parser.line));
   }
   if (failure) throw failure;
-  if (!root) throw new ManifestFailure('SCORM_MANIFEST_MALFORMED', null);
+  if (!root) throw new XmlFailure('MALFORMED', null);
   return root;
 }
 
-const attr = (node: XmlNode, local: string, uri = '') => node.attributes.find((attribute) => attribute.local === local && attribute.uri === uri)?.value ?? null;
-const xmlBase = (node: XmlNode | undefined) => (node ? attr(node, 'base', NS.xml) : null);
-const childrenNamed = (node: XmlNode | undefined, local: string) => node?.children.filter((child) => child.local === local) ?? [];
-const firstChild = (node: XmlNode | undefined, local: string) => node?.children.find((child) => child.local === local);
-const textOf = (node: XmlNode | undefined) => (node ? node.text.trim() : '');
+export const attr = (node: XmlNode, local: string, uri = '') => node.attributes.find((attribute) => attribute.local === local && attribute.uri === uri)?.value ?? null;
+export const xmlBase = (node: XmlNode | undefined) => (node ? attr(node, 'base', NS.xml) : null);
+export const childrenNamed = (node: XmlNode | undefined, local: string) => node?.children.filter((child) => child.local === local) ?? [];
+export const firstChild = (node: XmlNode | undefined, local: string) => node?.children.find((child) => child.local === local);
+export const textOf = (node: XmlNode | undefined) => (node ? node.text.trim() : '');
 
-function* walk(node: XmlNode): Generator<XmlNode> {
+export function* walk(node: XmlNode): Generator<XmlNode> {
   const stack = [node];
   while (stack.length) {
     const current = stack.pop()!;

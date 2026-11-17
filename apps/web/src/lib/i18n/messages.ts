@@ -23,6 +23,7 @@ import { messaging } from './catalog/messaging';
 import { courseEmail } from './catalog/courseEmail';
 import { courseImport } from './catalog/courseImport';
 import { scorm } from './catalog/scorm';
+import { cartridge } from './catalog/cartridge';
 import { forums } from './catalog/forums';
 import { groups } from './catalog/groups';
 import { preview } from './catalog/preview';
@@ -319,6 +320,7 @@ const en = {
   courseEmail: courseEmail.en,
   courseImport: courseImport.en,
   scorm: scorm.en,
+  cartridge: cartridge.en,
   forums: forums.en,
   groups: groups.en,
   preview: preview.en,
@@ -814,6 +816,7 @@ const es: Messages = {
   courseEmail: courseEmail.es,
   courseImport: courseImport.es,
   scorm: scorm.es,
+  cartridge: cartridge.es,
   forums: forums.es,
   groups: groups.es,
   preview: preview.es,
