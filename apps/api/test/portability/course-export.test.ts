@@ -21,6 +21,7 @@ import { loadConfig } from '../../src/config.js';
 import { activities, auditLog, courseDocuments, quizQuestions, sections, userCredentials, users } from '../../src/db/schema/index.js';
 import { DOCUMENT_MEDIA_TYPES } from '../../src/documents/formats.js';
 import { LocalDocumentStorage } from '../../src/documents/storage.js';
+import { validateCourseArchive } from '../../src/portability/archive-validation.js';
 import { buildCourseArchive, CourseArchiveError, type ArchiveManifest } from '../../src/portability/course-archive.js';
 import { scanArchive } from '../../src/scorm/archive.js';
 import {
@@ -574,6 +575,10 @@ describe('course export API (PostgreSQL)', { skip: testServerUrl ? false : 'TEST
         assert.ok(entry.data.equals(file.data), `${file.name}: the stored bytes`);
       }
       assert.deepEqual((JSON.parse(read[0]!.data.toString('utf8')) as ArchiveManifest).totals, { assets: 3, assetBytes: files.reduce((sum, file) => sum + file.data.length, 0) });
+      // AP-038C2A: what the exporter writes is exactly what the archive validation accepts.
+      const validation = await validateCourseArchive(archive);
+      assert.equal(validation.status, 'valid', JSON.stringify(validation.issues));
+      assert.deepEqual(validation.preview!.documents.map((document) => [document.fileName, document.format]), files.map((file) => [file.name, file.name.split('.')[1]]));
     });
 
     it("an invalid reference is never read; a missing file fails the archive while the JSON export still reports it", async () => {
@@ -649,6 +654,17 @@ describe('course export API (PostgreSQL)', { skip: testServerUrl ? false : 'TEST
       problem(await call('otherInstructor', 'GET', archiveUrl(ids.courseA)), 404, 'NOT_FOUND');
       problem(await call('instructor', 'GET', archiveUrl(ids.courseB)), 404, 'NOT_FOUND');
       problem(await call(null, 'GET', archiveUrl(ids.courseA)), 401, 'UNAUTHENTICATED');
+    });
+
+    it('archives downloaded from the API pass the import validation and preview the same course (AP-038C2A)', async () => {
+      const res = await call('admin', 'GET', archiveUrl(ids.courseA));
+      assert.equal(res.statusCode, 200, res.body);
+      const report = await validateCourseArchive(res.rawPayload);
+      assert.notEqual(report.status, 'invalid', JSON.stringify(report.issues));
+      const pkg = JSON.parse((await zipEntries(res.rawPayload))[1]!.data.toString('utf8')) as CoursePackage;
+      assert.deepEqual([report.preview!.title, report.preview!.sourceCourseCode, report.preview!.counts.units, report.preview!.counts.activities], [pkg.course.title, 'ITIL-A', pkg.counts.units, pkg.counts.activities]);
+      assert.deepEqual(report.preview!.documents.map((document) => document.sha256), pkg.assets.map((asset) => asset.sha256));
+      assert.equal(report.importMode, 'new_draft_course');
     });
 
     it('exports an empty course as the manifest and course.json only', async () => {

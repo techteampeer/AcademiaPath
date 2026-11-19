@@ -176,7 +176,21 @@ separately and can verify it with `sha256`. A file missing from storage is repor
   - The button is disabled while an archive is prepared.
   - A response that is not a ZIP is reported as a failure and never saved.
   - Errors are localized and follow EN/ES switches.
-- **Not yet built:** the ZIP import (AP-038C2) is a later milestone.
+- **Archive validation (AP-038C2A, backend only, no route yet):**
+  - `validateCourseArchive(bytes)` in `apps/api/src/portability/archive-validation.ts` checks an untrusted archive and previews it as a **new draft course**.
+  - It never imports, stores or writes anything.
+  - **Archive safety:** checked by the inspectors' ZIP scanner, which refuses traversal, absolute paths, duplicates and case collisions, links, special and encrypted entries, forged sizes or CRC, and expansion ratios above 100:1.
+  - **Size limits:** at most 25 MB compressed and 45 MB decompressed in total; the manifest at most 1 MiB and `course.json` at most 20 MB.
+  - **Layout:** exactly the manifest, `course.json` and `assets/<key>.<pdf|docx|pptx>`.
+  - **Manifest:** format and version 1, with canonical asset paths and consistent totals.
+  - **Package:** `course.json` must match its manifest size and SHA-256, then pass the AP-038B package validation (including its content hash).
+  - **Assets:**
+    - the manifest and package must describe the same assets;
+    - every asset must be present once, with nothing undeclared;
+    - sizes and SHA-256 must match;
+    - each file's signature must match its format.
+  - Links are never fetched and files are never opened or executed. Full document validation and malware scanning belong to the import.
+- **Not yet built:** the import itself (AP-038C2B or later) and its API and UI.
 
 ```text
 academiapath-archive.json   manifest: format "academiapath.course-archive", formatVersion 1
