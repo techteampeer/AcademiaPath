@@ -483,6 +483,28 @@ export const api = {
     const fileName = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'course.academiapath.json';
     return { blob: await response.blob(), fileName };
   },
+  /**
+   * AP-038C1E: the course ZIP archive (course.json, its document files and a manifest) as a Blob. A failed request
+   * throws the API's problem; a response that is not a ZIP (wrong type or no ZIP signature) is never saved as one.
+   */
+  exportCourseArchive: async (courseId: string, signal?: AbortSignal) => {
+    const response = await fetch(`${API_BASE}${course(courseId)}/export/archive`, {
+      credentials: 'same-origin',
+      headers: { accept: 'application/zip, application/problem+json' },
+      signal,
+    });
+    if (!response.ok) {
+      const problem = await response.json().catch(() => null);
+      throw new ApiError(response.status, problem && typeof problem === 'object' && 'status' in problem ? problem : null);
+    }
+    const blob = await response.blob();
+    const signature = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+    const isZip = (response.headers.get('content-type') ?? '').startsWith('application/zip') && signature[0] === 0x50 && signature[1] === 0x4b && signature[2] === 0x03 && signature[3] === 0x04;
+    if (!isZip) throw new ApiError(502, null);
+    const disposition = response.headers.get('content-disposition') ?? '';
+    const fileName = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'course.academiapath.zip';
+    return { blob, fileName };
+  },
 
   // Documents: uploaded and validated by the API, which extracts the text and creates mock summaries.
   uploadDocument: (courseId: string, sectionId: string, file: File, title: string, csrfToken: string) => {

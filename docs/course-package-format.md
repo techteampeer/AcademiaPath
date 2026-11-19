@@ -172,7 +172,11 @@ separately and can verify it with `sha256`. A file missing from storage is repor
 
 - **Scope of the limits:** they apply per API instance, not across instances.
 - **Audit:** `course.archive_exported`, with counts and sizes only.
-- **Not yet built:** the UI and the ZIP import (AP-038C2) are later milestones.
+- **UI (AP-038C1E):** **Download with documents** / **Descargar con documentos** sits next to **Export course content** on the course page. Only roles with `content.export` see it.
+  - The button is disabled while an archive is prepared.
+  - A response that is not a ZIP is reported as a failure and never saved.
+  - Errors are localized and follow EN/ES switches.
+- **Not yet built:** the ZIP import (AP-038C2) is a later milestone.
 
 ```text
 academiapath-archive.json   manifest: format "academiapath.course-archive", formatVersion 1
