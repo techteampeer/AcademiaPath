@@ -19,7 +19,16 @@ import { buildApp } from '../../src/app.js';
 import { hashPassword } from '../../src/auth/password.js';
 import { loadConfig } from '../../src/config.js';
 import { activities, auditLog, courseDocuments, quizQuestions, sections, userCredentials, users } from '../../src/db/schema/index.js';
-import { EXPORT_ACTIVITY_LIMIT, EXPORT_MAX_BYTES, serializePackage, type CoursePackage, type PackageActivity } from '../../src/portability/course-package.js';
+import { LocalDocumentStorage } from '../../src/documents/storage.js';
+import {
+  buildCoursePackage,
+  buildCoursePackageWithSources,
+  EXPORT_ACTIVITY_LIMIT,
+  EXPORT_MAX_BYTES,
+  serializePackage,
+  type CoursePackage,
+  type PackageActivity,
+} from '../../src/portability/course-package.js';
 import { createTestDatabase, testServerUrl } from '../helpers/database.js';
 import { makePdf, multipartBody } from '../helpers/documents.js';
 
@@ -401,5 +410,88 @@ describe('course export API (PostgreSQL)', { skip: testServerUrl ? false : 'TEST
     const latest = audits.find((row) => row.actorUserId === sessions.get('instructor')!.userId && !auditBefore.some((old) => old.id === row.id))!;
     assert.equal(latest.entityId, ids.courseA);
     assert.deepEqual(latest.metadata, { before: null, after: { formatVersion: 1, contentHash: pkg.contentHash, ...pkg.counts, warnings: 1 } });
+  });
+
+  describe('document sources for the archive export (AP-038C1A)', () => {
+    const NOW = new Date('2026-11-18T12:00:00.000Z');
+    const storage = () => new LocalDocumentStorage(storageDir);
+    /** Every stored document of a course's own activities, from the database (the expected mapping). */
+    const documentsOf = async (courseId: string) =>
+      database.db
+        .select({ storageKey: courseDocuments.storageKey, fileName: courseDocuments.fileName, byteSize: courseDocuments.byteSize, sha256: courseDocuments.sha256 })
+        .from(courseDocuments)
+        .innerJoin(activities, eq(activities.id, courseDocuments.activityId))
+        .innerJoin(sections, eq(sections.id, activities.sectionId))
+        .where(eq(sections.courseId, courseId));
+    const courseBStorageKey = async () => (await database.db.select({ key: courseDocuments.storageKey }).from(courseDocuments).where(eq(courseDocuments.id, ids.courseBDocument)))[0]!.key;
+
+    it('leaves the JSON export byte-identical: same bytes and content hash as the builder and the export API', async () => {
+      const plain = await buildCoursePackage(database.db, ids.courseA, storage(), NOW);
+      const { packaged } = await buildCoursePackageWithSources(database.db, ids.courseA, storage(), NOW);
+      assert.equal(serializePackage(packaged), serializePackage(plain));
+      assert.equal(packaged.contentHash, plain.contentHash);
+      // The API response is exactly the serialized package (built at the same export time).
+      const { res, pkg } = await exportOf('instructor', ids.courseA);
+      const atApiTime = await buildCoursePackageWithSources(database.db, ids.courseA, storage(), new Date(pkg.exportedAt));
+      assert.equal(res.body, serializePackage(atApiTime.packaged));
+    });
+
+    it("maps exactly the package's assets to this course's own stored documents", async () => {
+      const { packaged, sources } = await buildCoursePackageWithSources(database.db, ids.courseA, storage(), NOW);
+      assert.deepEqual([...sources.keys()], packaged.assets.map((asset) => asset.key));
+      const rows = await documentsOf(ids.courseA);
+      assert.ok(packaged.assets.length > 0, 'course A has a document');
+      for (const asset of packaged.assets) {
+        const row = rows.find((candidate) => candidate.storageKey === sources.get(asset.key));
+        assert.ok(row, `${asset.key} maps to a document of course A`);
+        assert.deepEqual([row.fileName, row.byteSize, row.sha256], [asset.fileName, asset.byteSize, asset.sha256]);
+      }
+      assert.ok(![...sources.values()].includes(await courseBStorageKey()), "course B's document is never mapped");
+    });
+
+    it("never maps another course's document, keeps missing files mapped and reported as before, and never reveals a storage key", async () => {
+      const template = ok(await call('admin', 'POST', '/course-templates', { code: 'SRC-T', programId: ids.program, title: 'Sources', sections: [{ title: 'Only unit' }] }), 201).templateId;
+      const courseId = ok(await call('admin', 'POST', '/courses', { programId: ids.program, termId: ids.term, templateId: template, code: 'SRC-1', status: 'draft' }), 201).id as string;
+      ok(await call('admin', 'POST', `/courses/${courseId}/enrollments`, { email: EMAILS.instructor, role: 'instructor' }), 201);
+      const [unit] = (await database.db.select().from(sections).where(eq(sections.courseId, courseId))).map((row) => row.id);
+      const kept = await upload(courseId, unit!, 'instructor', 'kept.pdf', 'Kept source');
+      const lost = await upload(courseId, unit!, 'instructor', 'lost.pdf', 'Lost source');
+      const storageKeyOf = async (activityId: string) => (await database.db.select().from(courseDocuments).where(eq(courseDocuments.activityId, activityId)))[0]!.storageKey;
+      await rm(join(storageDir, await storageKeyOf(lost)));
+      // A document activity pointing at course B's document (only possible through a damaged row).
+      const foreign = await upload(courseId, unit!, 'instructor', 'foreign.pdf', 'Foreign source');
+      const [foreignRow] = await database.db.select().from(activities).where(eq(activities.id, foreign));
+      await database.db.update(activities).set({ config: { ...foreignRow!.config, documentId: ids.courseBDocument } }).where(eq(activities.id, foreign));
+
+      const { packaged, sources } = await buildCoursePackageWithSources(database.db, courseId, storage(), NOW);
+      assert.deepEqual(Object.fromEntries(sources), { 'asset-1': await storageKeyOf(kept), 'asset-2': await storageKeyOf(lost) });
+      assert.ok(![...sources.values()].includes(await courseBStorageKey()), "the other course's document is not mapped");
+      assert.deepEqual(activityIn(packaged, 'Foreign source').working.content, { assetKey: null, fileName: 'foreign.pdf', format: 'pdf' });
+
+      // Missing files: same warnings as the JSON export (still described, reported missing); the export API agrees.
+      const { res, pkg } = await exportOf('instructor', courseId);
+      assert.deepEqual(
+        pkg.warnings.map((w) => [w.code, w.target]),
+        [
+          ['ASSET_NOT_BUNDLED', 'assets'],
+          ['INVALID_REFERENCE', `${activityIn(pkg, 'Foreign source').key}/working`],
+          ['ASSET_MISSING', 'asset-2'],
+        ],
+      );
+      assert.deepEqual(packaged.warnings, pkg.warnings);
+
+      // Storage keys stay server-side: not in the export, its audit record, or the result if serialized by mistake.
+      const secrets = [...sources.values(), await courseBStorageKey()];
+      const audit = await database.db.select().from(auditLog).where(eq(auditLog.entityId, courseId));
+      const result = await buildCoursePackageWithSources(database.db, courseId, storage(), NOW);
+      for (const [where, text] of [
+        ['export', res.body],
+        ['audit', JSON.stringify(audit.map((row) => row.metadata))],
+        ['serialized result', JSON.stringify(result)],
+      ] as const) {
+        for (const key of secrets) assert.ok(!text.includes(key), `${where} contains no storage key`);
+      }
+      assert.ok(!UUID.test(res.body), 'the export contains no database or storage identifier');
+    });
   });
 });
