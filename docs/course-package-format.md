@@ -190,7 +190,20 @@ separately and can verify it with `sha256`. A file missing from storage is repor
     - sizes and SHA-256 must match;
     - each file's signature must match its format.
   - Links are never fetched and files are never opened or executed. Full document validation and malware scanning belong to the import.
-- **Not yet built:** the import itself (AP-038C2B or later) and its API and UI.
+- **Archive import engine (AP-038C2B, backend only, no route yet):**
+  - `importCourseArchive()` in `apps/api/src/portability/archive-import.ts` restores a valid archive as a **new draft course**. It reuses the AP-038B plan and reconstruction and the document upload pipeline.
+  - Every activity is created as a draft. Documents are recreated with new identifiers and new stored files, byte-identical to the archive, with their extraction and summary.
+  - A document is never marked clean without a scanner.
+  - No people or student records are created.
+  - **Order of work:**
+    1. The caller must be an active administrator.
+    2. The whole archive is validated.
+    3. Every document is prepared in memory, and its bytes are checked again against the validated SHA-256.
+    4. The files are stored and each one is read back to verify it.
+    5. One database transaction creates the course, its content and the document records.
+    6. If storing or the transaction fails, every file written so far is removed.
+  - **Limitation:** a file that cannot be removed, or files left by a process crash between storing and the commit, are referenced by no record, so they are never served. `pnpm storage:audit` lists them as orphaned. The error reports how many files could not be removed, never their storage keys.
+- **Not yet built:** the archive import API and UI.
 
 ```text
 academiapath-archive.json   manifest: format "academiapath.course-archive", formatVersion 1

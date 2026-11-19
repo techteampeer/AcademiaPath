@@ -155,9 +155,23 @@ function parseJson(bytes: Buffer): { ok: true; value: unknown } | { ok: false } 
   }
 }
 
+/** The verified contents of a valid archive, for the import (AP-038C2B): exactly the bytes that passed validation. */
+export type ValidatedArchive = {
+  /** course.json, parsed (it passed the AP-038B package validation). */
+  packageJson: unknown;
+  /** Asset files by key, each matching the manifest's size and SHA-256. */
+  assets: Map<string, { format: string; byteSize: number; sha256: string; bytes: Buffer }>;
+};
+
 /** Validates one archive held in memory. Never throws for bad input: every problem is an issue in the report. */
 export async function validateCourseArchive(bytes: Buffer): Promise<ArchiveValidationReport> {
+  return (await readCourseArchive(bytes)).report;
+}
+
+/** The validation report and, only when the archive is usable, its verified contents. */
+export async function readCourseArchive(bytes: Buffer): Promise<{ report: ArchiveValidationReport; contents: ValidatedArchive | null }> {
   const issues = new Issues();
+  let contents: ValidatedArchive | null = null;
   const report: ArchiveValidationReport = {
     status: 'invalid',
     importMode: 'new_draft_course',
@@ -172,8 +186,11 @@ export async function validateCourseArchive(bytes: Buffer): Promise<ArchiveValid
     report.issues = issues.list.slice(0, ARCHIVE_VALIDATION_LIMITS.maxIssues);
     report.issueCount = issues.list.length;
     report.status = issues.failed ? 'invalid' : issues.list.length ? 'valid_with_warnings' : 'valid';
-    if (issues.failed) report.preview = null;
-    return report;
+    if (issues.failed) {
+      report.preview = null;
+      contents = null;
+    }
+    return { report, contents };
   };
 
   if (bytes.length > ARCHIVE_VALIDATION_LIMITS.maxArchiveBytes) {
@@ -300,6 +317,10 @@ export async function validateCourseArchive(bytes: Buffer): Promise<ArchiveValid
     skipped,
     requiresDueDate: preview.requiresDueDate,
     packageWarnings: preview.packageWarnings.filter((warning) => warning.code !== 'ASSET_NOT_BUNDLED'),
+  };
+  contents = {
+    packageJson: parsedPackage.value,
+    assets: new Map(manifest.assets.map((asset) => [asset.key, { format: asset.format, byteSize: asset.byteSize, sha256: asset.sha256, bytes: scan.kept.get(asset.path)! }])),
   };
   return finish();
 }
