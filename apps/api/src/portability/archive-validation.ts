@@ -40,7 +40,60 @@ const ASSET_PATH = /^assets\/(asset-[1-9][0-9]{0,5})\.(pdf|docx|pptx)$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const SIGNATURES: Record<string, Buffer> = { pdf: Buffer.from('%PDF-'), docx: Buffer.from([0x50, 0x4b, 0x03, 0x04]), pptx: Buffer.from([0x50, 0x4b, 0x03, 0x04]) };
 
-export type ArchiveIssue = { severity: 'error' | 'warning'; code: string; message: string; path: string | null };
+/**
+ * Every issue code the validation can report. They are stable: the API contract (AP-038C2C) and the EN/ES catalog
+ * list exactly these. The worker failure codes come from the isolated preview (archive-preview.ts).
+ */
+export const ARCHIVE_ISSUE_CODES = [
+  // Archive safety (the shared scanner).
+  'ARCHIVE_INVALID',
+  'ARCHIVE_TOO_MANY_ENTRIES',
+  'ARCHIVE_TOO_LARGE',
+  'PATH_TRAVERSAL',
+  'PATH_ABSOLUTE',
+  'PATH_INVALID',
+  'PATH_DUPLICATE',
+  'PATH_COLLISION',
+  'ENTRY_ENCRYPTED',
+  'ENTRY_SYMLINK',
+  'ENTRY_SPECIAL_FILE',
+  'ENTRY_COMPRESSION_UNSUPPORTED',
+  'ENTRY_TOO_LARGE',
+  'ENTRY_EXPANSION_RATIO',
+  'ENTRY_CORRUPT',
+  // Layout and manifest.
+  'UNEXPECTED_ENTRY',
+  'MANIFEST_MISSING',
+  'MANIFEST_TOO_LARGE',
+  'MANIFEST_INVALID',
+  'FORMAT_UNSUPPORTED',
+  'VERSION_UNSUPPORTED',
+  // course.json and document files.
+  'PACKAGE_MISSING',
+  'PACKAGE_TOO_LARGE',
+  'PACKAGE_INTEGRITY',
+  'PACKAGE_INVALID',
+  'PACKAGE_MISMATCH',
+  'ASSET_UNKNOWN',
+  'ASSET_MISMATCH',
+  'ASSET_NOT_DECLARED',
+  'UNDECLARED_ASSET',
+  'ASSET_MISSING',
+  'ASSET_INTEGRITY',
+  'ASSET_TYPE_MISMATCH',
+  // Warnings: what a new draft course would not keep, and what the export reported.
+  'ACTIVITY_NOT_IMPORTABLE',
+  'PACKAGE_ASSET_MISSING',
+  'PACKAGE_INVALID_REFERENCE',
+  'PACKAGE_UNSUPPORTED_ACTIVITY_TYPE',
+  'PACKAGE_WARNING',
+  // The isolated validation itself failed or reached its time or memory limit.
+  'ARCHIVE_VALIDATION_FAILED',
+  'ARCHIVE_VALIDATION_LIMIT',
+] as const;
+export type ArchiveIssueCode = (typeof ARCHIVE_ISSUE_CODES)[number];
+
+export type ArchiveIssue = { severity: 'error' | 'warning'; code: ArchiveIssueCode; message: string; path: string | null };
 export type ArchiveValidationReport = {
   status: 'valid' | 'valid_with_warnings' | 'invalid';
   /** Always a new draft course: an archive never updates or overwrites an existing course. */
@@ -56,6 +109,8 @@ export type ArchiveValidationReport = {
     exportedAt: string | null;
     counts: ImportPreview['counts'];
     documents: Array<{ key: string; fileName: string; format: string; byteSize: number; sha256: string; activityKeys: string[] }>;
+    /** Recognized document files by format. */
+    documentsByFormat: { pdf: number; docx: number; pptx: number };
     documentBytes: number;
     skipped: ImportPreview['skipped'];
     requiresDueDate: boolean;
@@ -87,12 +142,19 @@ const ARCHIVE_MESSAGES: Record<ArchiveProblem, string> = {
   ENTRY_CORRUPT: 'An entry is damaged: its size or CRC-32 does not match.',
 };
 
+/** Warnings course.json may carry from its export (course-package.ts); any other code is reported generically. */
+const PACKAGE_WARNING_CODES = new Map<string, ArchiveIssueCode>([
+  ['ASSET_MISSING', 'PACKAGE_ASSET_MISSING'],
+  ['INVALID_REFERENCE', 'PACKAGE_INVALID_REFERENCE'],
+  ['UNSUPPORTED_ACTIVITY_TYPE', 'PACKAGE_UNSUPPORTED_ACTIVITY_TYPE'],
+]);
+
 class Issues {
   readonly list: ArchiveIssue[] = [];
-  error(code: string, message: string, path: string | null = null) {
+  error(code: ArchiveIssueCode, message: string, path: string | null = null) {
     this.list.push({ severity: 'error', code, message, path });
   }
-  warn(code: string, message: string, path: string | null = null) {
+  warn(code: ArchiveIssueCode, message: string, path: string | null = null) {
     this.list.push({ severity: 'warning', code, message, path });
   }
   get failed() {
@@ -168,20 +230,37 @@ export async function validateCourseArchive(bytes: Buffer): Promise<ArchiveValid
   return (await readCourseArchive(bytes)).report;
 }
 
-/** The validation report and, only when the archive is usable, its verified contents. */
-export async function readCourseArchive(bytes: Buffer): Promise<{ report: ArchiveValidationReport; contents: ValidatedArchive | null }> {
-  const issues = new Issues();
-  let contents: ValidatedArchive | null = null;
-  const report: ArchiveValidationReport = {
+function emptyReport(byteSize: number): ArchiveValidationReport {
+  return {
     status: 'invalid',
     importMode: 'new_draft_course',
     imported: false,
-    archive: { byteSize: bytes.length, entries: 0, uncompressedBytes: null },
+    archive: { byteSize, entries: 0, uncompressedBytes: null },
     manifest: { format: null, formatVersion: null },
     preview: null,
     issues: [],
     issueCount: 0,
   };
+}
+
+const FAILURE_MESSAGES = {
+  ARCHIVE_VALIDATION_FAILED: 'The archive could not be validated.',
+  ARCHIVE_VALIDATION_LIMIT: 'Validating the archive took too long or needed too much memory.',
+} as const;
+
+/** The report when the isolated validation did not finish (AP-038C2C): invalid, with one stable issue and no detail. */
+export function failedValidationReport(byteSize: number, code: keyof typeof FAILURE_MESSAGES): ArchiveValidationReport {
+  const report = emptyReport(byteSize);
+  report.issues = [{ severity: 'error', code, message: FAILURE_MESSAGES[code], path: null }];
+  report.issueCount = 1;
+  return report;
+}
+
+/** The validation report and, only when the archive is usable, its verified contents. */
+export async function readCourseArchive(bytes: Buffer): Promise<{ report: ArchiveValidationReport; contents: ValidatedArchive | null }> {
+  const issues = new Issues();
+  let contents: ValidatedArchive | null = null;
+  const report = emptyReport(bytes.length);
   const finish = () => {
     report.issues = issues.list.slice(0, ARCHIVE_VALIDATION_LIMITS.maxIssues);
     report.issueCount = issues.list.length;
@@ -299,7 +378,9 @@ export async function readCourseArchive(bytes: Buffer): Promise<{ report: Archiv
   if (issues.failed) return finish();
 
   // Preview of a new draft course. Documents are bundled here, so the JSON import's "not bundled" skips do not apply.
-  for (const warning of preview.packageWarnings) if (warning.code !== 'ASSET_NOT_BUNDLED') issues.warn(`PACKAGE_${warning.code}`, 'The exported course reported this when it was packaged.', warning.target);
+  for (const warning of preview.packageWarnings) {
+    if (warning.code !== 'ASSET_NOT_BUNDLED') issues.warn(PACKAGE_WARNING_CODES.get(warning.code) ?? 'PACKAGE_WARNING', 'The exported course reported this when it was packaged.', warning.target);
+  }
   const skipped = preview.skipped.filter((item) => item.reason !== 'DOCUMENT_NOT_BUNDLED');
   const nowImportable = preview.skipped.length - skipped.length;
   for (const item of skipped) issues.warn('ACTIVITY_NOT_IMPORTABLE', 'This activity type cannot be imported yet; only its title would be kept.', item.key);
@@ -313,6 +394,11 @@ export async function readCourseArchive(bytes: Buffer): Promise<{ report: Archiv
       const described = packageAssets.get(asset.key)!;
       return { key: asset.key, fileName: described.fileName, format: asset.format, byteSize: asset.byteSize, sha256: asset.sha256, activityKeys: described.activityKeys };
     }),
+    documentsByFormat: {
+      pdf: manifest.assets.filter((asset) => asset.format === 'pdf').length,
+      docx: manifest.assets.filter((asset) => asset.format === 'docx').length,
+      pptx: manifest.assets.filter((asset) => asset.format === 'pptx').length,
+    },
     documentBytes: manifest.totals.assetBytes,
     skipped,
     requiresDueDate: preview.requiresDueDate,

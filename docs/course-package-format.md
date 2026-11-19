@@ -203,7 +203,15 @@ separately and can verify it with `sha256`. A file missing from storage is repor
     5. One database transaction creates the course, its content and the document records.
     6. If storing or the transaction fails, every file written so far is removed.
   - **Limitation:** a file that cannot be removed, or files left by a process crash between storing and the commit, are referenced by no record, so they are never served. `pnpm storage:audit` lists them as orphaned. The error reports how many files could not be removed, never their storage keys.
-- **Not yet built:** the archive import API and UI.
+- **Preview API (AP-038C2C):** `POST /api/v1/course-imports/archive/preview`.
+  - Administrators only. Authentication, CSRF, Origin and the administrator check happen before the upload is read.
+  - `multipart/form-data` with one `file` part: a `.zip` of at most 25 MB. Any other form field is ignored; the report comes from the uploaded bytes only.
+  - A read-only dry run: no database or storage write, no course created, nothing executed or fetched.
+  - The whole archive is validated in an isolated worker (30 s, 256 MB heap, no network). The worker shares the SCORM and Common Cartridge inspection pool, so one API instance runs at most two package workers of any kind. Only the report leaves the worker.
+  - Per API instance: two previews at a time, including uploads waiting for a worker (503 `ARCHIVE_PREVIEW_BUSY`); 10 previews per administrator per 10 minutes (429).
+  - An invalid archive gets `200` with `status: invalid`, `preview: null` and stable issue codes (`CourseArchiveIssueCode` in the contract; EN/ES texts in the web catalog). A worker failure or timeout gives `ARCHIVE_VALIDATION_FAILED` or `ARCHIVE_VALIDATION_LIMIT`.
+  - Warnings that `course.json` carries from its export are reported only under the known codes, or as `PACKAGE_WARNING`.
+- **Not yet built:** the archive import API (confirming and creating the course) and the UI.
 
 ```text
 academiapath-archive.json   manifest: format "academiapath.course-archive", formatVersion 1
