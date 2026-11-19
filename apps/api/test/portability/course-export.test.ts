@@ -7,8 +7,8 @@
  * content are synthetic; every password is random per run.
  */
 import assert from 'node:assert/strict';
-import { randomBytes } from 'node:crypto';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { createHash, randomBytes } from 'node:crypto';
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -47,6 +47,8 @@ const EMAILS = {
   ta: 'ta@academiapath.example',
   student: 'student@academiapath.example',
   otherInstructor: 'other.instructor@academiapath.example',
+  /** Used only by the archive rate-limit test, so no other request counts against its limit. */
+  archiveUser: 'archive.user@academiapath.example',
 } as const;
 type Person = keyof typeof EMAILS;
 
@@ -63,6 +65,8 @@ describe('course export API (PostgreSQL)', { skip: testServerUrl ? false : 'TEST
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let app: ReturnType<typeof buildApp>;
   let storageDir: string;
+  /** Runs before every storage read of the app under test: lets a test pause reads or make them fail. */
+  let beforeRead: ((key: string) => Promise<void>) | null = null;
   const sessions = new Map<Person, { token: string; csrf: string; userId: string }>();
   const ids = {} as Record<
     'program' | 'term' | 'courseA' | 'courseB' | 'empty' | 'unit1' | 'unit2' | 'unit3' | 'welcome' | 'draftOnly' | 'link' | 'quiz' | 'assignment' | 'document' | 'returned' | 'folder' | 'courseBDocument',
@@ -128,9 +132,21 @@ describe('course export API (PostgreSQL)', { skip: testServerUrl ? false : 'TEST
     storageDir = join(await mkdtemp(join(tmpdir(), 'ap-export-test-')), 'store');
     database = await createTestDatabase();
     await seedDevUsers(database.db, PASSWORD);
-    const [other] = await database.db.insert(users).values({ email: EMAILS.otherInstructor, givenName: 'Other', familyName: 'Instructor' }).returning();
-    await database.db.insert(userCredentials).values({ userId: other!.id, passwordHash: await hashPassword(PASSWORD) });
-    app = buildApp({ config: loadConfig({ NODE_ENV: 'test', APP_ORIGINS: ORIGIN, LOGIN_RATE_LIMIT_MAX: '1000', DOCUMENT_STORAGE_DIR: storageDir, DOCUMENT_MAX_UPLOAD_MB: '5' }), database: database.db });
+    for (const email of [EMAILS.otherInstructor, EMAILS.archiveUser]) {
+      const [other] = await database.db.insert(users).values({ email, givenName: 'Other', familyName: 'Instructor' }).returning();
+      await database.db.insert(userCredentials).values({ userId: other!.id, passwordHash: await hashPassword(PASSWORD) });
+    }
+    const local = new LocalDocumentStorage(storageDir);
+    const storage = {
+      put: (bytes: Uint8Array) => local.put(bytes),
+      remove: (key: string) => local.remove(key),
+      exists: (key: string) => local.exists(key),
+      read: async (key: string) => {
+        if (beforeRead) await beforeRead(key);
+        return local.read(key);
+      },
+    };
+    app = buildApp({ config: loadConfig({ NODE_ENV: 'test', APP_ORIGINS: ORIGIN, LOGIN_RATE_LIMIT_MAX: '1000', DOCUMENT_STORAGE_DIR: storageDir, DOCUMENT_MAX_UPLOAD_MB: '5' }), database: database.db, documents: { storage } });
     await app.ready();
     for (const person of Object.keys(EMAILS) as Person[]) {
       const res = await app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email: EMAILS[person], password: PASSWORD }, headers: { origin: ORIGIN } });
@@ -580,6 +596,155 @@ describe('course export API (PostgreSQL)', { skip: testServerUrl ? false : 'TEST
       await assert.rejects(buildCourseArchive(database.db, courseId, recording(), NOW), (error: unknown) => error instanceof CourseArchiveError && error.problem === 'ASSET_MISSING' && error.assetKey === 'asset-1');
       const { pkg } = await exportOf('instructor', courseId);
       assert.ok(pkg.warnings.some((warning) => warning.code === 'ASSET_MISSING' && warning.target === 'asset-1'), 'the JSON export is unchanged: it reports the missing file');
+    });
+  });
+
+  describe('archive export API (AP-038C1D)', () => {
+    const archiveUrl = (courseId: string) => `/courses/${courseId}/export/archive`;
+    const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+    const archiveAudits = async (courseId: string) =>
+      (await database.db.select().from(auditLog).where(eq(auditLog.action, 'course.archive_exported'))).filter((row) => row.entityId === courseId);
+    const dedicatedCourse = async (code: string) => {
+      const template = ok(await call('admin', 'POST', '/course-templates', { code: `${code}-T`, programId: ids.program, title: `Archive API ${code}`, sections: [{ title: 'Only unit' }] }), 201).templateId;
+      const courseId = ok(await call('admin', 'POST', '/courses', { programId: ids.program, termId: ids.term, templateId: template, code, status: 'draft' }), 201).id as string;
+      ok(await call('admin', 'POST', `/courses/${courseId}/enrollments`, { email: EMAILS.instructor, role: 'instructor' }), 201);
+      const [unit] = (await database.db.select().from(sections).where(eq(sections.courseId, courseId))).map((row) => row.id);
+      const activityId = await upload(courseId, unit!, 'instructor', 'archive-api.pdf', `Archive API ${code} handout`);
+      const [document] = await database.db.select().from(courseDocuments).where(eq(courseDocuments.activityId, activityId));
+      return { courseId, document: document! };
+    };
+    /** A problem response that reveals no storage key, path or file. */
+    const safeProblem = (res: LightMyRequestResponse, status: number, code: string, secrets: string[]) => {
+      problem(res, status, code);
+      assert.match(String(res.headers['content-type']), /application\/problem\+json/);
+      for (const secret of [...secrets, storageDir]) assert.ok(!res.body.includes(secret), `${code}: nothing internal in the response`);
+    };
+
+    it('returns a valid ZIP with the attachment headers; course.json equals the JSON export and every file matches the manifest', async () => {
+      const res = await call('instructor', 'GET', archiveUrl(ids.courseA));
+      assert.equal(res.statusCode, 200, res.body);
+      assert.equal(res.headers['content-type'], 'application/zip');
+      assert.equal(res.headers['content-disposition'], 'attachment; filename="course-ITIL-A.academiapath.zip"');
+      assert.equal(res.headers['cache-control'], 'no-store');
+      assert.equal(res.headers['x-content-type-options'], 'nosniff');
+      const archive = res.rawPayload;
+      const read = await zipEntries(archive);
+      assert.deepEqual(read.map((entry) => entry.name), ['academiapath-archive.json', 'course.json', 'assets/asset-1.pdf']);
+      const manifest = JSON.parse(read[0]!.data.toString('utf8')) as ArchiveManifest;
+      const courseJson = read[1]!.data.toString('utf8');
+      assert.equal(manifest.package.sha256, sha(read[1]!.data));
+      for (const asset of manifest.assets) assert.equal(sha(read.find((entry) => entry.name === asset.path)!.data), asset.sha256, asset.path);
+      // The JSON export at another moment differs only in exportedAt.
+      const { res: json, pkg } = await exportOf('instructor', ids.courseA);
+      const archivedAt = (JSON.parse(courseJson) as CoursePackage).exportedAt;
+      assert.equal(courseJson.replace(`"exportedAt":"${archivedAt}"`, `"exportedAt":"${pkg.exportedAt}"`), json.body, 'course.json is the JSON export');
+      const problems: string[] = [];
+      assert.equal((await scanArchive(archive, { error: (p) => problems.push(p) })).safe, true);
+      assert.deepEqual(problems, []);
+    });
+
+    it('authorizes the design team, instructors and administrators only; other courses stay invisible', async () => {
+      for (const who of ['instructor', 'reviewer', 'admin'] as const) assert.equal((await call(who, 'GET', archiveUrl(ids.courseA))).statusCode, 200, who);
+      for (const who of ['ta', 'student'] as const) problem(await call(who, 'GET', archiveUrl(ids.courseA)), 403, 'FORBIDDEN');
+      problem(await call('otherInstructor', 'GET', archiveUrl(ids.courseA)), 404, 'NOT_FOUND');
+      problem(await call('instructor', 'GET', archiveUrl(ids.courseB)), 404, 'NOT_FOUND');
+      problem(await call(null, 'GET', archiveUrl(ids.courseA)), 401, 'UNAUTHENTICATED');
+    });
+
+    it('exports an empty course as the manifest and course.json only', async () => {
+      const res = await call('admin', 'GET', archiveUrl(ids.empty));
+      assert.equal(res.statusCode, 200, res.body);
+      const read = await zipEntries(res.rawPayload);
+      assert.deepEqual(read.map((entry) => entry.name), ['academiapath-archive.json', 'course.json']);
+      assert.deepEqual((JSON.parse(read[0]!.data.toString('utf8')) as ArchiveManifest).totals, { assets: 0, assetBytes: 0 });
+    });
+
+    it('fails closed with safe errors: unreadable storage, a changed file, a missing file; nothing is sent or audited', async () => {
+      const { courseId, document } = await dedicatedCourse('ARC-API-1');
+      const secrets = [document.storageKey, document.fileName];
+      beforeRead = async () => Promise.reject(Object.assign(new Error(`EIO: i/o error, read ${storageDir}/${document.storageKey}`), { code: 'EIO' }));
+      try {
+        safeProblem(await call('instructor', 'GET', archiveUrl(courseId)), 503, 'DOCUMENT_STORAGE_UNAVAILABLE', secrets);
+      } finally {
+        beforeRead = null;
+      }
+      const path = join(storageDir, document.storageKey);
+      await writeFile(path, Buffer.alloc(document.byteSize, 0x41));
+      safeProblem(await call('instructor', 'GET', archiveUrl(courseId)), 500, 'COURSE_ARCHIVE_DOCUMENT_CORRUPT', secrets);
+      await rm(path);
+      safeProblem(await call('instructor', 'GET', archiveUrl(courseId)), 500, 'COURSE_ARCHIVE_DOCUMENT_MISSING', secrets);
+      assert.deepEqual(await archiveAudits(courseId), [], 'a failed archive is not recorded as an export');
+    });
+
+    it('refuses a course above the 25 MB archive limit before reading any file; the JSON export stays available', async () => {
+      const { courseId, document } = await dedicatedCourse('ARC-API-2');
+      // Documents are immutable (database trigger), so the oversized document is a new row: a copy of the uploaded one
+      // with a 26 MB recorded size and a storage key that has no file, which the activity then points to.
+      const client = await database.pool.connect();
+      try {
+        await client.query('CREATE TEMP TABLE oversized AS SELECT * FROM course_documents WHERE id = $1', [document.id]);
+        const { rows } = await client.query<{ id: string }>('UPDATE oversized SET id = gen_random_uuid(), storage_key = gen_random_uuid(), byte_size = $1 RETURNING id', [26 * 1024 * 1024]);
+        await client.query('INSERT INTO course_documents SELECT * FROM oversized');
+        await client.query('DROP TABLE oversized');
+        const [activity] = await database.db.select().from(activities).where(eq(activities.id, document.activityId));
+        await database.db.update(activities).set({ config: { ...activity!.config, documentId: rows[0]!.id } }).where(eq(activities.id, document.activityId));
+      } finally {
+        client.release();
+      }
+      const reads: string[] = [];
+      beforeRead = async (key) => void reads.push(key);
+      try {
+        safeProblem(await call('instructor', 'GET', archiveUrl(courseId)), 422, 'COURSE_ARCHIVE_TOO_LARGE', [document.storageKey]);
+      } finally {
+        beforeRead = null;
+      }
+      assert.deepEqual(reads, [], 'no file was read');
+      assert.equal((await call('instructor', 'GET', `/courses/${courseId}/export`)).statusCode, 200);
+    });
+
+    it('limits concurrent archives per instance: a third request while two are prepared gets 503 with Retry-After', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      let waiting = 0;
+      beforeRead = async () => {
+        waiting += 1;
+        await gate;
+      };
+      try {
+        const first = call('instructor', 'GET', archiveUrl(ids.courseA));
+        const second = call('admin', 'GET', archiveUrl(ids.courseA));
+        for (let i = 0; i < 200 && waiting < 2; i += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+        assert.equal(waiting, 2, 'two archives are being prepared');
+        const third = await call('reviewer', 'GET', archiveUrl(ids.courseA));
+        problem(third, 503, 'COURSE_ARCHIVE_BUSY');
+        assert.equal(third.headers['retry-after'], '30');
+        release();
+        assert.deepEqual([(await first).statusCode, (await second).statusCode], [200, 200]);
+      } finally {
+        release();
+        beforeRead = null;
+      }
+      assert.equal((await call('reviewer', 'GET', archiveUrl(ids.courseA))).statusCode, 200, 'slots are released afterwards');
+    });
+
+    it('rate limits each user: the 11th archive request within 10 minutes gets 429', async () => {
+      ok(await call('admin', 'POST', `/courses/${ids.courseB}/enrollments`, { email: EMAILS.archiveUser, role: 'instructor' }), 201);
+      for (let n = 1; n <= 10; n += 1) assert.equal((await call('archiveUser', 'GET', archiveUrl(ids.courseB))).statusCode, 200, `request ${n}`);
+      problem(await call('archiveUser', 'GET', archiveUrl(ids.courseB)), 429, 'RATE_LIMITED');
+      assert.equal((await call('otherInstructor', 'GET', archiveUrl(ids.courseB))).statusCode, 200, 'the limit is per user');
+    });
+
+    it('audits each archive with counts and sizes only: no storage keys, file names, identifiers or content', async () => {
+      const audits = await archiveAudits(ids.courseA);
+      assert.ok(audits.length >= 1);
+      const [documentA] = await database.db.select().from(courseDocuments).where(eq(courseDocuments.activityId, ids.document));
+      for (const row of audits) {
+        const after = (row.metadata as { after: Record<string, unknown> }).after;
+        assert.deepEqual(Object.keys(after).sort(), ['activities', 'approvedActivities', 'archiveBytes', 'archiveFormatVersion', 'assetBytes', 'assets', 'contentHash', 'folders', 'formatVersion', 'questions', 'units', 'warnings']);
+        const text = JSON.stringify(row.metadata);
+        for (const secret of [documentA!.storageKey, documentA!.fileName, storageDir, 'Service value chain']) assert.ok(!text.includes(secret));
+        assert.ok(!UUID.test(text), 'no identifier in the metadata');
+      }
     });
   });
 });

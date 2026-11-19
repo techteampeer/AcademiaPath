@@ -153,10 +153,26 @@ Storage bucket mounted by the API); moving them needs a ZIP package and an uploa
 AP-040 work. Until then a document activity is portable as a reference only: an importer must obtain the file
 separately and can verify it with `sha256`. A file missing from storage is reported as `ASSET_MISSING`.
 
-### Course archive (AP-038C1C, backend only)
+### Course archive (AP-038C1C engine, AP-038C1D API)
 
-`apps/api/src/portability/course-archive.ts` assembles a ZIP holding the package and its document files. No route
-exposes it yet. The archive API, its UI and the ZIP import (AP-038C2) are later milestones.
+`apps/api/src/portability/course-archive.ts` assembles a ZIP holding the package and its document files.
+
+**API:** `GET /api/v1/courses/{id}/export/archive` (contract `exportCourseArchive`).
+- **Permission:** the same as the JSON export (`content.export`).
+- **Response:** `application/zip`, attachment `course-<code>.academiapath.zip`, `no-store`, `nosniff`.
+- **Errors:**
+
+  | Situation | Response |
+  | --- | --- |
+  | Archive over 25 MB | 422 `COURSE_ARCHIVE_TOO_LARGE` |
+  | A missing or changed document file | 500 `COURSE_ARCHIVE_DOCUMENT_MISSING` / `COURSE_ARCHIVE_DOCUMENT_CORRUPT` |
+  | Unreadable storage | 503 `DOCUMENT_STORAGE_UNAVAILABLE` |
+  | Two archives already being prepared on this API instance | 503 `COURSE_ARCHIVE_BUSY`, with `Retry-After` |
+  | More than 10 requests per user per 10 minutes | 429 `RATE_LIMITED` |
+
+- **Scope of the limits:** they apply per API instance, not across instances.
+- **Audit:** `course.archive_exported`, with counts and sizes only.
+- **Not yet built:** the UI and the ZIP import (AP-038C2) are later milestones.
 
 ```text
 academiapath-archive.json   manifest: format "academiapath.course-archive", formatVersion 1
