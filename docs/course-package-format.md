@@ -153,6 +153,33 @@ Storage bucket mounted by the API); moving them needs a ZIP package and an uploa
 AP-040 work. Until then a document activity is portable as a reference only: an importer must obtain the file
 separately and can verify it with `sha256`. A file missing from storage is reported as `ASSET_MISSING`.
 
+### Course archive (AP-038C1C, backend only)
+
+`apps/api/src/portability/course-archive.ts` assembles a ZIP holding the package and its document files. No route
+exposes it yet. The archive API, its UI and the ZIP import (AP-038C2) are later milestones.
+
+```text
+academiapath-archive.json   manifest: format "academiapath.course-archive", formatVersion 1
+course.json                 the JSON export above, byte for byte (still formatVersion 1, bundled: false)
+assets/asset-1.pdf          one file per asset, named <asset key>.<format>, never the uploaded file name
+```
+
+- **Manifest contents:**
+  - `package`: path, format, version, `contentHash`, byte size and SHA-256 of `course.json`;
+  - `assets`: each asset's key, path, format, byte size and SHA-256;
+  - `totals`: the asset count and the total asset bytes.
+  - There is no timestamp, so identical content gives an identical archive.
+- **Integrity:**
+  - Each file is read through the storage key of a document of this course's own activities.
+  - Each file is checked against the database size and SHA-256.
+  - A missing, changed or unreadable file fails the whole archive (`ASSET_MISSING`, `ASSET_CORRUPT`, `STORAGE_UNAVAILABLE`). The JSON export instead lists it with a warning.
+  - A reference to another course's document is never read; it stays an `INVALID_REFERENCE` warning in `course.json`.
+- **Limits:**
+  - At most 25 MB (provisional, pending approval before the endpoint exists).
+  - The cap is checked from database sizes before any file is read, and again by the ZIP writer.
+  - Peak memory is about twice the archive size. Nothing is written to disk.
+- **Not scanned:** files are copied as stored. They are not malware-scanned (no scanner is connected; AP-040).
+
 ## Warnings
 
 | Code | Meaning |

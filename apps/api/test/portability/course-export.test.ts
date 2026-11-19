@@ -19,7 +19,10 @@ import { buildApp } from '../../src/app.js';
 import { hashPassword } from '../../src/auth/password.js';
 import { loadConfig } from '../../src/config.js';
 import { activities, auditLog, courseDocuments, quizQuestions, sections, userCredentials, users } from '../../src/db/schema/index.js';
+import { DOCUMENT_MEDIA_TYPES } from '../../src/documents/formats.js';
 import { LocalDocumentStorage } from '../../src/documents/storage.js';
+import { buildCourseArchive, CourseArchiveError, type ArchiveManifest } from '../../src/portability/course-archive.js';
+import { scanArchive } from '../../src/scorm/archive.js';
 import {
   buildCoursePackage,
   buildCoursePackageWithSources,
@@ -30,7 +33,8 @@ import {
   type PackageActivity,
 } from '../../src/portability/course-package.js';
 import { createTestDatabase, testServerUrl } from '../helpers/database.js';
-import { makePdf, multipartBody } from '../helpers/documents.js';
+import { makeDocx, makePdf, makePptx, multipartBody } from '../helpers/documents.js';
+import { zipEntries } from '../helpers/zip.js';
 
 const PASSWORD = randomBytes(18).toString('base64url');
 const COOKIE = 'ap_session';
@@ -98,9 +102,10 @@ describe('course export API (PostgreSQL)', { skip: testServerUrl ? false : 'TEST
     ok(await call('instructor', 'POST', `/courses/${courseId}/activities/${activityId}/submit`));
     ok(await call('reviewer', 'POST', `/courses/${courseId}/activities/${activityId}/review`, { decision: 'approve' }));
   };
-  const upload = async (courseId: string, sectionId: string, who: Person, filename: string, title: string) => {
+  const upload = async (courseId: string, sectionId: string, who: Person, filename: string, title: string, data?: Buffer, fileType?: string) => {
     const current = sessions.get(who)!;
-    const { payload, contentType } = multipartBody([{ name: 'title', value: title }, { name: 'file', filename, data: makePdf([['Service value chain overview', 'Value streams combine activities to create value for customers.']]) }]);
+    const file = data ?? makePdf([['Service value chain overview', 'Value streams combine activities to create value for customers.']]);
+    const { payload, contentType } = multipartBody([{ name: 'title', value: title }, { name: 'file', filename, data: file, ...(fileType ? { contentType: fileType } : {}) }]);
     const res = await app.inject({
       method: 'POST',
       url: `/api/v1/courses/${courseId}/sections/${sectionId}/documents`,
@@ -492,6 +497,89 @@ describe('course export API (PostgreSQL)', { skip: testServerUrl ? false : 'TEST
         for (const key of secrets) assert.ok(!text.includes(key), `${where} contains no storage key`);
       }
       assert.ok(!UUID.test(res.body), 'the export contains no database or storage identifier');
+    });
+  });
+
+  describe('course archive from real courses (AP-038C1C)', () => {
+    const NOW = new Date('2026-11-19T12:00:00.000Z');
+    /** Local storage that records which files were read. */
+    const recording = () => {
+      const local = new LocalDocumentStorage(storageDir);
+      const reads: string[] = [];
+      return { reads, exists: (key: string) => local.exists(key), read: (key: string) => (reads.push(key), local.read(key)) };
+    };
+    const newCourse = async (code: string) => {
+      const template = ok(await call('admin', 'POST', '/course-templates', { code: `${code}-T`, programId: ids.program, title: `Archive ${code}`, sections: [{ title: 'Only unit' }] }), 201).templateId;
+      const courseId = ok(await call('admin', 'POST', '/courses', { programId: ids.program, termId: ids.term, templateId: template, code, status: 'draft' }), 201).id as string;
+      ok(await call('admin', 'POST', `/courses/${courseId}/enrollments`, { email: EMAILS.instructor, role: 'instructor' }), 201);
+      const [unit] = (await database.db.select().from(sections).where(eq(sections.courseId, courseId))).map((row) => row.id);
+      return { courseId, unit: unit! };
+    };
+    const storedRow = async (activityId: string) => (await database.db.select().from(courseDocuments).where(eq(courseDocuments.activityId, activityId)))[0]!;
+
+    it("course A: course.json is the export API's exact bytes; only course A's file is read and included; no keys, ids or learners", async () => {
+      const { res, pkg } = await exportOf('instructor', ids.courseA);
+      const storage = recording();
+      const { archive, manifest } = await buildCourseArchive(database.db, ids.courseA, storage, new Date(pkg.exportedAt));
+      const read = await zipEntries(archive);
+      assert.deepEqual(read.map((entry) => entry.name), ['academiapath-archive.json', 'course.json', 'assets/asset-1.pdf']);
+      assert.equal(read[1]!.data.toString('utf8'), res.body, 'course.json is byte-identical to the JSON export');
+      const [documentA] = await database.db.select().from(courseDocuments).where(eq(courseDocuments.activityId, ids.document));
+      assert.deepEqual(manifest.assets, [{ key: 'asset-1', path: 'assets/asset-1.pdf', format: 'pdf', byteSize: documentA!.byteSize, sha256: documentA!.sha256 }]);
+      assert.deepEqual(storage.reads, [documentA!.storageKey], "only course A's own document is read");
+      const [documentB] = await database.db.select().from(courseDocuments).where(eq(courseDocuments.id, ids.courseBDocument));
+      const allKeys = (await database.db.select({ key: courseDocuments.storageKey }).from(courseDocuments)).map((row) => row.key);
+      const people = (await database.db.select({ email: users.email }).from(users)).map((row) => row.email);
+      for (const entry of read) {
+        if (entry.name.startsWith('assets/')) continue;
+        const text = entry.data.toString('utf8');
+        assert.ok(!UUID.test(text), `${entry.name}: no database or storage identifier`);
+        for (const value of [...allKeys, ...people, storageDir]) assert.ok(!text.includes(value), `${entry.name}: no storage key, account or path`);
+      }
+      // (The fixture uploads identical PDF bytes everywhere, so isolation is proven by what is read, not by hashes.)
+      assert.ok(!storage.reads.includes(documentB!.storageKey), "course B's document is never read");
+      assert.equal((await scanArchive(archive, { error: () => undefined })).safe, true);
+      assert.ok(archive.equals((await buildCourseArchive(database.db, ids.courseA, recording(), new Date(pkg.exportedAt))).archive), 'deterministic');
+    });
+
+    it('PDF, DOCX and PPTX documents of a real course are archived with their stored bytes', async () => {
+      const { courseId, unit } = await newCourse('ARC-1');
+      const files = [
+        { name: 'handout.pdf', data: makePdf([['Archive handout', 'Synthetic page.']]), type: DOCUMENT_MEDIA_TYPES.pdf },
+        { name: 'notes.docx', data: makeDocx(['Synthetic notes for the archive.']), type: DOCUMENT_MEDIA_TYPES.docx },
+        { name: 'slides.pptx', data: makePptx([['Synthetic archive slide']]), type: DOCUMENT_MEDIA_TYPES.pptx },
+      ];
+      for (const file of files) await upload(courseId, unit, 'instructor', file.name, `Archive ${file.name}`, file.data, file.type);
+      const { archive, manifest } = await buildCourseArchive(database.db, courseId, recording(), NOW);
+      assert.deepEqual(manifest.assets.map((asset) => asset.path), ['assets/asset-1.pdf', 'assets/asset-2.docx', 'assets/asset-3.pptx']);
+      const read = await zipEntries(archive);
+      for (const [index, file] of files.entries()) {
+        const entry = read.find((candidate) => candidate.name === manifest.assets[index]!.path)!;
+        assert.ok(entry.data.equals(file.data), `${file.name}: the stored bytes`);
+      }
+      assert.deepEqual((JSON.parse(read[0]!.data.toString('utf8')) as ArchiveManifest).totals, { assets: 3, assetBytes: files.reduce((sum, file) => sum + file.data.length, 0) });
+    });
+
+    it("an invalid reference is never read; a missing file fails the archive while the JSON export still reports it", async () => {
+      const { courseId, unit } = await newCourse('ARC-2');
+      const kept = await upload(courseId, unit, 'instructor', 'kept.pdf', 'Archive kept');
+      const foreign = await upload(courseId, unit, 'instructor', 'foreign.pdf', 'Archive foreign');
+      const [foreignRow] = await database.db.select().from(activities).where(eq(activities.id, foreign));
+      await database.db.update(activities).set({ config: { ...foreignRow!.config, documentId: ids.courseBDocument } }).where(eq(activities.id, foreign));
+      const [documentB] = await database.db.select().from(courseDocuments).where(eq(courseDocuments.id, ids.courseBDocument));
+
+      const storage = recording();
+      const { archive, manifest } = await buildCourseArchive(database.db, courseId, storage, NOW);
+      assert.deepEqual(storage.reads, [(await storedRow(kept)).storageKey], "course B's document is never read");
+      assert.deepEqual(manifest.assets.map((asset) => asset.key), ['asset-1']);
+      const json = JSON.parse((await zipEntries(archive))[1]!.data.toString('utf8')) as CoursePackage;
+      assert.ok(json.warnings.some((warning) => warning.code === 'INVALID_REFERENCE'), 'the invalid reference is reported in course.json, as in the JSON export');
+      assert.ok(!storage.reads.includes(documentB!.storageKey));
+
+      await rm(join(storageDir, (await storedRow(kept)).storageKey));
+      await assert.rejects(buildCourseArchive(database.db, courseId, recording(), NOW), (error: unknown) => error instanceof CourseArchiveError && error.problem === 'ASSET_MISSING' && error.assetKey === 'asset-1');
+      const { pkg } = await exportOf('instructor', courseId);
+      assert.ok(pkg.warnings.some((warning) => warning.code === 'ASSET_MISSING' && warning.target === 'asset-1'), 'the JSON export is unchanged: it reports the missing file');
     });
   });
 });
