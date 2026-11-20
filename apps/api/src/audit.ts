@@ -19,12 +19,17 @@ export type AuditChange = {
  * before/after data. Callers pass business fields only, never credentials or tokens.
  */
 export async function recordAudit(db: Pick<Database, 'insert'>, request: FastifyRequest, change: AuditChange) {
+  await recordAuditAs(db, { userId: request.auth?.user.id ?? null, ip: request.ip }, change);
+}
+
+/** The same record for work that runs outside a request handler (AP-038C2B archive import), with an explicit actor. */
+export async function recordAuditAs(db: Pick<Database, 'insert'>, actor: { userId: string | null; ip: string | null }, change: AuditChange) {
   await db.insert(auditLog).values({
-    actorUserId: request.auth?.user.id ?? null,
+    actorUserId: actor.userId,
     action: change.action,
     entityType: change.entityType,
     entityId: change.entityId,
     metadata: { before: change.before, after: change.after },
-    ipAddress: auditIp(request.ip),
+    ipAddress: actor.ip ? auditIp(actor.ip) : null,
   });
 }

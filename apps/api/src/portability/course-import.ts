@@ -11,7 +11,7 @@
  * Package keys are only ever used as map keys here: nothing in a package is treated as a database identifier.
  */
 import { RESOURCE_KINDS, normalizeResourceUrl, type ResourceKind } from '../content/urls.js';
-import type { QuizQuestionType } from '../db/schema/index.js';
+import type { DocumentFormat, QuizQuestionType } from '../db/schema/index.js';
 import { hasCycle } from '../progress/model.js';
 import { QUIZ_LIMITS, type QuestionInput } from '../quizzes/model.js';
 import { ASSIGNMENT_LIMITS } from '../assignments/model.js';
@@ -61,7 +61,8 @@ export type VersionPreference = 'approved' | 'working';
 
 export type PlannedActivity = {
   key: string;
-  type: ImportableType;
+  /** `file` only when the document's bytes are bundled (AP-038C2B archive import); the JSON import never plans one. */
+  type: ImportableType | 'file';
   title: string;
   visible: boolean;
   folderKey: string | null;
@@ -74,7 +75,11 @@ export type PlannedActivity = {
     questions: QuestionInput[];
   };
   assignment?: { instructions: string; rubric: Array<{ title: string; description: string | null; maxPoints: number }> };
+  /** A document whose file is bundled with the package (an archive asset): restored as a new draft document. */
+  document?: { assetKey: string; fileName: string; format: DocumentFormat };
 };
+/** AP-038C2B: asset keys whose files are bundled (and verified) with the package, so their activities can be restored. */
+export type AnalysisOptions = { bundledAssets?: ReadonlySet<string> };
 export type PlannedUnit = { key: string; title: string; summary: string | null; visible: boolean; requiresUnitKeys: string[]; folders: Array<{ key: string; title: string }>; activities: PlannedActivity[] };
 export type ImportPlan = { title: string; description: string | null; units: PlannedUnit[] };
 
@@ -317,7 +322,7 @@ function questionInput(question: PackageQuestion): QuestionInput {
  * Validates a parsed package and plans its import. Never throws for bad input: problems are reported in the preview.
  * `preference` chooses which version becomes the imported draft when an activity has both.
  */
-export function analyzePackage(input: unknown, preference: VersionPreference = 'approved'): PackageAnalysis {
+export function analyzePackage(input: unknown, preference: VersionPreference = 'approved', options: AnalysisOptions = {}): PackageAnalysis {
   const w = new Walker();
   const preview: ImportPreview = {
     valid: false,
@@ -491,6 +496,12 @@ export function analyzePackage(input: unknown, preference: VersionPreference = '
         for (const version of [activity.working, activity.approved]) {
           const assetKey = version?.content && 'assetKey' in version.content ? version.content.assetKey : null;
           if (assetKey) documentActivities.set(assetKey, [...new Set([...(documentActivities.get(assetKey) ?? []), activity.key])]);
+        }
+        const chosenAsset = content && 'assetKey' in content ? content : null;
+        if (chosenAsset?.assetKey && options.bundledAssets?.has(chosenAsset.assetKey) && assets.some((asset) => asset.key === chosenAsset.assetKey)) {
+          planned.activities.push({ key: activity.key, type: 'file', title: chosen.title, visible: activity.visible, folderKey: activity.folderKey, source: sourceVersion, document: { assetKey: chosenAsset.assetKey, fileName: chosenAsset.fileName, format: chosenAsset.format as DocumentFormat } });
+          preview.counts.importableActivities += 1;
+          continue;
         }
         preview.skipped.push({ key: activity.key, unitKey: unit.key, type: activity.type, title: chosen.title.slice(0, 200), reason: 'DOCUMENT_NOT_BUNDLED' });
         continue;
