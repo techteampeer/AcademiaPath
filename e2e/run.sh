@@ -71,7 +71,9 @@ export DOCUMENT_STORAGE_DIR="$WORK/documents" DEMO_FILES_DIR="$WORK/demo-files"
 BASE="http://localhost:$WEB_PORT"
 # Every test file signs the demo accounts in on its own, so the disposable API allows more sign-ins per account than
 # the production default (5 per 15 minutes); rate limiting itself is covered by the API tests.
-(cd "$ROOT/apps/api" && NODE_ENV=development API_PORT="$API_PORT" APP_ORIGINS="$BASE" LOG_LEVEL=warn LOGIN_RATE_LIMIT_MAX=50 exec node dist/server.js > "$WORK/api.log" 2>&1) &
+# ARCHIVE_IMPORT_ENABLED=true: the archive import (AP-038C2E/F) is tested here, on this disposable local server only. It is
+# off by default and refused in production.
+(cd "$ROOT/apps/api" && NODE_ENV=development API_PORT="$API_PORT" APP_ORIGINS="$BASE" LOG_LEVEL=warn LOGIN_RATE_LIMIT_MAX=50 ARCHIVE_IMPORT_ENABLED=true exec node dist/server.js > "$WORK/api.log" 2>&1) &
 API_PID=$!
 (cd "$ROOT/apps/web" && API_ORIGIN="http://127.0.0.1:$API_PORT" exec node node_modules/next/dist/bin/next start --port "$WEB_PORT" > "$WORK/web.log" 2>&1) &
 WEB_PID=$!

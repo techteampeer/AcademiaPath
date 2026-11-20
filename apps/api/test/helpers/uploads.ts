@@ -43,6 +43,8 @@ export type RawUpload = {
   pause?: { at: number; ms: number };
   /** Send the first `at` bytes of the file, then destroy the connection without finishing the body. */
   abortAt?: number;
+  /** Form fields sent before the file part (AP-038C2E archive import). */
+  fields?: Record<string, string>;
 };
 export type RawResult = { status: number; body: Record<string, unknown> } | { aborted: true };
 
@@ -50,7 +52,10 @@ const BOUNDARY = 'ap-upload-integrity-boundary';
 
 /** One multipart/form-data upload with a single `file` part, sent over a real socket. */
 export function rawUpload(options: RawUpload): Promise<RawResult> {
-  const head = Buffer.from(`--${BOUNDARY}\r\nContent-Disposition: form-data; name="file"; filename="${options.fileName}"\r\nContent-Type: ${options.contentType}\r\n\r\n`);
+  const fields = Object.entries(options.fields ?? {})
+    .map(([name, value]) => `--${BOUNDARY}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`)
+    .join('');
+  const head = Buffer.from(`${fields}--${BOUNDARY}\r\nContent-Disposition: form-data; name="file"; filename="${options.fileName}"\r\nContent-Type: ${options.contentType}\r\n\r\n`);
   const tail = Buffer.from(`\r\n--${BOUNDARY}--\r\n`);
   return new Promise((resolve, reject) => {
     const req = httpRequest(

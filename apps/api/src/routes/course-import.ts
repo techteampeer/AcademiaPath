@@ -1,14 +1,12 @@
 import { eq } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
-import { assignmentFromInput } from '../assignments/model.js';
 import { recordAudit } from '../audit.js';
 import { getAuth } from '../auth/hooks.js';
-import type { Database } from '../db/client.js';
 import { withUniqueConflict } from '../db/errors.js';
-import { activities, courses, programs, quizQuestions, resourceFolders, sectionPrerequisites, sections, terms, type ActivityConfig } from '../db/schema/index.js';
+import { courses, programs, terms } from '../db/schema/index.js';
 import { ApiProblem } from '../http/errors.js';
-import { analyzePackage, IMPORT_MAX_BYTES, type ImportPlan, type PackageAnalysis, type VersionPreference } from '../portability/course-import.js';
-import { buildQuestion } from '../quizzes/model.js';
+import { analyzePackage, IMPORT_MAX_BYTES, type PackageAnalysis, type VersionPreference } from '../portability/course-import.js';
+import { reconstructCourse } from '../portability/course-reconstruct.js';
 import { importCreateSchema, importPreviewSchema, importResultSchema } from './course-import-schemas.js';
 
 type CreateBody = {
@@ -85,7 +83,7 @@ export const courseImportRoutes: FastifyPluginAsync = async (app) => {
           'A course with this code already exists in the term.',
         );
         if (!course) throw new Error('Course was not created');
-        const created = await reconstruct(tx, course.id, plan, userId, body.assignmentDueAt ?? null);
+        const created = await reconstructCourse(tx, course.id, plan, userId, body.assignmentDueAt ?? null);
         await recordAudit(tx, request, {
           action: 'course.imported',
           entityType: 'course',
@@ -116,53 +114,3 @@ export const courseImportRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 };
-
-/**
- * Creates the planned content under a new course with fresh identifiers, mapping each package key to the new row:
- * units in order, prerequisites, folders, then activities as drafts (never approved: they go through this
- * institution's review), quiz questions with new option ids and remapped answer keys, rubrics with new criterion ids,
- * and assignments with the due date chosen at import (no late window).
- */
-async function reconstruct(tx: Pick<Database, 'insert'>, courseId: string, plan: ImportPlan, userId: string, assignmentDueAt: string | null) {
-  const created = { units: 0, folders: 0, prerequisites: 0, activities: 0, questions: 0 };
-  const unitIds = new Map<string, string>();
-  for (const [position, unit] of plan.units.entries()) {
-    const [row] = await tx.insert(sections).values({ courseId, title: unit.title, summary: unit.summary, position, isVisible: unit.visible }).returning({ id: sections.id });
-    unitIds.set(unit.key, row!.id);
-    created.units += 1;
-  }
-  for (const unit of plan.units) {
-    if (!unit.requiresUnitKeys.length) continue;
-    await tx.insert(sectionPrerequisites).values(unit.requiresUnitKeys.map((key) => ({ courseId, sectionId: unitIds.get(unit.key)!, requiredSectionId: unitIds.get(key)!, createdByUserId: userId })));
-    created.prerequisites += unit.requiresUnitKeys.length;
-  }
-  for (const unit of plan.units) {
-    const sectionId = unitIds.get(unit.key)!;
-    const folderIds = new Map<string, string>();
-    for (const [position, folder] of unit.folders.entries()) {
-      const [row] = await tx.insert(resourceFolders).values({ courseId, sectionId, title: folder.title, position, createdByUserId: userId }).returning({ id: resourceFolders.id });
-      folderIds.set(folder.key, row!.id);
-      created.folders += 1;
-    }
-    for (const [position, activity] of unit.activities.entries()) {
-      let config: ActivityConfig;
-      if (activity.page) config = { body: activity.page.body };
-      else if (activity.link) config = { url: activity.link.url, description: activity.link.description, kind: activity.link.kind };
-      else if (activity.quiz) config = { ...activity.quiz.settings };
-      else if (activity.assignment) {
-        config = assignmentFromInput({ title: activity.title, instructions: activity.assignment.instructions, dueAt: assignmentDueAt!, lateUntil: null, rubric: activity.assignment.rubric.map((c) => ({ title: c.title, ...(c.description ? { description: c.description } : {}), maxPoints: c.maxPoints })) });
-      } else throw new Error(`Unplanned activity ${activity.key}`);
-      const [row] = await tx
-        .insert(activities)
-        .values({ sectionId, type: activity.type, title: activity.title, position, isVisible: activity.visible, config, reviewStatus: 'draft', folderId: activity.folderKey ? folderIds.get(activity.folderKey)! : null })
-        .returning({ id: activities.id });
-      created.activities += 1;
-      if (activity.quiz?.questions.length) {
-        // buildQuestion makes fresh option ids and the answer key from them, exactly as when staff add a question.
-        await tx.insert(quizQuestions).values(activity.quiz.questions.map((input, index) => ({ activityId: row!.id, position: index, ...buildQuestion(input) })));
-        created.questions += activity.quiz.questions.length;
-      }
-    }
-  }
-  return created;
-}

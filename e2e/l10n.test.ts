@@ -21,7 +21,7 @@ before(async () => {
     { role: null, path: '/login' },
     { role: null, path: '/preview/courses' },
     { role: null, path: '/e2e-no-such-page' },
-    ...['/admin', '/admin/academics', '/admin/setup', '/admin/users', '/admin/courses', '/admin/communications', '/announcements', '/calendar', '/notifications'].map((path) => ({ role: 'admin' as const, path })),
+    ...['/admin', '/admin/academics', '/admin/setup', '/admin/users', '/admin/courses', '/admin/courses/import', '/admin/courses/import/archive', '/admin/communications', '/announcements', '/calendar', '/notifications'].map((path) => ({ role: 'admin' as const, path })),
     ...['/dashboard', `/courses/${teaching}`, `/courses/${teaching}/grades`, `/courses/${teaching}/progress`, `/courses/${teaching}/forum`, '/messages'].map((path) => ({ role: 'instructor' as const, path })),
     ...['/dashboard', `/courses/${reviewing}`].map((path) => ({ role: 'reviewer' as const, path })),
     ...['/dashboard', `/courses/${assisting}/grades`].map((path) => ({ role: 'ta' as const, path })),
