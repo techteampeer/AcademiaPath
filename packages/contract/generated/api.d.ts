@@ -2042,6 +2042,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{id}/export/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export the course as a portable ZIP archive (AP-038C1D)
+         * @description Same permission as `exportCourse`: `content.export` (design team, instructor) or the administrator role;
+         *     non-editing instructors and students get 403, and callers who cannot see the course get 404. Returns one
+         *     ZIP (`application/zip`, attachment `course-<code>.academiapath.zip`, `Cache-Control: no-store`,
+         *     `X-Content-Type-Options: nosniff`) with:
+         *
+         *     - `academiapath-archive.json`: manifest (`format` `academiapath.course-archive`, `formatVersion` 1) with
+         *       the byte size and SHA-256 of `course.json` and of every asset file, and the totals;
+         *     - `course.json`: exactly the `CoursePackage` that `exportCourse` returns for the same snapshot (still
+         *       `bundled: false`; the manifest describes the files);
+         *     - `assets/<asset key>.<format>`: each document file of this course's own activities. Paths are generated
+         *       by the server, never taken from uploaded file names.
+         *
+         *     Every file is checked against its recorded size and SHA-256. The archive is built completely before
+         *     anything is sent: a missing, changed or unreadable file, or a size above the limit, is an error response,
+         *     never a partial archive. At most 25 MB (provisional): larger courses get 422 `COURSE_ARCHIVE_TOO_LARGE`
+         *     (the JSON export stays available), and the package limits of `exportCourse` still apply
+         *     (`COURSE_EXPORT_TOO_LARGE`). Files are included as stored; they are not malware-scanned.
+         *
+         *     Limits per API instance (not across instances): two archives at a time (503 `COURSE_ARCHIVE_BUSY` with
+         *     `Retry-After`), and 10 requests per user per 10 minutes (429 `RATE_LIMITED`). Audited as
+         *     `course.archive_exported` with counts, sizes and the content hash only.
+         */
+        get: operations["exportCourseArchive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{id}/certificate-policy": {
         parameters: {
             query?: never;
@@ -10167,6 +10207,58 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["UnprocessableContent"];
+        };
+    };
+    exportCourseArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The course archive. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableContent"];
+            429: components["responses"]["RateLimited"];
+            /**
+             * @description A document file of this course is missing (`COURSE_ARCHIVE_DOCUMENT_MISSING`) or failed its integrity
+             *     check (`COURSE_ARCHIVE_DOCUMENT_CORRUPT`); no archive is created. The response names no path or file.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /**
+             * @description Document storage could not be read (`DOCUMENT_STORAGE_UNAVAILABLE`), or this instance is already
+             *     preparing two archives (`COURSE_ARCHIVE_BUSY`, with `Retry-After`). Nothing is sent; retry later.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
         };
     };
     getCertificatePolicy: {
