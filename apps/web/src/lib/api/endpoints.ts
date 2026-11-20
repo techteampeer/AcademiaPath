@@ -137,6 +137,7 @@ import type {
   UserDetail,
   UserPage,
   UserUpdate,
+  CourseArchivePreviewReport,
 } from './types';
 
 export type PageRequest = { cursor?: string | null; limit?: number };
@@ -470,6 +471,15 @@ export const api = {
 
   /** AP-038B: validates a course package (the parsed file) and describes its import; nothing is written. */
   previewCourseImport: (pkg: unknown, csrfToken: string) => apiRequest<CourseImportPreview>('POST', '/course-imports/preview', { body: pkg, csrfToken }),
+  /**
+   * AP-038C2C: validates a course archive (.zip) on the API and previews its import; administrators only. The file is
+   * sent as it is (never read or unpacked in the browser) and nothing is imported or stored.
+   */
+  previewCourseArchive: (file: File, csrfToken: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    return apiUpload<CourseArchivePreviewReport>('/course-imports/archive/preview', form, csrfToken);
+  },
   /** AP-038B: imports a validated package as a new draft course. */
   importCourse: (body: CourseImportRequest, csrfToken: string) => apiRequest<CourseImportResult>('POST', '/course-imports', { body, csrfToken }),
   /** AP-038A: the course content package as a Blob (same-origin, with the session cookie); the browser saves it as a file. */

@@ -5,6 +5,7 @@
  */
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
+import { request as httpRequest } from 'node:http';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -372,6 +373,67 @@ describe('course archive preview API (PostgreSQL)', { skip: testServerUrl ? fals
     problem(await upload('archivist2', await exported(), { fileName: 'course.json' }), 415, 'UNSUPPORTED_FILE_TYPE');
     problem(await upload('archivist2', Buffer.alloc(ARCHIVE_VALIDATION_LIMITS.maxArchiveBytes + 1)), 413, 'PAYLOAD_TOO_LARGE');
     assert.equal(ARCHIVE_VALIDATION_LIMITS.maxArchiveBytes, 25 * 1024 * 1024);
+  });
+
+  it('over real HTTP, every upload above 25 MB is refused with 413, including one cut off exactly at the limit', async () => {
+    // app.inject delivers a body at once. A listening server receives it in pieces: when the file data received so far
+    // ends exactly at the limit and is read before the rest arrives, @fastify/multipart used to return the file cut off
+    // at 25 MB without an error (seen through the web proxy), and it was validated. Sent here by hand, deterministically.
+    const server = buildApp({ config: config(), database: database.db });
+    await server.listen({ port: 0, host: '127.0.0.1' });
+    const { port } = server.server.address() as { port: number };
+    const limit = ARCHIVE_VALIDATION_LIMITS.maxArchiveBytes;
+    const send = (who: string, extra: number, pauseAtLimit: boolean) =>
+      new Promise<{ status: number; body: { code?: string; archive?: { byteSize: number } } }>((resolve, reject) => {
+        const s = sessions.get(who)!;
+        const boundary = 'ap-archive-preview-limit';
+        const head = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="course-archive.zip"\r\nContent-Type: application/zip\r\n\r\n`);
+        const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
+        const req = httpRequest(
+          {
+            host: '127.0.0.1',
+            port,
+            method: 'POST',
+            path: URL_PATH,
+            headers: {
+              'content-type': `multipart/form-data; boundary=${boundary}`,
+              'content-length': head.length + limit + extra + tail.length,
+              cookie: `${COOKIE}=${s.token}`,
+              'x-csrf-token': s.csrf,
+              origin: ORIGIN,
+            },
+          },
+          (res) => {
+            const chunks: Buffer[] = [];
+            res.on('data', (chunk: Buffer) => chunks.push(chunk));
+            res.on('end', () => resolve({ status: res.statusCode ?? 0, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) }));
+          },
+        );
+        req.on('error', (error: NodeJS.ErrnoException) => (error.code === 'ECONNRESET' || error.code === 'EPIPE' ? undefined : reject(error)));
+        req.write(Buffer.concat([head, Buffer.alloc(limit)]));
+        const rest = () => req.end(Buffer.concat([Buffer.alloc(extra), tail]));
+        if (pauseAtLimit) setTimeout(rest, 300);
+        else rest();
+      });
+    try {
+      const results: string[] = [];
+      for (const [who, extra, pause] of [
+        ['archivist1', 1, true],
+        ['archivist2', 4096, true],
+        ['archivist3', 1, false],
+        ['archivist4', 1024 * 1024, false],
+      ] as const) {
+        const { status: code, body } = await send(who, extra, pause);
+        results.push(`+${extra} bytes${pause ? ', pause at the limit' : ''}: ${code} ${body.code ?? `report of ${body.archive?.byteSize} bytes`}`);
+      }
+      assert.deepEqual(
+        results.filter((result) => !result.endsWith('413 PAYLOAD_TOO_LARGE')),
+        [],
+        'every oversized upload is refused',
+      );
+    } finally {
+      await server.close();
+    }
   });
 
   it(`at most ${ARCHIVE_PREVIEW_MAX_IN_FLIGHT} previews per API instance: more are refused while they wait for the shared worker pool`, async () => {

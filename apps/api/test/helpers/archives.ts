@@ -19,18 +19,35 @@ export const OFFICE: Doc[] = [
   { name: 'slides.pptx', title: 'Slides', format: 'pptx', bytes: makePptx([['Synthetic slide']]) },
 ];
 
-/** A course package the AP-038B validation accepts (hash included): one unit with a page and one activity per document. */
-export function coursePackage(docs: Doc[]): CoursePackage {
+/** Variations of the synthetic course: authored title and description, no welcome page, an activity type that is not portable. */
+export type CourseOptions = { title?: string; description?: string; page?: boolean; unsupported?: boolean };
+
+/**
+ * A course package the AP-038B validation accepts (hash included): one unit with a page (unless `page: false`) and one
+ * activity per document; `unsupported` adds a SCORM activity exported title-only, with the exporter's warning.
+ */
+export function coursePackage(docs: Doc[], options: CourseOptions = {}): CoursePackage {
   const assets: PackageAsset[] = docs.map((doc, i) => ({ key: `asset-${i + 1}`, kind: 'document', fileName: doc.name, format: doc.format, byteSize: doc.bytes.length, sha256: sha(doc.bytes), bundled: false }));
   const version = (title: string, content: PackageActivity['working']['content']) => ({ title, content });
   const activities: PackageActivity[] = [
-    { key: 'activity-1', type: 'page', position: 0, visible: true, folderKey: null, reviewStatus: 'approved', working: version('Welcome', { body: 'Synthetic welcome.' }), approved: version('Welcome', { body: 'Synthetic welcome.' }) },
+    ...(options.page === false
+      ? []
+      : [{ key: 'activity-1', type: 'page', position: 0, visible: true, folderKey: null, reviewStatus: 'approved', working: version('Welcome', { body: 'Synthetic welcome.' }), approved: version('Welcome', { body: 'Synthetic welcome.' }) } as PackageActivity]),
     ...docs.map((doc, i): PackageActivity => {
       const content = { assetKey: `asset-${i + 1}`, fileName: doc.name, format: doc.format };
       return { key: `activity-${i + 2}`, type: 'file', position: i + 1, visible: true, folderKey: null, reviewStatus: 'approved', working: version(doc.title, content), approved: version(doc.title, content) };
     }),
+    ...(options.unsupported
+      ? [{ key: 'activity-scorm', type: 'scorm', position: docs.length + 1, visible: true, folderKey: null, reviewStatus: 'approved', working: version('SCORM lesson', null), approved: version('SCORM lesson', null) } as PackageActivity]
+      : []),
   ];
-  const course = { title: 'Archive validation fixture', description: 'Synthetic course.', units: [{ key: 'unit-1', title: 'Unit 1', summary: null, position: 0, visible: true, requiresUnitKeys: [], folders: [], activities }] };
+  const course = {
+    title: options.title ?? 'Archive validation fixture',
+    description: options.description ?? 'Synthetic course.',
+    units: [{ key: 'unit-1', title: 'Unit 1', summary: null, position: 0, visible: true, requiresUnitKeys: [], folders: [], activities }],
+  };
+  const warnings: CoursePackage['warnings'] = assets.length ? [{ code: 'ASSET_NOT_BUNDLED', target: 'assets', detail: 'Document files are described but not included in this package.' }] : [];
+  if (options.unsupported) warnings.push({ code: 'UNSUPPORTED_ACTIVITY_TYPE', target: 'activity-scorm', detail: 'Activities of type scorm are not portable yet; only the title is included.' });
   return {
     format: PACKAGE_FORMAT,
     formatVersion: 1,
@@ -39,15 +56,15 @@ export function coursePackage(docs: Doc[]): CoursePackage {
     source: { courseCode: 'ARC-V', courseStatus: 'published' },
     course,
     assets,
-    warnings: assets.length ? [{ code: 'ASSET_NOT_BUNDLED', target: 'assets', detail: 'Document files are described but not included in this package.' }] : [],
+    warnings,
     excludedData: EXCLUDED_DATA,
     counts: { units: 1, folders: 0, activities: activities.length, approvedActivities: activities.length, questions: 0, assets: assets.length },
   };
 }
 
 /** An archive written by the real exporter. */
-export async function exported(docs: Doc[] = OFFICE): Promise<Buffer> {
-  const packaged = coursePackage(docs);
+export async function exported(docs: Doc[] = OFFICE, options: CourseOptions = {}): Promise<Buffer> {
+  const packaged = coursePackage(docs, options);
   const stored = new Map<string, Buffer>();
   const sources = new Map<string, string>();
   docs.forEach((doc, i) => {

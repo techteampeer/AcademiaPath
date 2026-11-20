@@ -211,7 +211,12 @@ separately and can verify it with `sha256`. A file missing from storage is repor
   - Per API instance: two previews at a time, including uploads waiting for a worker (503 `ARCHIVE_PREVIEW_BUSY`); 10 previews per administrator per 10 minutes (429).
   - An invalid archive gets `200` with `status: invalid`, `preview: null` and stable issue codes (`CourseArchiveIssueCode` in the contract; EN/ES texts in the web catalog). A worker failure or timeout gives `ARCHIVE_VALIDATION_FAILED` or `ARCHIVE_VALIDATION_LIMIT`.
   - Warnings that `course.json` carries from its export are reported only under the known codes, or as `PACKAGE_WARNING`.
-- **Not yet built:** the archive import API (confirming and creating the course) and the UI.
+- **Preview UI (AP-038C2D):** *Administration → Courses → Import course → Preview a course archive (.zip)* (`/admin/courses/import/archive`).
+  - Administrators only; other users see the restricted-page message, and the API refuses them anyway.
+  - The browser checks only the file's name, size (25 MB) and that it is not empty, then sends the file as it is. It never reads, unpacks or runs the archive, and it lets go of the file once the report arrives.
+  - The report shows: the status; the course's title, description, source code and export date (as written, never translated or rendered as HTML); the counts of units, lessons, quizzes, assignments, documents and questions; what can and cannot be imported; the PDF/Word/PowerPoint files; every issue, described by its code in English or Spanish.
+  - There is no import or confirm action yet.
+- **Not yet built:** the archive import API (confirming and creating the course) and its confirmation step in the UI.
 
 ```text
 academiapath-archive.json   manifest: format "academiapath.course-archive", formatVersion 1
