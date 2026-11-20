@@ -229,8 +229,13 @@ separately and can verify it with `sha256`. A file missing from storage is repor
   2. **Malware scanning (AP-040).** No scanner is connected, so imported documents are recorded `not_scanned` (never `clean`).
   3. **Cross-instance limits.** The one-at-a-time cap and the rate limit are per API instance. Several Cloud Run instances multiply them.
   4. **Duration.** Each step is bounded (30 s validation; per-document extraction timeout), but an archive with many documents takes their sum. A per-import document cap or a background job may be needed.
-  5. **Confirmation UI.** The confirmation step is not built yet.
-- **Not yet built:** the confirmation step in the UI.
+- **Confirmation UI (AP-038C2F):** on the archive preview page, below a valid report.
+  - The page asks the API whether import is enabled (`GET /api/v1/course-imports/archive/availability`, administrators only). When it is off, the page explains that import is unavailable and offers no import action.
+  - When it is on, the administrator chooses the destination program and term, a new course code, the title, the content version, the assignments' due date and the acknowledgements the archive needs, and confirms that a NEW draft course will be created.
+  - A review step shows the destination and the content summary. Only its explicit confirmation sends the checked file with those fields, once per click; the server validates the archive again.
+  - Success is shown only after a 201, with a link to the new draft course. A taken code (409) is shown on the code field; other refusals (403, 413, 422, 429, 503) are explained in English or Spanish and follow the language switch.
+  - The chosen file (a browser file handle; its bytes are never read by the page) is kept only while the report is shown, and released after the import or when the page is cleared.
+  - The browser suite enables the import on its disposable local server only (`e2e/run.sh`).
 
 ```text
 academiapath-archive.json   manifest: format "academiapath.course-archive", formatVersion 1

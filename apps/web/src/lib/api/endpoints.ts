@@ -138,6 +138,9 @@ import type {
   UserPage,
   UserUpdate,
   CourseArchivePreviewReport,
+  CourseArchiveImportAvailability,
+  CourseArchiveImportRequest,
+  CourseArchiveImportResult,
 } from './types';
 
 export type PageRequest = { cursor?: string | null; limit?: number };
@@ -479,6 +482,18 @@ export const api = {
     const form = new FormData();
     form.append('file', file);
     return apiUpload<CourseArchivePreviewReport>('/course-imports/archive/preview', form, csrfToken);
+  },
+  /** AP-038C2F: whether this server accepts archive imports (ARCHIVE_IMPORT_ENABLED); administrators only. */
+  getCourseArchiveImportAvailability: () => apiRequest<CourseArchiveImportAvailability>('GET', '/course-imports/archive/availability'),
+  /**
+   * AP-038C2E: imports a course archive as a NEW draft course (feature-gated). The file is sent as it is, with the API's
+   * own form fields; the API validates the archive again and never trusts an earlier preview.
+   */
+  importCourseArchive: (file: File, fields: Omit<CourseArchiveImportRequest, 'file'>, csrfToken: string) => {
+    const form = new FormData();
+    for (const [name, value] of Object.entries(fields)) if (typeof value === 'string' && value !== '') form.append(name, value);
+    form.append('file', file);
+    return apiUpload<CourseArchiveImportResult>('/course-imports/archive', form, csrfToken);
   },
   /** AP-038B: imports a validated package as a new draft course. */
   importCourse: (body: CourseImportRequest, csrfToken: string) => apiRequest<CourseImportResult>('POST', '/course-imports', { body, csrfToken }),

@@ -124,3 +124,11 @@ export const archiveImportResultSchema = {
     contentHash: nullableString,
   },
 } as const;
+
+/** AP-038C2F: whether `POST /course-imports/archive` is enabled on this server (ARCHIVE_IMPORT_ENABLED). */
+export const archiveImportAvailabilitySchema = {
+  type: 'object',
+  required: ['enabled'],
+  additionalProperties: false,
+  properties: { enabled: { type: 'boolean' } },
+} as const;

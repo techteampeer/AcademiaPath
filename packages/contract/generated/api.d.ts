@@ -1936,6 +1936,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/course-imports/archive/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether archive import is enabled on this server (AP-038C2F)
+         * @description Administrators only. `enabled` reflects `ARCHIVE_IMPORT_ENABLED` (off by default and refused in production), so
+         *     the interface offers an import action only when `POST /api/v1/course-imports/archive` would accept one. It changes
+         *     nothing; the confirmation endpoint enforces the setting on its own.
+         */
+        get: operations["getCourseArchiveImportAvailability"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/course-imports/archive": {
         parameters: {
             query?: never;
@@ -6505,6 +6527,10 @@ export interface components {
             skipped: components["schemas"]["CourseImportSkipped"][];
             contentHash: string;
         };
+        CourseArchiveImportAvailability: {
+            /** @description Whether `POST /api/v1/course-imports/archive` accepts imports on this server. */
+            enabled: boolean;
+        };
         /** @description The form fields and the file, in any order. Values are strings. */
         CourseArchiveImportRequest: {
             /** Format: uuid */
@@ -10370,6 +10396,29 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
+        };
+    };
+    getCourseArchiveImportAvailability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current setting. */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseArchiveImportAvailability"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     importCourseArchive: {

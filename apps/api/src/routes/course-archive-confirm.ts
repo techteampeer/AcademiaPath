@@ -10,7 +10,7 @@ import { readUploadedFile } from '../http/uploads.js';
 import { ArchiveImportError, importCourseArchive } from '../portability/archive-import.js';
 import { readCourseArchiveInWorker } from '../portability/archive-preview.js';
 import { ARCHIVE_VALIDATION_LIMITS } from '../portability/archive-validation.js';
-import { archiveImportFieldsSchema, archiveImportResultSchema } from './course-archive-import-schemas.js';
+import { archiveImportAvailabilitySchema, archiveImportFieldsSchema, archiveImportResultSchema } from './course-archive-import-schemas.js';
 
 export type ArchiveConfirmRouteOptions = { storage: DocumentStorage; scanner: MalwareScanner; provider: DocumentSummaryProvider };
 
@@ -87,6 +87,16 @@ export const courseArchiveConfirmRoutes: FastifyPluginAsync<ArchiveConfirmRouteO
     limits: { fileSize: ARCHIVE_VALIDATION_LIMITS.maxArchiveBytes, files: 1, fields: MAX_FIELDS, parts: MAX_FIELDS + 1, fieldSize: 1024, fieldNameSize: 64, headerPairs: 50 },
   });
   let inFlight = 0;
+
+  // AP-038C2F: whether this server accepts archive imports, so the interface shows an import action only when it does.
+  app.get(
+    '/course-imports/archive/availability',
+    { preValidation: [app.requireAuth, app.requireAdministrator], schema: { response: { 200: archiveImportAvailabilitySchema } } },
+    async (_request, reply) => {
+      reply.header('cache-control', 'no-store');
+      return { enabled: config.archiveImport.enabled };
+    },
+  );
 
   app.post(
     '/course-imports/archive',

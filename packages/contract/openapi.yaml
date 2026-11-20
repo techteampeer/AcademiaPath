@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.35.0
+  version: 0.36.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -3597,6 +3597,31 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
+  /api/v1/course-imports/archive/availability:
+    get:
+      operationId: getCourseArchiveImportAvailability
+      summary: Whether archive import is enabled on this server (AP-038C2F)
+      description: |
+        Administrators only. `enabled` reflects `ARCHIVE_IMPORT_ENABLED` (off by default and refused in production), so
+        the interface offers an import action only when `POST /api/v1/course-imports/archive` would accept one. It changes
+        nothing; the confirmation endpoint enforces the setting on its own.
+      tags: [Courses]
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The current setting.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseArchiveImportAvailability"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/course-imports/archive:
     post:
       operationId: importCourseArchive
@@ -12806,6 +12831,14 @@ components:
             $ref: "#/components/schemas/CourseImportSkipped"
         contentHash:
           type: string
+    CourseArchiveImportAvailability:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+          description: Whether `POST /api/v1/course-imports/archive` accepts imports on this server.
     CourseArchiveImportRequest:
       type: object
       description: The form fields and the file, in any order. Values are strings.

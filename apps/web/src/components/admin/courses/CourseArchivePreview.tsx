@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
 import { useLocalizedState } from '@/components/i18n/useLocalizedState';
+import { ArchiveImport } from '@/components/admin/courses/CourseArchiveImport';
 import { RequireAuth } from '@/components/session/RequireAuth';
 import { useSession } from '@/components/session/SessionProvider';
 import { describeApiError } from '@/components/session/useCsrfAction';
@@ -25,8 +26,12 @@ const COUNTED_TYPES = new Set(['page', 'quiz', 'assignment', 'link', 'file']);
 
 type Issue = CourseArchivePreviewReport['issues'][number];
 type Preview = NonNullable<CourseArchivePreviewReport['preview']>;
-/** What was checked: the report and the file's name and size only (the file itself is released after the check). */
-type Checked = { report: CourseArchivePreviewReport; fileName: string };
+/**
+ * What was checked: the report and the file's name. The chosen file itself (a browser file handle; its bytes are never
+ * read here) is kept only while an importable report is shown, for the import step (AP-038C2F); it is released when the
+ * page is cleared, another file is chosen or the import succeeded.
+ */
+type Checked = { report: CourseArchivePreviewReport; fileName: string; file: File | null };
 
 /**
  * AP-038C2D: administrators check a portable course archive (.zip, AP-038C1E) and see what an import would create.
@@ -77,9 +82,11 @@ function Checker() {
   const fileInput = useRef<HTMLInputElement>(null);
   const resultHeading = useRef<HTMLHeadingElement>(null);
 
+  // Focus moves to a NEW report only (releasing the file after an import must not pull focus back from its result).
+  const report = checked?.report;
   useEffect(() => {
-    if (checked) resultHeading.current?.focus();
-  }, [checked]);
+    if (report) resultHeading.current?.focus();
+  }, [report]);
 
   const forgetFile = () => {
     setFile(null);
@@ -99,8 +106,8 @@ function Checker() {
     setPending(true);
     try {
       const report = await api.previewCourseArchive(file, await getCsrfToken());
-      setChecked({ report, fileName: file.name });
-      // The report is all that is needed now: the file is released (choose it again to check it again).
+      setChecked({ report, fileName: file.name, file: report.preview ? file : null });
+      // The picker is cleared; only an importable archive's file is kept, for the import step below the report.
       forgetFile();
     } catch (error) {
       if (isApiError(error, 401)) handleUnauthorized();
@@ -180,6 +187,9 @@ function Checker() {
         </form>
       </Card>
       {checked ? <Report checked={checked} headingRef={resultHeading} onReset={reset} /> : null}
+      {checked?.report.preview ? (
+        <ArchiveImport preview={checked.report.preview} file={checked.file} onImported={() => setChecked((current) => current && { ...current, file: null })} onAnother={reset} />
+      ) : null}
     </>
   );
 }

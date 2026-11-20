@@ -184,6 +184,20 @@ describe('course archive import confirmation API (AP-038C2E, PostgreSQL)', { ski
     assert.throws(() => loadConfig({ NODE_ENV: 'test', APP_ORIGINS: ORIGIN, DOCUMENT_STORAGE_DIR: storageDir, ARCHIVE_IMPORT_ENABLED: 'yes' }), /must be true or false/);
   });
 
+  it('availability: administrators learn whether import is enabled on this server; nobody else does', async () => {
+    const disabled = await newApp({ env: { ARCHIVE_IMPORT_ENABLED: 'false' } });
+    try {
+      const get = (target: App, who: string | null) => target.inject({ method: 'GET', url: '/api/v1/course-imports/archive/availability', cookies: who ? { [COOKIE]: sessions.get(who)!.token } : {} });
+      const enabled = await get(app, 'admin');
+      assert.deepEqual([enabled.statusCode, enabled.json(), enabled.headers['cache-control']], [200, { enabled: true }, 'no-store']);
+      assert.deepEqual(ok(await get(disabled, 'admin')), { enabled: false });
+      for (const who of ['instructor', 'reviewer', 'ta', 'student']) problem(await get(app, who), 403, 'FORBIDDEN');
+      problem(await get(app, null), 401, 'UNAUTHENTICATED');
+    } finally {
+      await disabled.close();
+    }
+  });
+
   it('administrators only; anonymous callers must sign in; CSRF and Origin are checked before the upload is read', async () => {
     const before = await snapshot();
     const archive = await exported();
