@@ -137,6 +137,7 @@ import type {
   UserDetail,
   UserPage,
   UserUpdate,
+  CourseArchivePreviewReport,
 } from './types';
 
 export type PageRequest = { cursor?: string | null; limit?: number };
@@ -470,6 +471,15 @@ export const api = {
 
   /** AP-038B: validates a course package (the parsed file) and describes its import; nothing is written. */
   previewCourseImport: (pkg: unknown, csrfToken: string) => apiRequest<CourseImportPreview>('POST', '/course-imports/preview', { body: pkg, csrfToken }),
+  /**
+   * AP-038C2C: validates a course archive (.zip) on the API and previews its import; administrators only. The file is
+   * sent as it is (never read or unpacked in the browser) and nothing is imported or stored.
+   */
+  previewCourseArchive: (file: File, csrfToken: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    return apiUpload<CourseArchivePreviewReport>('/course-imports/archive/preview', form, csrfToken);
+  },
   /** AP-038B: imports a validated package as a new draft course. */
   importCourse: (body: CourseImportRequest, csrfToken: string) => apiRequest<CourseImportResult>('POST', '/course-imports', { body, csrfToken }),
   /** AP-038A: the course content package as a Blob (same-origin, with the session cookie); the browser saves it as a file. */
@@ -482,6 +492,28 @@ export const api = {
     const disposition = response.headers.get('content-disposition') ?? '';
     const fileName = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'course.academiapath.json';
     return { blob: await response.blob(), fileName };
+  },
+  /**
+   * AP-038C1E: the course ZIP archive (course.json, its document files and a manifest) as a Blob. A failed request
+   * throws the API's problem; a response that is not a ZIP (wrong type or no ZIP signature) is never saved as one.
+   */
+  exportCourseArchive: async (courseId: string, signal?: AbortSignal) => {
+    const response = await fetch(`${API_BASE}${course(courseId)}/export/archive`, {
+      credentials: 'same-origin',
+      headers: { accept: 'application/zip, application/problem+json' },
+      signal,
+    });
+    if (!response.ok) {
+      const problem = await response.json().catch(() => null);
+      throw new ApiError(response.status, problem && typeof problem === 'object' && 'status' in problem ? problem : null);
+    }
+    const blob = await response.blob();
+    const signature = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+    const isZip = (response.headers.get('content-type') ?? '').startsWith('application/zip') && signature[0] === 0x50 && signature[1] === 0x4b && signature[2] === 0x03 && signature[3] === 0x04;
+    if (!isZip) throw new ApiError(502, null);
+    const disposition = response.headers.get('content-disposition') ?? '';
+    const fileName = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'course.academiapath.zip';
+    return { blob, fileName };
   },
 
   // Documents: uploaded and validated by the API, which extracts the text and creates mock summaries.
