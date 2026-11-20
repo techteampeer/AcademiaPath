@@ -60,6 +60,13 @@ function refusal(error: unknown, log: FastifyBaseLogger): ApiProblem {
         'ARCHIVE_IMPORT_DOCUMENT_REJECTED',
         `A document in the archive was rejected (${error.detail.documentCode ?? 'DOCUMENT_REJECTED'}${error.detail.assetKey ? `, ${error.detail.assetKey}` : ''}); nothing was created.`,
       );
+    case 'SCAN_UNAVAILABLE':
+      // Strict enforcement (AP-040E): no document could be verified clean, so nothing was imported.
+      log.error(
+        { archiveImport: { problem: error.problem, assetKey: error.detail.assetKey ?? null } },
+        'Course archive import refused: a document could not be scanned for malware (strict enforcement)',
+      );
+      return new ApiProblem(503, 'ARCHIVE_IMPORT_SCAN_UNAVAILABLE', 'A document in the archive could not be checked for malware right now; nothing was created. Try again later.');
     case 'STORAGE_FAILED':
       return new ApiProblem(503, 'ARCHIVE_IMPORT_STORAGE_FAILED', 'Document storage could not keep the archive’s files; nothing was created. Try again later.');
     case 'IMPORT_FAILED':
@@ -153,6 +160,7 @@ export const courseArchiveConfirmRoutes: FastifyPluginAsync<ArchiveConfirmRouteO
               db,
               storage,
               scanner,
+              scanEnforcement: config.malwareScanning.enforcement,
               provider,
               extract: (file, format) => extractInWorker(file, format, config.documents.extractionTimeoutMs),
               readArchive: (archive) => readCourseArchiveInWorker(archive),

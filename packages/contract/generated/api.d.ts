@@ -1186,6 +1186,13 @@ export interface paths {
          *     When the storage directory is missing (or, with `DOCUMENT_STORAGE_MOUNT_CHECK=enforce`, storage is not ready;
          *     see `GET /api/v1/system/storage`), or the file cannot be stored, the upload is refused with
          *     `503 DOCUMENT_STORAGE_UNAVAILABLE` and nothing is created.
+         *
+         *     Malware scanning (AP-040E): the complete file is scanned before it is parsed or stored. A detected threat is
+         *     refused with `422 MALWARE_DETECTED`. No scanner is configured by default, and documents are then recorded as
+         *     `not_scanned`. With a scanner, a file that could not be verified (scanner unavailable, timed out or failed) is
+         *     recorded as `not_scanned` in compatibility mode, or refused with `503 MALWARE_SCAN_UNAVAILABLE` in strict mode.
+         *     A document is `clean` only after a verified clean scan. Refusals are audited as `document.upload_rejected`;
+         *     nothing is stored.
          */
         post: operations["uploadSectionDocument"];
         delete?: never;
@@ -3870,7 +3877,7 @@ export interface components {
              * @description Application-specific error code.
              * @enum {string}
              */
-            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUALITY_CHECK_BLOCKED" | "QUALITY_REPORT_TOO_LARGE" | "COURSE_EXPORT_TOO_LARGE" | "IMPORT_PACKAGE_INVALID" | "IMPORT_VERSION_UNSUPPORTED" | "IMPORT_HASH_MISMATCH" | "IMPORT_ACKNOWLEDGEMENT_REQUIRED" | "IMPORT_DUE_DATE_REQUIRED" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "INVITATION_CONFIRMATION_REQUIRED" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE" | "QUIZ_POOL_TOO_SMALL" | "QUIZ_POOL_POINTS_MIXED" | "QUIZ_SOURCE_INVALID" | "FEEDBACK_NOT_AVAILABLE" | "GRADE_CATEGORY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_INVALID" | "GRADE_WEIGHTS_INVALID" | "GRADE_RELEASE_DUPLICATE" | "GRADING_POLICY_CONFLICT" | "CERTIFICATE_POLICY_INVALID" | "CERTIFICATE_POLICY_CONFLICT" | "CERTIFICATE_NOT_ELIGIBLE" | "CERTIFICATE_ALREADY_REVOKED" | "CERTIFICATE_REVOKED" | "CERTIFICATE_NOT_FOUND" | "ANNOUNCEMENT_ARCHIVED" | "ANNOUNCEMENT_NOT_SCHEDULED" | "PUBLISH_AT_INVALID" | "EVENT_TIME_INVALID" | "INVALID_TIME_ZONE" | "RANGE_INVALID" | "EVENT_CANCELLED" | "EVENT_WAS_PUBLISHED" | "DOCUMENT_FILE_MISSING" | "DOCUMENT_FILE_CORRUPT" | "DOCUMENT_STORAGE_UNAVAILABLE";
+            code: "VALIDATION_ERROR" | "INVALID_CREDENTIALS" | "UNAUTHENTICATED" | "CSRF_TOKEN_INVALID" | "ORIGIN_NOT_ALLOWED" | "FORBIDDEN" | "RATE_LIMITED" | "BAD_REQUEST" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "REQUEST_ERROR" | "INTERNAL_ERROR" | "INVALID_CURSOR" | "PROGRAM_CODE_TAKEN" | "TERM_CODE_TAKEN" | "COURSE_CODE_TAKEN" | "ENROLLMENT_EXISTS" | "TEMPLATE_VERSION_CONFLICT" | "INVALID_TERM_DATES" | "PROGRAM_NOT_FOUND" | "PROGRAM_INACTIVE" | "TERM_NOT_FOUND" | "TEMPLATE_NOT_FOUND" | "TEMPLATE_VERSION_NOT_FOUND" | "TEMPLATE_PROGRAM_MISMATCH" | "USER_NOT_FOUND" | "USER_INACTIVE" | "INVALID_URL" | "CONTENT_TYPE_MISMATCH" | "ACTIVITY_UNDER_REVIEW" | "INVALID_REVIEW_STATE" | "SELF_REVIEW_NOT_ALLOWED" | "REVIEW_COMMENT_REQUIRED" | "QUIZ_HAS_NO_QUESTIONS" | "QUALITY_CHECK_BLOCKED" | "QUALITY_REPORT_TOO_LARGE" | "COURSE_EXPORT_TOO_LARGE" | "IMPORT_PACKAGE_INVALID" | "IMPORT_VERSION_UNSUPPORTED" | "IMPORT_HASH_MISMATCH" | "IMPORT_ACKNOWLEDGEMENT_REQUIRED" | "IMPORT_DUE_DATE_REQUIRED" | "QUIZ_QUESTION_LIMIT" | "INVALID_ANSWER_KEY" | "INVALID_ANSWER" | "ATTEMPT_LIMIT_REACHED" | "ATTEMPT_NOT_IN_PROGRESS" | "ATTEMPT_EXPIRED" | "ATTEMPT_CONFLICT" | "SUBMISSION_EXISTS" | "SUBMISSION_CLOSED" | "INVALID_DUE_DATE" | "INVALID_RUBRIC_SCORES" | "TERM_YEAR_MISMATCH" | "TEMPLATE_CODE_TAKEN" | "UNSUPPORTED_FILE_TYPE" | "FILE_SIGNATURE_MISMATCH" | "DOCUMENT_ENCRYPTED" | "DOCUMENT_MALFORMED" | "DOCUMENT_LIMITS_EXCEEDED" | "MALWARE_DETECTED" | "MALWARE_SCAN_UNAVAILABLE" | "EMAIL_TAKEN" | "EMAIL_LOCKED" | "LAST_ADMINISTRATOR" | "SELF_ACCOUNT_CHANGE" | "INVITATIONS_DISABLED" | "INVITATION_SYNTHETIC_ONLY" | "INVITATION_CONFIRMATION_REQUIRED" | "ACCOUNT_ALREADY_ACTIVATED" | "INVITATION_INVALID" | "PASSWORD_TOO_WEAK" | "COURSE_NOT_FOUND" | "DUPLICATE_COURSE" | "ENROLLMENT_HAS_STUDENT_WORK" | "IMPORT_HAS_ERRORS" | "IMPORT_TOO_LARGE" | "IMPORT_CONFLICT" | "COURSE_VERSION_CONFLICT" | "INVALID_COURSE_TRANSITION" | "COURSE_CODE_LOCKED" | "SECTION_ORDER_STALE" | "INVALID_SECTION_ORDER" | "ENROLLMENT_HAS_HISTORY" | "PROGRAM_MANAGER_EXISTS" | "SECTION_LOCKED" | "COMPLETION_AUTOMATIC" | "PREREQUISITE_SELF" | "PREREQUISITE_SECTION_NOT_FOUND" | "PREREQUISITE_CYCLE" | "RESOURCE_FOLDER_NOT_FOUND" | "RESOURCE_FOLDER_NOT_EMPTY" | "RESOURCE_ORDER_STALE" | "RESOURCE_NOT_ORGANIZABLE" | "QUIZ_POOL_TOO_SMALL" | "QUIZ_POOL_POINTS_MIXED" | "QUIZ_SOURCE_INVALID" | "FEEDBACK_NOT_AVAILABLE" | "GRADE_CATEGORY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_DUPLICATE" | "GRADE_CATEGORY_ACTIVITY_INVALID" | "GRADE_WEIGHTS_INVALID" | "GRADE_RELEASE_DUPLICATE" | "GRADING_POLICY_CONFLICT" | "CERTIFICATE_POLICY_INVALID" | "CERTIFICATE_POLICY_CONFLICT" | "CERTIFICATE_NOT_ELIGIBLE" | "CERTIFICATE_ALREADY_REVOKED" | "CERTIFICATE_REVOKED" | "CERTIFICATE_NOT_FOUND" | "ANNOUNCEMENT_ARCHIVED" | "ANNOUNCEMENT_NOT_SCHEDULED" | "PUBLISH_AT_INVALID" | "EVENT_TIME_INVALID" | "INVALID_TIME_ZONE" | "RANGE_INVALID" | "EVENT_CANCELLED" | "EVENT_WAS_PUBLISHED" | "DOCUMENT_FILE_MISSING" | "DOCUMENT_FILE_CORRUPT" | "DOCUMENT_STORAGE_UNAVAILABLE";
         };
         /**
          * @description What a link points to. Every kind is only a link opened in a new tab; nothing is embedded, fetched or executed.
@@ -4839,7 +4846,11 @@ export interface components {
             /** Format: date-time */
             uploadedAt: string;
             extraction: components["schemas"]["DocumentExtraction"];
-            /** @description No malware scanning service is connected yet, so uploads report `not_scanned` (scanner `none`). */
+            /**
+             * @description `clean` only after a scanner verified the complete file. `not_scanned` when no scanner is configured
+             *     (scanner `none`, the default) or, in compatibility mode, when the scan failed (scanner such as
+             *     `clamd:timeout`). Infected files are never stored.
+             */
             malwareScan: {
                 /** @enum {string} */
                 status: "not_scanned" | "clean";
@@ -9441,7 +9452,28 @@ export interface operations {
             413: components["responses"]["PayloadTooLarge"];
             415: components["responses"]["UnsupportedMediaType"];
             422: components["responses"]["UnprocessableContent"];
-            503: components["responses"]["StorageUnavailable"];
+            /**
+             * @description Nothing was created. Document storage cannot be used right now (`DOCUMENT_STORAGE_UNAVAILABLE`), or, with
+             *     strict malware-scan enforcement, the file could not be verified by the scanner
+             *     (`MALWARE_SCAN_UNAVAILABLE`). The request can be retried later.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Service Unavailable",
+                     *       "status": 503,
+                     *       "detail": "The file could not be checked for malware right now, so it was not accepted. Try again later.",
+                     *       "code": "MALWARE_SCAN_UNAVAILABLE"
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
         };
     };
     getActivityDocument: {
@@ -10494,7 +10526,9 @@ export interface operations {
             };
             /**
              * @description Nothing was created. Either another import is running on this instance (`ARCHIVE_IMPORT_BUSY`, with
-             *     `Retry-After`), or document storage failed (`ARCHIVE_IMPORT_STORAGE_FAILED`). Retry later.
+             *     `Retry-After`), or document storage failed (`ARCHIVE_IMPORT_STORAGE_FAILED`), or, with strict
+             *     malware-scan enforcement, a document could not be verified by the scanner
+             *     (`ARCHIVE_IMPORT_SCAN_UNAVAILABLE`). Retry later.
              */
             503: {
                 headers: {

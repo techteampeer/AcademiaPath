@@ -251,8 +251,9 @@ Storage API, or disable the negative stat cache for that job).
 
 ## Known unresolved risks (not fixed in AP-040B)
 
-- **Placeholder malware scanner.** `noMalwareScanner` records uploads as `not_scanned`. A real scanner needs a
-  separate decision and may add cost.
+- **No malware scanning in production.** A ClamAV (clamd) integration exists (AP-040E, docs/malware-scanning.md),
+  but it is off by default and not deployed, so production uploads are still recorded as `not_scanned`. Activating it
+  needs more Cloud Run resources (a sidecar) and approval.
 - **Cloud Storage IAM is broader than needed.** `academiapath-runtime` holds project-wide `roles/storage.objectAdmin`
   (see `infra/README.md`, "Next steps"). It should be scoped to the documents bucket.
 - **No retention or deletion policy** for stored documents, and no object versioning or soft-delete policy has been

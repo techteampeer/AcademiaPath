@@ -18,7 +18,7 @@ import {
 import { buildStudyBrief } from '../documents/brief.js';
 import { readDocumentConfig, type DocumentConfig } from '../documents/model.js';
 import { acceptsUploads } from '../documents/readiness.js';
-import type { MalwareScanner } from '../documents/scanner.js';
+import { decideScan, type MalwareScanner } from '../documents/scanner.js';
 import type { DocumentStorage } from '../documents/storage.js';
 import type { DocumentSummaryProvider } from '../documents/summary.js';
 import { ApiProblem } from '../http/errors.js';
@@ -209,13 +209,13 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
       const fileName = sanitizeFileName(part.filename);
 
       /** Refused uploads are audited (who, which section, which file and why) and never stored. */
-      const reject = async (code: RejectionCode | 'PAYLOAD_TOO_LARGE', message: string, byteSize: number | null) => {
+      const reject = async (code: RejectionCode | 'PAYLOAD_TOO_LARGE', message: string, byteSize: number | null, extra: Record<string, unknown> = {}) => {
         await recordAudit(db, request, {
           action: 'document.upload_rejected',
           entityType: 'section',
           entityId: section.id,
           before: null,
-          after: { courseId: access.course.id, fileName, byteSize, code },
+          after: { courseId: access.course.id, fileName, byteSize, code, ...extra },
         });
         return new ApiProblem(code === 'PAYLOAD_TOO_LARGE' ? 413 : REJECTION_STATUS[code], code, message);
       };
@@ -231,8 +231,35 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
       const limitMb = Math.round(config.documents.maxUploadBytes / (1024 * 1024));
       const bytes = await readUploadedFile(part, () => reject('PAYLOAD_TOO_LARGE', `The file exceeds the ${limitMb} MB upload limit.`, null));
 
-      const scan = await scanner.scan(bytes, { fileName, format });
-      if (scan.status === 'infected') throw await reject('MALWARE_DETECTED', 'The file was rejected by the malware scanner.', bytes.length);
+      // AP-040E: the complete file is scanned before it is parsed or stored. Infected files are always refused; a file
+      // that could not be verified is refused in strict mode, and kept as `not_scanned` (never clean) otherwise.
+      const scanStarted = Date.now();
+      const result = await scanner.scan(bytes, { fileName, format });
+      const scan = decideScan(result, config.malwareScanning.enforcement);
+      // Diagnostics only: ids, outcome and timing; never the file's name, content or storage key.
+      const scanLog = {
+        courseId: access.course.id,
+        sectionId: section.id,
+        malwareScan: {
+          status: result.status,
+          scanner: result.scanner,
+          reason: 'reason' in result ? result.reason : undefined,
+          signature: scan.action === 'reject_infected' ? scan.signature : undefined,
+          byteSize: bytes.length,
+          durationMs: Date.now() - scanStarted,
+        },
+      };
+      if (scan.action === 'reject_infected') {
+        request.log.warn(scanLog, 'Upload refused: the malware scanner detected a threat');
+        throw await reject('MALWARE_DETECTED', 'The file was rejected by the malware scanner.', bytes.length, { malwareScan: { scanner: scan.scanner, signature: scan.signature } });
+      }
+      if (scan.action === 'refuse_unverified') {
+        request.log.error(scanLog, 'Upload refused: the file could not be scanned for malware (strict enforcement)');
+        throw await reject('MALWARE_SCAN_UNAVAILABLE', 'The file could not be checked for malware right now, so it was not accepted. Try again later.', bytes.length, {
+          malwareScan: { scanner: scan.scanner, status: scan.status, reason: scan.reason },
+        });
+      }
+      if (result.status !== 'clean' && result.status !== 'not_scanned') request.log.warn(scanLog, 'Upload accepted without a malware verdict (compatibility enforcement): recorded as not_scanned');
       const extraction = await extractInWorker(bytes, format, config.documents.extractionTimeoutMs);
       if (!extraction.ok) throw await reject(extraction.code, extraction.message, bytes.length);
       const summary = await provider.summarize({ segments: extraction.segments, revision: 1 });
@@ -278,7 +305,8 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
               segments: extraction.segments,
               characterCount: extraction.characterCount,
               truncated: extraction.truncated,
-              malwareScanStatus: scan.status === 'clean' ? 'clean' : 'not_scanned',
+              // Only the policy's decision: `clean` exclusively for a verified clean scan.
+              malwareScanStatus: scan.status,
               malwareScanner: scan.scanner,
               uploadedByUserId: user.id,
             })

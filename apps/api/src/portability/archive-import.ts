@@ -31,7 +31,7 @@ import { withUniqueConflict } from '../db/errors.js';
 import { courseDocuments, courses, documentSummaries, programs, terms, users, type DocumentFormat } from '../db/schema/index.js';
 import type { ExtractionOutcome } from '../documents/extract.js';
 import { sanitizeFileName } from '../documents/formats.js';
-import type { MalwareScanner, MalwareScanResult } from '../documents/scanner.js';
+import { decideScan, type MalwareScanner, type ScanEnforcement } from '../documents/scanner.js';
 import type { DocumentStorage } from '../documents/storage.js';
 import { openStorageJournal, StorageJournalError } from '../documents/storage-journal.js';
 import type { DocumentSummaryProvider, SummaryOutput } from '../documents/summary.js';
@@ -44,6 +44,8 @@ export type ArchiveImportDeps = {
   db: Database;
   storage: Pick<DocumentStorage, 'put' | 'read' | 'remove'>;
   scanner: MalwareScanner;
+  /** AP-040E: what happens to a document that could not be verified clean (default `compatibility`; see decideScan). */
+  scanEnforcement?: ScanEnforcement;
   provider: DocumentSummaryProvider;
   /** Validates and extracts a document in the isolated worker: the upload pipeline's `extractInWorker`. */
   extract: (bytes: Uint8Array, format: DocumentFormat) => Promise<ExtractionOutcome>;
@@ -78,6 +80,8 @@ export type ArchiveImportProblem =
   | 'TERM_NOT_FOUND'
   | 'COURSE_CODE_TAKEN'
   | 'DOCUMENT_REJECTED'
+  /** AP-040E strict enforcement: a document could not be verified clean (scanner unavailable, timed out or failed). */
+  | 'SCAN_UNAVAILABLE'
   | 'STORAGE_FAILED'
   | 'IMPORT_FAILED';
 
@@ -124,7 +128,8 @@ type PreparedDocument = {
   bytes: Buffer;
   format: DocumentFormat;
   sha256: string;
-  scan: MalwareScanResult;
+  /** What the document record keeps: `clean` only for a verified clean scan. */
+  scan: { status: 'clean' | 'not_scanned'; scanner: string };
   extraction: Extract<ExtractionOutcome, { ok: true }>;
   summary: SummaryOutput;
 };
@@ -215,12 +220,17 @@ export async function importCourseArchive(deps: ArchiveImportDeps, input: Archiv
         throw new ArchiveImportError('ARCHIVE_INVALID', 'A document changed after the archive was validated.', { assetKey: document.assetKey });
       }
       const fileName = sanitizeFileName(document.fileName);
-      const scan = await deps.scanner.scan(asset.bytes, {
-        fileName,
-        format: document.format,
-      });
-      if (scan.status === 'infected')
+      // AP-040E: the same scan and policy as an upload, before anything is stored: infected is always refused, a
+      // document that could not be verified is refused in strict mode (nothing is imported) and kept as not_scanned
+      // otherwise.
+      const decision = decideScan(await deps.scanner.scan(asset.bytes, { fileName, format: document.format }), deps.scanEnforcement ?? 'compatibility');
+      if (decision.action === 'reject_infected') {
         throw new ArchiveImportError('DOCUMENT_REJECTED', 'A document was rejected by the malware scanner.', { assetKey: document.assetKey, documentCode: 'MALWARE_DETECTED' });
+      }
+      if (decision.action === 'refuse_unverified') {
+        throw new ArchiveImportError('SCAN_UNAVAILABLE', 'A document could not be checked for malware, so nothing was imported. Try again later.', { assetKey: document.assetKey });
+      }
+      const scan = { status: decision.status, scanner: decision.scanner };
       const extraction = await deps.extract(asset.bytes, document.format);
       if (!extraction.ok) throw new ArchiveImportError('DOCUMENT_REJECTED', `A document was rejected: ${extraction.message}`, { assetKey: document.assetKey, documentCode: extraction.code });
       const summary = await deps.provider.summarize({
@@ -306,7 +316,7 @@ export async function importCourseArchive(deps: ArchiveImportDeps, input: Archiv
           characterCount: extraction.characterCount,
           truncated: extraction.truncated,
           // Never "clean" unless a scanner said so.
-          malwareScanStatus: scan.status === 'clean' ? 'clean' : 'not_scanned',
+          malwareScanStatus: scan.status,
           malwareScanner: scan.scanner,
           uploadedByUserId: input.actor.userId,
         });
@@ -332,7 +342,7 @@ export async function importCourseArchive(deps: ArchiveImportDeps, input: Archiv
           sha256: document.sha256,
           extractionStatus: extraction.status,
           malwareScan: {
-            status: scan.status === 'clean' ? 'clean' : 'not_scanned',
+            status: scan.status,
             scanner: scan.scanner,
           },
         });

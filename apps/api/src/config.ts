@@ -2,7 +2,9 @@ import { isIP } from 'node:net';
 import { homedir } from 'node:os';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { ClamdEndpoint } from './documents/clamd.js';
 import type { StorageMountCheck } from './documents/readiness.js';
+import type { ScanEnforcement } from './documents/scanner.js';
 
 export type AppConfig = {
   isProduction: boolean;
@@ -64,6 +66,20 @@ export type AppConfig = {
    */
   archiveImport: { enabled: boolean };
   /**
+   * AP-040E malware scanning of document uploads and archive imports (docs/malware-scanning.md). Off by default:
+   * `MALWARE_SCANNER=none` records documents as `not_scanned`, exactly as before. `clamd` scans every file with a local
+   * ClamAV daemon (`CLAMD_SOCKET` or a loopback `CLAMD_ADDRESS`). `MALWARE_SCAN_ENFORCEMENT`: `compatibility` (default)
+   * accepts files that could not be verified as `not_scanned`; `strict` refuses them. Infected files are always refused.
+   */
+  malwareScanning: {
+    scanner: 'none' | 'clamd';
+    enforcement: ScanEnforcement;
+    clamd: ClamdEndpoint | null;
+    timeoutMs: number;
+    maxBytes: number;
+    maxConcurrent: number;
+  };
+  /**
    * The institution (AP-025). `timeZone` is the IANA zone used for calendar dates that have none of their
    * own (assignment due dates, all-day defaults); the Peru-based institution defaults to America/Lima.
    */
@@ -116,6 +132,49 @@ function parseArchiveImportEnabled(raw: string | undefined, isProduction: boolea
     throw new Error('ARCHIVE_IMPORT_ENABLED cannot be true in production yet: archive import is for local development and tests (see docs/course-package-format.md)');
   }
   return value === 'true';
+}
+
+const LOOPBACK_HOST = /^(localhost|127(?:\.\d{1,3}){3}|::1)$/;
+
+/** `host:port` or `[ipv6]:port`, on this machine only: the clamd protocol has no authentication and no encryption. */
+function parseClamdAddress(raw: string): { host: string; port: number } {
+  const match = /^(?:\[([^\]]+)\]|([^:[\]]+)):(\d{1,5})$/.exec(raw);
+  const host = match?.[1] ?? match?.[2];
+  const port = Number(match?.[3]);
+  if (!host || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error('CLAMD_ADDRESS must be host:port, for example 127.0.0.1:3310');
+  if (!LOOPBACK_HOST.test(host)) {
+    throw new Error('CLAMD_ADDRESS must be a loopback address (localhost, 127.0.0.1 or [::1]): the clamd protocol is unauthenticated and unencrypted');
+  }
+  return { host, port };
+}
+
+function parseMalwareScanning(env: NodeJS.ProcessEnv, maxUploadBytes: number): AppConfig['malwareScanning'] {
+  const scanner = env.MALWARE_SCANNER?.trim() || 'none';
+  if (scanner !== 'none' && scanner !== 'clamd') throw new Error('MALWARE_SCANNER must be none or clamd');
+  const enforcement = env.MALWARE_SCAN_ENFORCEMENT?.trim() || 'compatibility';
+  if (enforcement !== 'compatibility' && enforcement !== 'strict') throw new Error('MALWARE_SCAN_ENFORCEMENT must be compatibility or strict');
+  if (enforcement === 'strict' && scanner !== 'clamd') throw new Error('MALWARE_SCAN_ENFORCEMENT=strict needs a scanner (MALWARE_SCANNER=clamd): otherwise every new document would be refused');
+  const socket = env.CLAMD_SOCKET?.trim();
+  const address = env.CLAMD_ADDRESS?.trim();
+  let clamd: ClamdEndpoint | null = null;
+  if (scanner === 'clamd') {
+    if (Boolean(socket) === Boolean(address)) throw new Error('MALWARE_SCANNER=clamd needs exactly one of CLAMD_SOCKET or CLAMD_ADDRESS');
+    if (socket && !isAbsolute(socket)) throw new Error('CLAMD_SOCKET must be an absolute path');
+    clamd = socket ? { socketPath: socket } : parseClamdAddress(address!);
+  } else if (socket || address) {
+    throw new Error('CLAMD_SOCKET and CLAMD_ADDRESS are used only with MALWARE_SCANNER=clamd');
+  }
+  const maxBytes = readPositiveInt(env, 'MALWARE_SCAN_MAX_MB', 25, 100) * 1024 * 1024;
+  // A scanner limit below the upload limit would leave large uploads unscanned (or refused in strict mode).
+  if (scanner === 'clamd' && maxBytes < maxUploadBytes) throw new Error('MALWARE_SCAN_MAX_MB must be at least DOCUMENT_MAX_UPLOAD_MB');
+  return {
+    scanner,
+    enforcement,
+    clamd,
+    timeoutMs: readPositiveInt(env, 'MALWARE_SCAN_TIMEOUT_SECONDS', 30, 300) * 1000,
+    maxBytes,
+    maxConcurrent: readPositiveInt(env, 'MALWARE_SCAN_CONCURRENCY', 2, 16),
+  };
 }
 
 function parseStorageDir(raw: string | undefined, isProduction: boolean): string {
@@ -218,6 +277,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   }
   const allowedOrigins = parseOrigins(originsRaw || DEFAULT_DEV_ORIGIN);
   const invitationDelivery = parseInvitationDelivery(env.ACCOUNT_INVITATION_DELIVERY, isProduction);
+  const maxUploadBytes = readPositiveInt(env, 'DOCUMENT_MAX_UPLOAD_MB', 10, 100) * 1024 * 1024;
 
   return {
     isProduction,
@@ -247,12 +307,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     trustProxy: parseTrustProxy(env.TRUST_PROXY),
     documents: {
       storageDir: parseStorageDir(env.DOCUMENT_STORAGE_DIR, isProduction),
-      maxUploadBytes: readPositiveInt(env, 'DOCUMENT_MAX_UPLOAD_MB', 10, 100) * 1024 * 1024,
+      maxUploadBytes,
       extractionTimeoutMs: readPositiveInt(env, 'DOCUMENT_EXTRACTION_TIMEOUT_SECONDS', 20, 300) * 1000,
       mountCheck: parseMountCheck(env.DOCUMENT_STORAGE_MOUNT_CHECK, isProduction),
       createStorageDir: !isProduction,
     },
     archiveImport: { enabled: parseArchiveImportEnabled(env.ARCHIVE_IMPORT_ENABLED, isProduction) },
+    malwareScanning: parseMalwareScanning(env, maxUploadBytes),
     institution: {
       timeZone: parseTimeZone(env.INSTITUTION_TIME_ZONE),
     },

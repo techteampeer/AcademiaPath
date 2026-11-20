@@ -62,8 +62,9 @@ info:
     private local storage under a server-generated name (never a public URL). Each upload becomes a
     `file` activity with a deterministic, extractive mock summary (`mode: mock`, "Mock AI summary —
     local demonstration"): every point is an original sentence with its page, slide or paragraph as
-    evidence. No language model, OCR or external service is used, and no malware scanner is
-    connected yet (uploads are recorded as `not_scanned`). Documents use the content review
+    evidence. No language model, OCR or external service is used. Malware scanning with a local ClamAV
+    daemon is available but off by default (AP-040E), so uploads are recorded as `not_scanned` unless a
+    scanner is configured. Documents use the content review
     workflow: approval freezes the document and the reviewed summary revision; refreshing the summary
     creates a new revision that students do not see until it is approved again.
 
@@ -2383,6 +2384,13 @@ paths:
         When the storage directory is missing (or, with `DOCUMENT_STORAGE_MOUNT_CHECK=enforce`, storage is not ready;
         see `GET /api/v1/system/storage`), or the file cannot be stored, the upload is refused with
         `503 DOCUMENT_STORAGE_UNAVAILABLE` and nothing is created.
+
+        Malware scanning (AP-040E): the complete file is scanned before it is parsed or stored. A detected threat is
+        refused with `422 MALWARE_DETECTED`. No scanner is configured by default, and documents are then recorded as
+        `not_scanned`. With a scanner, a file that could not be verified (scanner unavailable, timed out or failed) is
+        recorded as `not_scanned` in compatibility mode, or refused with `503 MALWARE_SCAN_UNAVAILABLE` in strict mode.
+        A document is `clean` only after a verified clean scan. Refusals are audited as `document.upload_rejected`;
+        nothing is stored.
       tags:
         - Documents
       security:
@@ -2425,7 +2433,20 @@ paths:
         "422":
           $ref: "#/components/responses/UnprocessableContent"
         "503":
-          $ref: "#/components/responses/StorageUnavailable"
+          description: |
+            Nothing was created. Document storage cannot be used right now (`DOCUMENT_STORAGE_UNAVAILABLE`), or, with
+            strict malware-scan enforcement, the file could not be verified by the scanner
+            (`MALWARE_SCAN_UNAVAILABLE`). The request can be retried later.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+              example:
+                type: about:blank
+                title: Service Unavailable
+                status: 503
+                detail: The file could not be checked for malware right now, so it was not accepted. Try again later.
+                code: MALWARE_SCAN_UNAVAILABLE
   /api/v1/courses/{id}/activities/{activityId}/document:
     get:
       operationId: getActivityDocument
@@ -3724,7 +3745,9 @@ paths:
         "503":
           description: |
             Nothing was created. Either another import is running on this instance (`ARCHIVE_IMPORT_BUSY`, with
-            `Retry-After`), or document storage failed (`ARCHIVE_IMPORT_STORAGE_FAILED`). Retry later.
+            `Retry-After`), or document storage failed (`ARCHIVE_IMPORT_STORAGE_FAILED`), or, with strict
+            malware-scan enforcement, a document could not be verified by the scanner
+            (`ARCHIVE_IMPORT_SCAN_UNAVAILABLE`). Retry later.
           headers:
             Retry-After:
               description: Seconds to wait before retrying (`ARCHIVE_IMPORT_BUSY`).
@@ -7291,6 +7314,7 @@ components:
             - DOCUMENT_MALFORMED
             - DOCUMENT_LIMITS_EXCEEDED
             - MALWARE_DETECTED
+            - MALWARE_SCAN_UNAVAILABLE
             - EMAIL_TAKEN
             - EMAIL_LOCKED
             - LAST_ADMINISTRATOR
@@ -9437,7 +9461,10 @@ components:
           $ref: "#/components/schemas/DocumentExtraction"
         malwareScan:
           type: object
-          description: "No malware scanning service is connected yet, so uploads report `not_scanned` (scanner `none`)."
+          description: |
+            `clean` only after a scanner verified the complete file. `not_scanned` when no scanner is configured
+            (scanner `none`, the default) or, in compatibility mode, when the scan failed (scanner such as
+            `clamd:timeout`). Infected files are never stored.
           required: [status, scanner]
           additionalProperties: false
           properties:
