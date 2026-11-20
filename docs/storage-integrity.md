@@ -189,10 +189,71 @@ It would need, in order:
 4. **Handling of the report** as internal data. It lists record IDs and storage keys only. Findings are **reported,
    not repaired**: restoring or removing files is a separate, approved operation.
 
+## 4. Crash recovery of archive import writes (AP-040R)
+
+A file write and a database commit cannot be atomic, and a process can be killed between them (a stopped container,
+an out-of-memory kill), so try/catch clean-up is not enough. Course archive imports therefore keep a **write-ahead
+journal**, the `document_storage_intents` table (migration `0036_storage_write_intents`):
+
+1. Before each file is written, the import chooses its storage key and journals it in its own committed statement,
+   with a **lease** (30 minutes). Journaling a file also renews the lease of the import's earlier files, so a slow
+   but living import never looks abandoned.
+2. The file is written under that key (`DocumentStorage.put(bytes, key)`; never over an existing file).
+3. The import's database transaction first deletes its own journal entries. If any is missing (recovery took it
+   after its lease ran out), the import aborts instead of referring to a file that may be gone.
+4. A handled failure removes the import's files and then forgets their entries. Entries of files it could not remove
+   stay journaled.
+
+Anything still journaled after its lease has run out belongs to a writer that died or could not clean up.
+
+```bash
+DATABASE_URL=postgresql://postgres@127.0.0.1:5432/<local-db> DOCUMENT_STORAGE_DIR=/abs/local/dir pnpm storage:recover            # dry run
+DATABASE_URL=postgresql://postgres@127.0.0.1:5432/<local-db> DOCUMENT_STORAGE_DIR=/abs/local/dir pnpm storage:recover -- --apply  # recover
+```
+
+**Dry run** (default) lists every journal entry and what recovery would do, in a `READ ONLY` transaction:
+
+| Action | Meaning |
+| ------ | ------- |
+| `wait_active_lease` | the writer may still be running: never touched |
+| `remove_file` | abandoned, no document refers to it, the file is present |
+| `forget_entry_file_missing` | abandoned, the file was never written or is already gone |
+| `forget_entry_file_referenced` | a document refers to the file: the file is kept, only the entry goes |
+
+**`--apply`** handles each abandoned entry in its own transaction that holds the entry's row lock
+(`FOR UPDATE SKIP LOCKED`) and checks the lease again:
+
+- a file a document refers to is kept (`file_kept_referenced`);
+- otherwise the file is removed (`file_removed`, or `file_already_missing`), the entry is deleted and a
+  `storage.write_recovered` audit event is written, all in one commit;
+- a failed removal keeps the entry, increments `attempts`, stores the error code (`EIO`, or `UNKNOWN`, never a message
+  or path) and writes a `storage.write_recovery_failed` audit event; the next run retries it;
+- an entry that another recovery, or a committing import, holds is skipped (`skipped_concurrent`).
+
+A crash during recovery rolls its transaction back: the entry stays, and the next run finds the file already gone.
+Running it again, or several at once, is safe. Audit events hold the journal entry ID, the import's operation ID,
+the outcome and an error code: no storage key, path, file name or content. The command's own report (never an API
+response) lists storage keys for the operator.
+
+**Exit codes:** `0` nothing left to do; `1` a dry run found abandoned entries; `2` failures or an incomplete run;
+`3` refused. It refuses exactly what the audit refuses (section 3), and also a storage directory that does not exist
+(an unmounted bucket would make every file look already removed).
+
+**Not covered:** document uploads (a single file per request) are not journaled. Their crash or failed-removal
+orphans, and any file written before the journal existed, are reported by `pnpm storage:audit` only.
+
+**Production:** nothing runs recovery automatically, and the command refuses production. Recovering the production
+bucket needs the same approvals as a production scan (section 3), plus delete access, which the read-only scan does
+not have: a reviewed production mode, an approved job or operator session, **Sagar's authorization** and
+**Claudio Obregón's** approval for its cost. Before that, verify Cloud Storage FUSE behaviour for recovery: a cached
+"file not found" answer must not make an existing object look already removed (check the object through the Cloud
+Storage API, or disable the negative stat cache for that job).
+
 ## Known unresolved risks (not fixed in AP-040B)
 
-- **Placeholder malware scanner.** `noMalwareScanner` records uploads as `not_scanned`. A real scanner needs a
-  separate decision and may add cost.
+- **No malware scanning in production.** A ClamAV (clamd) integration exists (AP-040E, docs/malware-scanning.md),
+  but it is off by default and not deployed, so production uploads are still recorded as `not_scanned`. Activating it
+  needs more Cloud Run resources (a sidecar) and approval.
 - **Cloud Storage IAM is broader than needed.** `academiapath-runtime` holds project-wide `roles/storage.objectAdmin`
   (see `infra/README.md`, "Next steps"). It should be scoped to the documents bucket.
 - **No retention or deletion policy** for stored documents, and no object versioning or soft-delete policy has been
@@ -201,5 +262,6 @@ It would need, in order:
   mode. An existing but unmounted storage directory is reported (warning log, `degraded`) but **still accepts
   uploads** into the instance's temporary in-memory storage. A storage directory that does not exist refuses uploads.
 - **Orphans after failed uploads.** If an upload's database transaction fails, the API removes the file it has just
-  written. If that removal also fails, the file remains, and nothing cleans it up automatically. The audit reports it
-  as orphaned once the grace period has passed.
+  written. If that removal also fails, or the process dies between the write and the commit, the file remains, and
+  nothing cleans it up automatically. The audit reports it as orphaned once the grace period has passed. (Archive
+  imports are journaled and recoverable, section 4; uploads are not.)

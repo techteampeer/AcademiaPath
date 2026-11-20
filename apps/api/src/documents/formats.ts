@@ -35,7 +35,9 @@ export type RejectionCode =
   | 'DOCUMENT_ENCRYPTED'
   | 'DOCUMENT_MALFORMED'
   | 'DOCUMENT_LIMITS_EXCEEDED'
-  | 'MALWARE_DETECTED';
+  | 'MALWARE_DETECTED'
+  /** AP-040E strict enforcement: the file could not be verified clean (scanner unavailable, timed out or failed). */
+  | 'MALWARE_SCAN_UNAVAILABLE';
 
 export const REJECTION_STATUS: Record<RejectionCode, number> = {
   UNSUPPORTED_FILE_TYPE: 415,
@@ -44,6 +46,7 @@ export const REJECTION_STATUS: Record<RejectionCode, number> = {
   DOCUMENT_MALFORMED: 422,
   DOCUMENT_LIMITS_EXCEEDED: 422,
   MALWARE_DETECTED: 422,
+  MALWARE_SCAN_UNAVAILABLE: 503,
 };
 
 /** A file that is refused, with a client-safe explanation. */

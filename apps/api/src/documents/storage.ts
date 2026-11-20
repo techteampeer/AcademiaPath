@@ -9,7 +9,11 @@ export const isStorageKey = (name: string) => STORAGE_KEY.test(name);
 
 /** Where original uploaded files live. Implementations must never derive paths from user input. */
 export interface DocumentStorage {
-  put(bytes: Uint8Array): Promise<string>;
+  /**
+   * Stores new bytes and returns their key. With `key` (a key the caller chose and journaled first, AP-040R), the file
+   * is written under that key, and never over an existing file; without it, a new random key is chosen.
+   */
+  put(bytes: Uint8Array, key?: string): Promise<string>;
   read(key: string): Promise<Buffer>;
   remove(key: string): Promise<void>;
   /** Whether the stored file is present (AP-038A export reports missing files without reading them). */
@@ -44,12 +48,12 @@ export class LocalDocumentStorage implements DocumentStorage {
     return path;
   }
 
-  async put(bytes: Uint8Array): Promise<string> {
+  async put(bytes: Uint8Array, chosenKey?: string): Promise<string> {
     if (this.options.createRoot) {
       this.ready ??= mkdir(this.root, { recursive: true, mode: 0o700 });
       await this.ready;
     }
-    const key = randomUUID();
+    const key = chosenKey ?? randomUUID();
     // `wx`: never overwrite an existing file.
     await writeFile(this.pathFor(key), bytes, { flag: 'wx', mode: 0o600 });
     return key;

@@ -176,6 +176,12 @@ function ImportContent() {
   return (
     <div className="space-y-6">
       {header}
+      <p className="text-sm text-slate-700">
+        <Link href="/admin/courses/import/archive" className="font-medium text-brand-600 underline underline-offset-2" data-archive-preview-link>
+          {c.archive.link}
+        </Link>{' '}
+        <span className="text-slate-600">{c.archive.linkHint}</span>
+      </p>
       <Card as="section" aria-labelledby="import-file-heading" className="space-y-3">
         <h2 id="import-file-heading" className="text-lg font-semibold text-brand-600">
           {c.step1}
