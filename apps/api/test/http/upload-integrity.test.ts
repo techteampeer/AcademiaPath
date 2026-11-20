@@ -1,6 +1,7 @@
 /**
  * AP-SEC-02: multipart uploads over real HTTP. Every route that accepts a file (documents, SCORM inspection, Common
- * Cartridge inspection) gets, on a listening server with a disposable database and synthetic files: a valid upload below its limit, one exactly at its limit, oversized uploads sent at once, oversized uploads
+ * Cartridge inspection, course archive preview) gets, on a listening server with a disposable database and synthetic
+ * files: a valid upload below its limit, one exactly at its limit, oversized uploads sent at once, oversized uploads
  * that pause exactly at the limit before sending the rest, and an upload the client abandons mid-body.
  *
  * The pause case is the one app.inject cannot reproduce: @fastify/multipart used to hand back the first `limit` bytes
@@ -19,7 +20,9 @@ import { CARTRIDGE_LIMITS } from '../../src/cartridge/report.js';
 import { loadConfig } from '../../src/config.js';
 import { noMalwareScanner, type MalwareScanner } from '../../src/documents/scanner.js';
 import { mockSummaryProvider, type DocumentSummaryProvider } from '../../src/documents/summary.js';
+import { ARCHIVE_VALIDATION_LIMITS } from '../../src/portability/archive-validation.js';
 import { SCORM_LIMITS } from '../../src/scorm/limits.js';
+import { exported } from '../helpers/archives.js';
 import { CARTRIDGE_FIXTURES } from '../helpers/cartridge.js';
 import { createTestDatabase, testServerUrl } from '../helpers/database.js';
 import { makePdf } from '../helpers/documents.js';
@@ -133,10 +136,10 @@ describe('upload integrity over real HTTP (AP-SEC-02)', { skip: testServerUrl ? 
     if (root) await rm(root, { recursive: true, force: true });
   });
 
-  it('the configured limits are unchanged and binary: 10 MiB for documents, 25 MiB for packages', () => {
+  it('the configured limits are unchanged and binary: 10 MiB for documents, 25 MiB for packages and archives', () => {
     assert.equal(documentLimit, 10 * MiB);
     assert.equal(documentLimit, 10_485_760);
-    for (const limit of [SCORM_LIMITS.maxPackageBytes, CARTRIDGE_LIMITS.maxPackageBytes]) assert.equal(limit, 26_214_400);
+    for (const limit of [SCORM_LIMITS.maxPackageBytes, CARTRIDGE_LIMITS.maxPackageBytes, ARCHIVE_VALIDATION_LIMITS.maxArchiveBytes]) assert.equal(limit, 26_214_400);
   });
 
   it('documents: valid uploads up to exactly the limit are stored intact; oversized, paused and abandoned uploads leave nothing behind', async () => {
@@ -207,4 +210,19 @@ describe('upload integrity over real HTTP (AP-SEC-02)', { skip: testServerUrl ? 
       assert.deepEqual(await storedFiles(), files, 'an inspection stores nothing');
     });
   }
+
+  it('course archive preview: an archive cut off at the limit is refused, never validated (the route fixed in AP-038C2D)', async () => {
+    const send = (file: Buffer, extra: Partial<RawUpload> = {}) => upload({ path: '/api/v1/course-imports/archive/preview', fileName: 'course.zip', contentType: 'application/zip', file, ...extra });
+    const rows = await fingerprint();
+    const valid = await send(await exported());
+    assert.ok(!('aborted' in valid));
+    assert.deepEqual([valid.status, valid.body.status], [200, 'valid']);
+    // Exactly at the limit the bytes are validated in full (padding makes this archive invalid, but it is read whole).
+    const exact = Buffer.alloc(ARCHIVE_VALIDATION_LIMITS.maxArchiveBytes);
+    const atLimit = await send(exact);
+    assert.ok(!('aborted' in atLimit));
+    assert.deepEqual([atLimit.status, (atLimit.body.archive as { byteSize: number }).byteSize], [200, exact.length]);
+    for (const { label, ...extra } of oversized(exact, exact.length).slice(1)) refused(await send(extra.file, extra), `archive preview ${label}`);
+    assert.equal(await fingerprint(), rows, 'a preview writes nothing');
+  });
 });
