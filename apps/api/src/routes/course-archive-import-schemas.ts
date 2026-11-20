@@ -1,4 +1,5 @@
 import { ARCHIVE_ISSUE_CODES } from '../portability/archive-validation.js';
+import { codeSchema } from './course-schemas.js';
 import { importCountsSchema, skippedActivitySchema } from './course-import-schemas.js';
 
 // JSON schema mirroring the AP-038C2C archive preview in packages/contract/openapi.yaml. Every object is closed
@@ -78,5 +79,48 @@ export const archivePreviewReportSchema = {
       },
     },
     issueCount: integer,
+  },
+} as const;
+
+const uuid = { type: 'string', format: 'uuid' } as const;
+
+/**
+ * AP-038C2E: the confirmation's form fields (multipart values are strings, in any order with the `file` part), with the
+ * JSON import's constraints. Nothing else from the client is read: no preview, plan or document is ever trusted.
+ */
+export const archiveImportFieldsSchema = {
+  type: 'object',
+  required: ['programId', 'termId', 'code'],
+  additionalProperties: false,
+  properties: {
+    programId: uuid,
+    termId: uuid,
+    code: codeSchema,
+    title: { type: 'string', minLength: 1, maxLength: 200, pattern: '\\S' },
+    versionPreference: { type: 'string', enum: ['approved', 'working'] },
+    acknowledgeSkipped: { type: 'string', enum: ['true', 'false'] },
+    assignmentDueAt: { type: 'string', format: 'date-time' },
+  },
+} as const;
+
+export const archiveImportResultSchema = {
+  type: 'object',
+  required: ['course', 'created', 'skipped', 'contentHash'],
+  additionalProperties: false,
+  properties: {
+    course: {
+      type: 'object',
+      required: ['id', 'code', 'title', 'status', 'programId', 'termId'],
+      additionalProperties: false,
+      properties: { id: uuid, code: { type: 'string' }, title: { type: 'string' }, status: { type: 'string', enum: ['draft'] }, programId: uuid, termId: uuid },
+    },
+    created: {
+      type: 'object',
+      required: ['units', 'folders', 'prerequisites', 'activities', 'questions', 'documents'],
+      additionalProperties: false,
+      properties: { units: integer, folders: integer, prerequisites: integer, activities: integer, questions: integer, documents: integer },
+    },
+    skipped: { type: 'array', items: skippedActivitySchema },
+    contentHash: nullableString,
   },
 } as const;

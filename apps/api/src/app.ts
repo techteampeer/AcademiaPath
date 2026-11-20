@@ -13,6 +13,7 @@ import { courseRoutes } from './routes/courses.js';
 import { courseExportRoutes } from './routes/course-export.js';
 import { courseImportRoutes } from './routes/course-import.js';
 import { courseArchiveImportRoutes } from './routes/course-archive-import.js';
+import { courseArchiveConfirmRoutes } from './routes/course-archive-confirm.js';
 import { documentRoutes, type DocumentRouteOptions } from './routes/documents.js';
 import { noMalwareScanner } from './documents/scanner.js';
 import { isMountPoint as detectMountPoint } from './documents/mounts.js';
@@ -173,6 +174,12 @@ export function buildApp({ config, database, logger = false, documents = {}, clo
   app.register(courseExportRoutes, { prefix: API_PREFIX, storage: documentStorage });
   app.register(courseImportRoutes, { prefix: API_PREFIX });
   app.register(courseArchiveImportRoutes, { prefix: API_PREFIX });
+  app.register(courseArchiveConfirmRoutes, {
+    prefix: API_PREFIX,
+    storage: documentStorage,
+    scanner: documents.scanner ?? noMalwareScanner,
+    provider: documents.provider ?? mockSummaryProvider,
+  });
   app.register(documentRoutes, {
     prefix: API_PREFIX,
     storage: documentStorage,

@@ -216,7 +216,21 @@ separately and can verify it with `sha256`. A file missing from storage is repor
   - The browser checks only the file's name, size (25 MB) and that it is not empty, then sends the file as it is. It never reads, unpacks or runs the archive, and it lets go of the file once the report arrives.
   - The report shows: the status; the course's title, description, source code and export date (as written, never translated or rendered as HTML); the counts of units, lessons, quizzes, assignments, documents and questions; what can and cannot be imported; the PDF/Word/PowerPoint files; every issue, described by its code in English or Spanish.
   - There is no import or confirm action yet.
-- **Not yet built:** the archive import API (confirming and creating the course) and its confirmation step in the UI.
+- **Confirmation API (AP-038C2E, feature-gated):** `POST /api/v1/course-imports/archive`.
+  - **Off by default.** It answers 403 `ARCHIVE_IMPORT_DISABLED` unless the API runs with `ARCHIVE_IMPORT_ENABLED=true`. That setting is **refused in production** (the API does not start), so it can only be used in local development and tests until the blockers below are resolved.
+  - **Access:** administrators only. Authentication, CSRF, Origin and the administrator check happen before the upload is read.
+  - **Request:** `multipart/form-data` with the form fields (`programId`, `termId`, `code`, optional `title`, `versionPreference`, `acknowledgeSkipped`, `assignmentDueAt`) and one `.zip` `file` part of at most 25 MiB, in any order (the whole form is read before anything is decided). Any other field is ignored.
+  - **Validation:** the archive is validated again in full, in the isolated archive worker (the preview's worker, pool and limits). No earlier preview or client data is trusted. Then the AP-038C2B engine imports it: documents are rechecked, scanned, extracted, stored and read back, then one transaction creates the course.
+  - **Response:** 201 with the new draft course and counts.
+  - **Errors:** 409 `COURSE_CODE_TAKEN`; 422 `ARCHIVE_IMPORT_INVALID`, `ARCHIVE_IMPORT_DOCUMENT_REJECTED` or the JSON import's placement codes; 503 `ARCHIVE_IMPORT_STORAGE_FAILED`; 500 `ARCHIVE_IMPORT_FAILED`.
+  - **Repeats and limits:** a repeated or concurrent confirmation cannot create a second course, because the code must be free in the term. Per instance: one import at a time (503 `ARCHIVE_IMPORT_BUSY`) and 5 imports per administrator per 10 minutes.
+- **Production blockers (before `ARCHIVE_IMPORT_ENABLED` may be allowed in production):**
+  1. **Orphan recovery after a crash.** Storage writes and the database transaction are not atomic. A process crash (or a failed removal) after files are stored and before the transaction commits leaves unreferenced files: they are never served, and `pnpm storage:audit` lists them, but nothing removes them. That audit is local-only today, and the production bucket needs a reviewed procedure (docs/storage-integrity.md). Production needs a reviewed, recurring orphan clean-up (or a journal of pending writes) with its cost approved.
+  2. **Malware scanning (AP-040).** No scanner is connected, so imported documents are recorded `not_scanned` (never `clean`).
+  3. **Cross-instance limits.** The one-at-a-time cap and the rate limit are per API instance. Several Cloud Run instances multiply them.
+  4. **Duration.** Each step is bounded (30 s validation; per-document extraction timeout), but an archive with many documents takes their sum. A per-import document cap or a background job may be needed.
+  5. **Confirmation UI.** The confirmation step is not built yet.
+- **Not yet built:** the confirmation step in the UI.
 
 ```text
 academiapath-archive.json   manifest: format "academiapath.course-archive", formatVersion 1

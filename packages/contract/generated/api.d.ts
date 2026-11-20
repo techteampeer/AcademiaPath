@@ -1936,6 +1936,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/course-imports/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import a portable course archive as a new draft course (AP-038C2E, feature-gated)
+         * @description **Feature-gated, off by default.** Answers 403 `ARCHIVE_IMPORT_DISABLED` unless the API runs with
+         *     `ARCHIVE_IMPORT_ENABLED=true`. That setting is refused in production for now; it exists for local development
+         *     and tests until the production blockers in docs/course-package-format.md are resolved.
+         *
+         *     Administrators only. Authentication, CSRF, Origin and the administrator check happen before the upload is read.
+         *     Send `multipart/form-data`, with its parts in any order (the whole form is read before anything is decided):
+         *     - the form fields `programId`, `termId`, `code`, and optionally `title`, `versionPreference`,
+         *       `acknowledgeSkipped`, `assignmentDueAt`, with the constraints of `POST /api/v1/course-imports`;
+         *     - exactly one `file` part: a `.zip` exported by AcademiaPath, at most 25 MiB (26,214,400 bytes).
+         *
+         *     Any other field is ignored: no earlier preview or client-supplied data is trusted. An upload larger than the limit,
+         *     or cut off at it, gets 413 and is never imported.
+         *
+         *     **Validation.** The whole archive is validated again, with the same checks as
+         *     `POST /api/v1/course-imports/archive/preview`, in the isolated archive worker (30 s, 256 MB heap, no network,
+         *     shared pool). Each document's size and SHA-256 are checked again before use, then the document is scanned,
+         *     extracted in its worker and summarized. A document is never marked clean without a malware scanner. Nothing is
+         *     executed and no address in the archive is fetched.
+         *
+         *     **The new course.** It is always a **new draft course**, never an existing one. Content is draft, nothing is
+         *     published, and no people, enrollments, grades, submissions or attempts are created.
+         *
+         *     **Storage.** The files are stored and read back, then one database transaction creates the course and its
+         *     records. On a failure the stored files are removed again. A crash between those steps can leave unreferenced
+         *     files, which are never served; the storage audit lists them.
+         *
+         *     **Repeated or concurrent confirmations** cannot create a second course: the new course's `code` must be free in
+         *     the term (409 `COURSE_CODE_TAKEN`).
+         *
+         *     **Limits per API instance:** one import at a time (503 `ARCHIVE_IMPORT_BUSY` with `Retry-After`) and 5
+         *     imports per administrator per 10 minutes (429).
+         */
+        post: operations["importCourseArchive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/course-imports": {
         parameters: {
             query?: never;
@@ -6455,6 +6505,60 @@ export interface components {
             skipped: components["schemas"]["CourseImportSkipped"][];
             contentHash: string;
         };
+        /** @description The form fields and the file, in any order. Values are strings. */
+        CourseArchiveImportRequest: {
+            /** Format: uuid */
+            programId: string;
+            /** Format: uuid */
+            termId: string;
+            /** @description The new course's code; it must be free in the term. */
+            code: string;
+            /** @description Defaults to the archived course's title. */
+            title?: string;
+            /**
+             * @default approved
+             * @enum {string}
+             */
+            versionPreference: "approved" | "working";
+            /**
+             * @description Required ("true") when some activities cannot be imported (see the preview's `skipped`).
+             * @default false
+             * @enum {string}
+             */
+            acknowledgeSkipped: "true" | "false";
+            /**
+             * Format: date-time
+             * @description Required when the course has assignments.
+             */
+            assignmentDueAt?: string;
+            /** @description One AcademiaPath course archive as a .zip file (at most 25 MiB). */
+            file: string;
+        };
+        CourseArchiveImportResult: {
+            course: {
+                /** Format: uuid */
+                id: string;
+                code: string;
+                title: string;
+                /** @enum {string} */
+                status: "draft";
+                /** Format: uuid */
+                programId: string;
+                /** Format: uuid */
+                termId: string;
+            };
+            created: {
+                units: number;
+                folders: number;
+                prerequisites: number;
+                activities: number;
+                questions: number;
+                /** @description Document activities created, each with its own stored copy of the file. */
+                documents: number;
+            };
+            skipped: components["schemas"]["CourseImportSkipped"][];
+            contentHash: string | null;
+        };
         CourseArchiveUpload: {
             /** @description One AcademiaPath course archive as a .zip file (at most 25 MB). */
             file: string;
@@ -10259,6 +10363,93 @@ export interface operations {
             503: {
                 headers: {
                     /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    importCourseArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["CourseArchiveImportRequest"];
+            };
+        };
+        responses: {
+            /** @description The new draft course and what was created. The archive is not kept. */
+            201: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseArchiveImportResult"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Not an administrator (`FORBIDDEN`), CSRF or Origin refused, or the feature is off (`ARCHIVE_IMPORT_DISABLED`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A course with this code already exists in the term (`COURSE_CODE_TAKEN`), including after a repeated confirmation. Nothing was created. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            /**
+             * @description Nothing was created. The cause is one of:
+             *     - `ARCHIVE_IMPORT_INVALID`: the archive failed validation; `detail` names the first issue code, and the
+             *       preview lists every issue;
+             *     - `ARCHIVE_IMPORT_DOCUMENT_REJECTED`: a document was rejected by the malware scanner or the document checks;
+             *     - `IMPORT_ACKNOWLEDGEMENT_REQUIRED`, `IMPORT_DUE_DATE_REQUIRED`;
+             *     - `PROGRAM_NOT_FOUND`, `PROGRAM_INACTIVE`, `TERM_NOT_FOUND`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description The import failed unexpectedly (`ARCHIVE_IMPORT_FAILED`); nothing was created. No internal detail is returned. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /**
+             * @description Nothing was created. Either another import is running on this instance (`ARCHIVE_IMPORT_BUSY`, with
+             *     `Retry-After`), or document storage failed (`ARCHIVE_IMPORT_STORAGE_FAILED`). Retry later.
+             */
+            503: {
+                headers: {
+                    /** @description Seconds to wait before retrying (`ARCHIVE_IMPORT_BUSY`). */
                     "Retry-After"?: number;
                     [name: string]: unknown;
                 };

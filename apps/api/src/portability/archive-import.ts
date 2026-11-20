@@ -1,6 +1,7 @@
 /**
  * AP-038C2B: restores a validated AcademiaPath course archive (AP-038C1C export, AP-038C2A validation) as a NEW draft
- * course, documents included. No route exposes it yet (the API and UI are the next milestone). It reuses the JSON
+ * course, documents included. Exposed only by the feature-gated `POST /api/v1/course-imports/archive` (AP-038C2E, off by
+ * default and refused in production), which validates the archive in the isolated archive worker. It reuses the JSON
  * import's plan and reconstruction (AP-038B) and the document upload pipeline (scan, extraction in the isolated worker,
  * extractive summary, storage), so an imported course is exactly what staff would have built by hand: draft content in
  * review, never approved, published or visible to students.
@@ -32,7 +33,7 @@ import type { MalwareScanner, MalwareScanResult } from '../documents/scanner.js'
 import type { DocumentStorage } from '../documents/storage.js';
 import type { DocumentSummaryProvider, SummaryOutput } from '../documents/summary.js';
 import { ApiProblem } from '../http/errors.js';
-import { readCourseArchive, type ArchiveValidationReport } from './archive-validation.js';
+import { readCourseArchive, type ArchiveValidationReport, type ValidatedArchive } from './archive-validation.js';
 import { analyzePackage, type ImportPreview, type PlannedActivity, type VersionPreference } from './course-import.js';
 import { reconstructCourse } from './course-reconstruct.js';
 
@@ -43,6 +44,11 @@ export type ArchiveImportDeps = {
   provider: DocumentSummaryProvider;
   /** Validates and extracts a document in the isolated worker: the upload pipeline's `extractInWorker`. */
   extract: (bytes: Uint8Array, format: DocumentFormat) => Promise<ExtractionOutcome>;
+  /**
+   * Validates the whole archive and returns its verified contents. Default: `readCourseArchive` in this thread; the API
+   * route passes `readCourseArchiveInWorker` (AP-038C2E), the same validation in the isolated archive worker.
+   */
+  readArchive?: (archive: Buffer) => Promise<{ report: ArchiveValidationReport; contents: ValidatedArchive | null }>;
 };
 
 export type ArchiveImportInput = {
@@ -140,8 +146,8 @@ export async function importCourseArchive(deps: ArchiveImportDeps, input: Archiv
       .where(and(eq(users.id, input.actor.userId), eq(users.systemRole, 'administrator'), eq(users.isActive, true)));
     if (!actor) throw new ArchiveImportError('FORBIDDEN', 'Only administrators can import course archives.');
 
-    // 2. The whole archive, before anything else.
-    const { report, contents } = await readCourseArchive(input.archive);
+    // 2. The whole archive, before anything else (in the isolated worker when the caller provides it).
+    const { report, contents } = await (deps.readArchive ?? readCourseArchive)(input.archive);
     if (!contents) throw new ArchiveImportError('ARCHIVE_INVALID', 'The archive is not a valid AcademiaPath course archive.', { report });
 
     // 3a. The plan: the JSON import's analysis, with the verified bundled files.
