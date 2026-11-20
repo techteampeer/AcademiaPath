@@ -153,6 +153,67 @@ Storage bucket mounted by the API); moving them needs a ZIP package and an uploa
 AP-040 work. Until then a document activity is portable as a reference only: an importer must obtain the file
 separately and can verify it with `sha256`. A file missing from storage is reported as `ASSET_MISSING`.
 
+### Course archive (AP-038C1C engine, AP-038C1D API)
+
+`apps/api/src/portability/course-archive.ts` assembles a ZIP holding the package and its document files.
+
+**API:** `GET /api/v1/courses/{id}/export/archive` (contract `exportCourseArchive`).
+- **Permission:** the same as the JSON export (`content.export`).
+- **Response:** `application/zip`, attachment `course-<code>.academiapath.zip`, `no-store`, `nosniff`.
+- **Errors:**
+
+  | Situation | Response |
+  | --- | --- |
+  | Archive over 25 MB | 422 `COURSE_ARCHIVE_TOO_LARGE` |
+  | A missing or changed document file | 500 `COURSE_ARCHIVE_DOCUMENT_MISSING` / `COURSE_ARCHIVE_DOCUMENT_CORRUPT` |
+  | Unreadable storage | 503 `DOCUMENT_STORAGE_UNAVAILABLE` |
+  | Two archives already being prepared on this API instance | 503 `COURSE_ARCHIVE_BUSY`, with `Retry-After` |
+  | More than 10 requests per user per 10 minutes | 429 `RATE_LIMITED` |
+
+- **Scope of the limits:** they apply per API instance, not across instances.
+- **Audit:** `course.archive_exported`, with counts and sizes only.
+- **UI (AP-038C1E):** **Download with documents** / **Descargar con documentos** sits next to **Export course content** on the course page. Only roles with `content.export` see it.
+  - The button is disabled while an archive is prepared.
+  - A response that is not a ZIP is reported as a failure and never saved.
+  - Errors are localized and follow EN/ES switches.
+- **Archive validation (AP-038C2A, backend only, no route yet):**
+  - `validateCourseArchive(bytes)` in `apps/api/src/portability/archive-validation.ts` checks an untrusted archive and previews it as a **new draft course**.
+  - It never imports, stores or writes anything.
+  - **Archive safety:** checked by the inspectors' ZIP scanner, which refuses traversal, absolute paths, duplicates and case collisions, links, special and encrypted entries, forged sizes or CRC, and expansion ratios above 100:1.
+  - **Size limits:** at most 25 MB compressed and 45 MB decompressed in total; the manifest at most 1 MiB and `course.json` at most 20 MB.
+  - **Layout:** exactly the manifest, `course.json` and `assets/<key>.<pdf|docx|pptx>`.
+  - **Manifest:** format and version 1, with canonical asset paths and consistent totals.
+  - **Package:** `course.json` must match its manifest size and SHA-256, then pass the AP-038B package validation (including its content hash).
+  - **Assets:**
+    - the manifest and package must describe the same assets;
+    - every asset must be present once, with nothing undeclared;
+    - sizes and SHA-256 must match;
+    - each file's signature must match its format.
+  - Links are never fetched and files are never opened or executed. Full document validation and malware scanning belong to the import.
+- **Not yet built:** the import itself (AP-038C2B or later) and its API and UI.
+
+```text
+academiapath-archive.json   manifest: format "academiapath.course-archive", formatVersion 1
+course.json                 the JSON export above, byte for byte (still formatVersion 1, bundled: false)
+assets/asset-1.pdf          one file per asset, named <asset key>.<format>, never the uploaded file name
+```
+
+- **Manifest contents:**
+  - `package`: path, format, version, `contentHash`, byte size and SHA-256 of `course.json`;
+  - `assets`: each asset's key, path, format, byte size and SHA-256;
+  - `totals`: the asset count and the total asset bytes.
+  - There is no timestamp, so identical content gives an identical archive.
+- **Integrity:**
+  - Each file is read through the storage key of a document of this course's own activities.
+  - Each file is checked against the database size and SHA-256.
+  - A missing, changed or unreadable file fails the whole archive (`ASSET_MISSING`, `ASSET_CORRUPT`, `STORAGE_UNAVAILABLE`). The JSON export instead lists it with a warning.
+  - A reference to another course's document is never read; it stays an `INVALID_REFERENCE` warning in `course.json`.
+- **Limits:**
+  - At most 25 MB (provisional, pending approval before the endpoint exists).
+  - The cap is checked from database sizes before any file is read, and again by the ZIP writer.
+  - Peak memory is about twice the archive size. Nothing is written to disk.
+- **Not scanned:** files are copied as stored. They are not malware-scanned (no scanner is connected; AP-040).
+
 ## Warnings
 
 | Code | Meaning |

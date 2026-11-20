@@ -136,10 +136,30 @@ const asText = (value: unknown, fallback = ''): string => (typeof value === 'str
 const asNullableText = (value: unknown): string | null => (typeof value === 'string' && value.length ? value : null);
 
 /**
+ * Where each packaged document's file is stored: asset key (`asset-1`…) → private storage key. For server-side use
+ * only (AP-038C1 archive export reads the files through it): it is never part of the package, an API response or a
+ * log entry. It holds exactly the package's assets, which are only documents of this course's own activities.
+ */
+export type PackageSources = ReadonlyMap<string, string>;
+
+/**
  * Builds the package of one course. Reads only (nothing is written); the caller checks permissions. Throws
  * COURSE_EXPORT_TOO_LARGE above the activity limit (before loading content) or the size limit.
  */
 export async function buildCoursePackage(db: Executor, courseId: string, storage: Pick<DocumentStorage, 'exists'>, now: Date): Promise<CoursePackage> {
+  return (await buildCoursePackageWithSources(db, courseId, storage, now)).packaged;
+}
+
+/**
+ * The same package as `buildCoursePackage` (same reads, same snapshot when run in the caller's transaction), plus
+ * the storage key of each asset in `sources`. Serialize only `packaged`.
+ */
+export async function buildCoursePackageWithSources(
+  db: Executor,
+  courseId: string,
+  storage: Pick<DocumentStorage, 'exists'>,
+  now: Date,
+): Promise<{ packaged: CoursePackage; sources: PackageSources }> {
   const [course] = await db.select().from(courses).where(eq(courses.id, courseId)).limit(1);
   if (!course) throw new ApiProblem(404, 'NOT_FOUND', 'Course not found.');
 
@@ -351,7 +371,8 @@ export async function buildCoursePackage(db: Executor, courseId: string, storage
       assets: assets.length,
     },
   };
-  return packaged;
+  // A read-only copy: callers get the mapping, never the builder's working map.
+  return { packaged, sources: new Map(storageKeys) };
 }
 
 /** Serializes a package, refusing one above the size limit. */
