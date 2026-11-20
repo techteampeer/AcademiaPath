@@ -124,10 +124,10 @@ describe('course archive import engine (PostgreSQL)', { skip: testServerUrl ? fa
     await seedDevUsers(database.db, PASSWORD);
     const local = new LocalDocumentStorage(storageDir);
     const storage = {
-      put: async (bytes: Uint8Array) => {
+      put: async (bytes: Uint8Array, key?: string) => {
         faults.puts += 1;
         if (faults.failPutAt && faults.puts === faults.failPutAt) throw Object.assign(new Error(`ENOSPC: no space left on device, write ${storageDir}`), { code: 'ENOSPC' });
-        return local.put(bytes);
+        return local.put(bytes, key);
       },
       read: (key: string) => local.read(key),
       remove: async (key: string) => {

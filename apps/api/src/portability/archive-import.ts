@@ -13,13 +13,15 @@
  *    are rechecked against the validated SHA-256, scanned, extracted and summarized. A rejected document stops the
  *    import before anything is stored.
  * 4. Files are written to document storage, each read back and verified. Storage cannot take part in a database
- *    transaction, so these files are not referenced by anything yet: they are invisible.
- * 5. One database transaction creates the draft course, its content and the document records that reference the
- *    files, plus the audit records. It either commits completely or not at all.
- * 6. If step 4 or 5 fails, every file written in step 4 is removed again. A file that cannot be removed, or files left
- *    by a process crash between steps 4 and 5, are unreferenced and therefore never served; the read-only storage
- *    audit (`pnpm storage:audit`) reports them as orphaned for an administrator to remove. Errors report how many files
- *    could not be removed, never their storage keys.
+ *    transaction, so these files are not referenced by anything yet: they are invisible. Each file's key is journaled,
+ *    with a lease, before the file is written (AP-040R, documents/storage-journal.ts).
+ * 5. One database transaction takes back the import's journal entries (aborting if storage recovery took any), and
+ *    creates the draft course, its content and the document records that reference the files, plus the audit records.
+ *    It either commits completely or not at all.
+ * 6. If step 4 or 5 fails, every file written in step 4 is removed again and its journal entry forgotten. A file that
+ *    cannot be removed, or files left by a process crash between steps 4 and 5, are unreferenced (never served) and
+ *    still journaled: once their lease runs out, storage recovery removes them (documents/storage-recovery.ts,
+ *    `pnpm storage:recover`). Errors report how many files could not be removed, never their storage keys.
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
@@ -31,6 +33,7 @@ import type { ExtractionOutcome } from '../documents/extract.js';
 import { sanitizeFileName } from '../documents/formats.js';
 import type { MalwareScanner, MalwareScanResult } from '../documents/scanner.js';
 import type { DocumentStorage } from '../documents/storage.js';
+import { openStorageJournal, StorageJournalError } from '../documents/storage-journal.js';
 import type { DocumentSummaryProvider, SummaryOutput } from '../documents/summary.js';
 import { ApiProblem } from '../http/errors.js';
 import { readCourseArchive, type ArchiveValidationReport, type ValidatedArchive } from './archive-validation.js';
@@ -49,6 +52,8 @@ export type ArchiveImportDeps = {
    * route passes `readCourseArchiveInWorker` (AP-038C2E), the same validation in the isolated archive worker.
    */
   readArchive?: (archive: Buffer) => Promise<{ report: ArchiveValidationReport; contents: ValidatedArchive | null }>;
+  /** Storage journal lease in seconds (AP-040R; default STORAGE_INTENT_LEASE_SECONDS). For tests. */
+  journalLeaseSeconds?: number;
 };
 
 export type ArchiveImportInput = {
@@ -86,7 +91,7 @@ export class ArchiveImportError extends Error {
       assetKey?: string;
       documentCode?: string;
     } = {},
-    /** Files written before the failure that could not be removed again (unreferenced; see `pnpm storage:audit`). */
+    /** Journaled files (stored, or possibly partly stored) that could not be removed again: unreferenced, and removed later by storage recovery. */
     public orphanedFiles = 0,
   ) {
     super(message);
@@ -130,12 +135,22 @@ const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest(
 export async function importCourseArchive(deps: ArchiveImportDeps, input: ArchiveImportInput): Promise<ArchiveImportResult> {
   const { db, storage } = deps;
   const preference = input.versionPreference ?? 'approved';
-  const written: string[] = [];
+  // AP-040R: every file's key is journaled before the file is written, so files left by a crash are recoverable.
+  const journal = openStorageJournal(db, 'archive_import', input.actor.userId, { leaseSeconds: deps.journalLeaseSeconds });
+  const journaled: string[] = [];
   const storedFor = new Map<string, string>();
+  /** Removes every journaled file (a missing one is fine), then forgets the entries of the removed ones. */
   const removeWritten = async () => {
-    let failed = 0;
-    for (const key of written) await storage.remove(key).catch(() => (failed += 1));
-    return failed;
+    const removed: string[] = [];
+    for (const key of journaled) {
+      await storage.remove(key).then(
+        () => removed.push(key),
+        () => undefined,
+      );
+    }
+    // An entry that cannot be forgotten now is harmless: recovery finds its file already gone.
+    await journal.release(removed).catch(() => undefined);
+    return journaled.length - removed.length;
   };
   // Every failure, expected or not, ends in the same place: remove what was written, report without internals.
   try {
@@ -223,15 +238,18 @@ export async function importCourseArchive(deps: ArchiveImportDeps, input: Archiv
     }
 
     // 4. Files, one stored copy per document activity, each read back and verified. Unreferenced until step 5 commits.
+    //    Each key is journaled (and the lease renewed) before its file is written (AP-040R).
     for (const activity of documentActivities) {
       const document = prepared.get(activity.document.assetKey)!;
+      const reserved = await journal.reserve();
+      journaled.push(reserved);
       let key: string;
       try {
-        key = await storage.put(document.bytes);
+        key = await storage.put(document.bytes, reserved);
       } catch {
         throw new ArchiveImportError('STORAGE_FAILED', 'A document file could not be stored.', { assetKey: activity.document.assetKey });
       }
-      written.push(key);
+      if (key !== reserved) throw new ArchiveImportError('STORAGE_FAILED', 'A document file was not stored under its journaled key.', { assetKey: activity.document.assetKey });
       storedFor.set(activity.key, key);
       const stored = await storage.read(key).catch(() => null);
       if (!stored || stored.length !== document.bytes.length || sha256(stored) !== document.sha256) {
@@ -241,6 +259,13 @@ export async function importCourseArchive(deps: ArchiveImportDeps, input: Archiv
 
     // 5. One transaction: the draft course, its content, the document records and the audit trail.
     return await db.transaction(async (tx) => {
+      // First, take back this import's journal entries: if storage recovery took any (a lease that ran out), abort.
+      try {
+        await journal.settle(tx, journaled);
+      } catch (error) {
+        if (error instanceof StorageJournalError) throw new ArchiveImportError('STORAGE_FAILED', 'The import took too long and its stored files were reclaimed; nothing was created.');
+        throw error;
+      }
       const { program, term } = await placement(tx);
       const [course] = await withUniqueConflict(
         () =>

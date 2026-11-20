@@ -31,8 +31,8 @@ function refusal(error: unknown, log: FastifyBaseLogger): ApiProblem {
     return new ApiProblem(500, 'ARCHIVE_IMPORT_FAILED', 'The import could not be completed; nothing was created.');
   }
   if (error.orphanedFiles > 0) {
-    // Diagnostics only (a count, never keys): the storage audit lists unreferenced files for an administrator.
-    log.warn({ archiveImport: { problem: error.problem, orphanedFiles: error.orphanedFiles } }, 'Course archive import left unreferenced files in document storage; run the storage audit');
+    // Diagnostics only (a count, never keys): the files stay journaled, and storage recovery removes them (AP-040R).
+    log.warn({ archiveImport: { problem: error.problem, orphanedFiles: error.orphanedFiles } }, 'Course archive import left unreferenced, journaled files in document storage; storage recovery removes them');
   }
   switch (error.problem) {
     case 'FORBIDDEN':

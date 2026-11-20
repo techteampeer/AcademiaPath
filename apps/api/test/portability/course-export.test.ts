@@ -139,7 +139,7 @@ describe('course export API (PostgreSQL)', { skip: testServerUrl ? false : 'TEST
     }
     const local = new LocalDocumentStorage(storageDir);
     const storage = {
-      put: (bytes: Uint8Array) => local.put(bytes),
+      put: (bytes: Uint8Array, key?: string) => local.put(bytes, key),
       remove: (key: string) => local.remove(key),
       exists: (key: string) => local.exists(key),
       read: async (key: string) => {

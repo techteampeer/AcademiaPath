@@ -86,11 +86,12 @@ describe('course archive import confirmation API (AP-038C2E, PostgreSQL)', { ski
     });
   };
   /** Every row of every table, hashed: proves that nothing was written. */
-  const fingerprint = async () =>
+  const fingerprint = async (except: string[] = []) =>
     (
       await database.pool.query<{ f: string }>(
         `SELECT string_agg(t.table_name || ':' || (xpath('/row/h/text()', query_to_xml(format('SELECT count(*) || md5(coalesce(string_agg(x::text, ''|'' ORDER BY x::text), '''')) AS h FROM %I x', t.table_name), false, true, '')))[1]::text, ',' ORDER BY t.table_name) AS f
-           FROM information_schema.tables t WHERE t.table_schema = 'public' AND t.table_type = 'BASE TABLE'`,
+           FROM information_schema.tables t WHERE t.table_schema = 'public' AND t.table_type = 'BASE TABLE' AND t.table_name <> ALL($1::text[])`,
+        [except],
       )
     ).rows[0]!.f;
   const storedFiles = async () => (await readdir(storageDir, { recursive: true }).catch(() => [] as string[])).sort();
@@ -442,10 +443,10 @@ describe('course archive import confirmation API (AP-038C2E, PostgreSQL)', { ski
       let puts = 0;
       let reads = 0;
       return {
-        put: async (bytes) => {
+        put: async (bytes, key) => {
           puts += 1;
           if (puts === faults.failPutAt) throw new Error('simulated storage write failure at /srv/storage');
-          return local.put(bytes);
+          return local.put(bytes, key);
         },
         read: async (key) => {
           reads += 1;
@@ -483,19 +484,24 @@ describe('course archive import confirmation API (AP-038C2E, PostgreSQL)', { ski
     } finally {
       await rollback.close();
     }
-    // When the files cannot be removed either, they stay unreferenced (never served; the storage audit lists them),
-    // and still no course becomes visible.
+    // When the files cannot be removed either, they stay unreferenced (never served) and journaled, so storage recovery
+    // can remove them later (AP-040R); still no course becomes visible.
     const stuck = await newApp({ storage: faulty({ failPutAt: 3, failRemove: true }) });
     try {
-      const rows = await fingerprint();
+      const rows = await fingerprint(['document_storage_intents']);
       const files = await storedFiles();
       problem(await importArchive(admin(), archive, fieldsFor('ARI-FAIL'), { target: stuck }), 503, 'ARCHIVE_IMPORT_STORAGE_FAILED');
-      assert.equal(await fingerprint(), rows, 'no row was written');
+      assert.equal(await fingerprint(['document_storage_intents']), rows, 'no other row was written');
       const orphans = (await storedFiles()).filter((file) => !files.includes(file));
       assert.equal(orphans.length, 2, 'the two files written before the failure remain, unreferenced');
       const referenced = await query<{ n: string }>('SELECT count(*) AS n FROM course_documents WHERE storage_key = ANY($1)', [orphans]);
       assert.equal(Number(referenced[0]!.n), 0, 'no record refers to them');
+      const journal = await query<{ storage_key: string }>(`SELECT storage_key FROM document_storage_intents WHERE operation = 'archive_import'`);
+      const journaledKeys = journal.map((row) => row.storage_key);
+      assert.equal(journaledKeys.length, 3, 'all three reserved keys stay journaled: two stored files and the write that failed');
+      for (const orphan of orphans) assert.ok(journaledKeys.includes(orphan), 'every file left behind is journaled for recovery');
       for (const orphan of orphans) await local.remove(orphan);
+      await query('DELETE FROM document_storage_intents');
     } finally {
       await stuck.close();
     }

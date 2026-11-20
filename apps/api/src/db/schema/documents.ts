@@ -85,3 +85,37 @@ export const documentSummaries = pgTable(
     check('document_summaries_status_points_check', sql`${t.status} = 'ready' OR jsonb_array_length(${t.points}) = 0`),
   ],
 );
+
+/**
+ * AP-040R write-ahead journal for document files. Before a file is written to document storage, its (pre-chosen)
+ * storage key is recorded here in its own committed statement, with a lease. The transaction that makes the file
+ * referenced (a course_documents row) deletes the entry in the same commit, and a handled failure removes the file and
+ * then the entry. An entry that outlives its lease therefore marks a file whose writer died, failed to clean up or gave
+ * up: storage recovery (documents/storage-recovery.ts) removes such files when no document references them. Storage
+ * keys stay server-side; nothing here is returned to API clients.
+ */
+export const documentStorageIntents = pgTable(
+  'document_storage_intents',
+  {
+    id: primaryId(),
+    storageKey: uuid('storage_key').notNull().unique(),
+    /** What wrote the file (`archive_import` today). */
+    operation: text('operation').notNull(),
+    /** Groups the files of one operation (one archive import). */
+    operationId: uuid('operation_id').notNull(),
+    actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** The writer renews this while it works; only entries past it may be recovered. */
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }).notNull(),
+    /** Failed recovery attempts (a removal that failed), with the last error code and time. */
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+    lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('document_storage_intents_lease_idx').on(t.leaseExpiresAt),
+    index('document_storage_intents_operation_idx').on(t.operationId),
+    check('document_storage_intents_operation_check', sql`${t.operation} IN ('archive_import')`),
+    check('document_storage_intents_attempts_check', sql`${t.attempts} >= 0`),
+  ],
+);

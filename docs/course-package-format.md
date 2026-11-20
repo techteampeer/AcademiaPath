@@ -199,10 +199,10 @@ separately and can verify it with `sha256`. A file missing from storage is repor
     1. The caller must be an active administrator.
     2. The whole archive is validated.
     3. Every document is prepared in memory, and its bytes are checked again against the validated SHA-256.
-    4. The files are stored and each one is read back to verify it.
-    5. One database transaction creates the course, its content and the document records.
-    6. If storing or the transaction fails, every file written so far is removed.
-  - **Limitation:** a file that cannot be removed, or files left by a process crash between storing and the commit, are referenced by no record, so they are never served. `pnpm storage:audit` lists them as orphaned. The error reports how many files could not be removed, never their storage keys.
+    4. The files are stored and each one is read back to verify it. Each file's key is journaled, with a lease, before the file is written (AP-040R).
+    5. One database transaction takes back the import's journal entries (aborting if storage recovery took any), then creates the course, its content and the document records.
+    6. If storing or the transaction fails, every file written so far is removed, and its journal entry forgotten.
+  - **Crash recovery (AP-040R):** a file that cannot be removed, or files left by a process crash between storing and the commit, are referenced by no record, so they are never served. They stay journaled, and once their lease has run out `pnpm storage:recover` removes them (dry run by default; local only; see docs/storage-integrity.md, section 4). The error reports how many files could not be removed, never their storage keys.
 - **Preview API (AP-038C2C):** `POST /api/v1/course-imports/archive/preview`.
   - Administrators only. Authentication, CSRF, Origin and the administrator check happen before the upload is read.
   - `multipart/form-data` with one `file` part: a `.zip` of at most 25 MB. Any other form field is ignored; the report comes from the uploaded bytes only.
@@ -225,7 +225,7 @@ separately and can verify it with `sha256`. A file missing from storage is repor
   - **Errors:** 409 `COURSE_CODE_TAKEN`; 422 `ARCHIVE_IMPORT_INVALID`, `ARCHIVE_IMPORT_DOCUMENT_REJECTED` or the JSON import's placement codes; 503 `ARCHIVE_IMPORT_STORAGE_FAILED`; 500 `ARCHIVE_IMPORT_FAILED`.
   - **Repeats and limits:** a repeated or concurrent confirmation cannot create a second course, because the code must be free in the term. Per instance: one import at a time (503 `ARCHIVE_IMPORT_BUSY`) and 5 imports per administrator per 10 minutes.
 - **Production blockers (before `ARCHIVE_IMPORT_ENABLED` may be allowed in production):**
-  1. **Orphan recovery after a crash.** Storage writes and the database transaction are not atomic. A process crash (or a failed removal) after files are stored and before the transaction commits leaves unreferenced files: they are never served, and `pnpm storage:audit` lists them, but nothing removes them. That audit is local-only today, and the production bucket needs a reviewed procedure (docs/storage-integrity.md). Production needs a reviewed, recurring orphan clean-up (or a journal of pending writes) with its cost approved.
+  1. **Orphan recovery in production.** Every import write is now journaled, and `pnpm storage:recover` safely removes the files of interrupted imports (AP-040R, tested with killed processes). It is local-only: nothing runs it in production. Production needs a reviewed production mode with delete access to the bucket, a verified Cloud Storage FUSE check (a cached "not found" must not hide an existing object), an approved way to run it (job or operator session, with its cost approved), and the `0036` migration deployed.
   2. **Malware scanning (AP-040).** No scanner is connected, so imported documents are recorded `not_scanned` (never `clean`).
   3. **Cross-instance limits.** The one-at-a-time cap and the rate limit are per API instance. Several Cloud Run instances multiply them.
   4. **Duration.** Each step is bounded (30 s validation; per-document extraction timeout), but an archive with many documents takes their sum. A per-import document cap or a background job may be needed.

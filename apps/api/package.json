@@ -16,6 +16,7 @@
     "db:seed:demo": "tsx --env-file-if-exists=../../.env scripts/seed-demo.ts",
     "db:seed:cloud-demo": "tsx scripts/seed-cloud-demo.ts",
     "storage:audit": "tsx --env-file-if-exists=../../.env scripts/storage-audit.ts",
+    "storage:recover": "tsx --env-file-if-exists=../../.env scripts/storage-recover.ts",
     "scorm:inspect": "tsx scripts/scorm-inspect.ts"
   },
   "dependencies": {
