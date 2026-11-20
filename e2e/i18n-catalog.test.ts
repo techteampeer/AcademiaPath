@@ -10,6 +10,7 @@ import { defaultTermName, localizeTermName, MESSAGES } from '../apps/web/src/lib
 import { QUALITY_CODES } from '../apps/api/src/quality/rules.ts';
 import { ISSUE_CODES as SCORM_ISSUE_CODES } from '../apps/api/src/scorm/report.ts';
 import { CARTRIDGE_ISSUE_CODES, CLASSIFICATIONS, RESOURCE_KINDS } from '../apps/api/src/cartridge/report.ts';
+import { ARCHIVE_ISSUE_CODES } from '../apps/api/src/portability/archive-validation.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
@@ -151,6 +152,15 @@ describe('SCORM inspection issues (AP-033B)', () => {
       assert.deepEqual(Object.keys(MESSAGES[locale].scorm.issues).sort(), [...SCORM_ISSUE_CODES].sort(), `${locale}: catalog codes match the API`);
     }
     for (const code of SCORM_ISSUE_CODES) assert.notEqual(MESSAGES.en.scorm.issues[code], MESSAGES.es.scorm.issues[code], code);
+  });
+});
+
+describe('Course archive validation issues (AP-038C2C)', () => {
+  it('every issue code the archive preview can report has its own English and Spanish message', () => {
+    for (const locale of ['en', 'es'] as const) {
+      assert.deepEqual(Object.keys(MESSAGES[locale].courseImport.archiveIssues).sort(), [...ARCHIVE_ISSUE_CODES].sort(), `${locale}: catalog codes match the API`);
+    }
+    for (const code of ARCHIVE_ISSUE_CODES) assert.notEqual(MESSAGES.en.courseImport.archiveIssues[code], MESSAGES.es.courseImport.archiveIssues[code], code);
   });
 });
 

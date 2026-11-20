@@ -108,6 +108,7 @@ describe('database migrations (PostgreSQL)', { skip: testServerUrl ? false : 'TE
         'course_template_versions',
         'course_templates',
         'courses',
+        'document_storage_intents',
         'document_summaries',
         'enrollments',
         'forum_posts',

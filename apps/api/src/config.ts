@@ -58,6 +58,12 @@ export type AppConfig = {
     createStorageDir: boolean;
   };
   /**
+   * AP-038C2E portable course archive import (`ARCHIVE_IMPORT_ENABLED`, default false). Off unless explicitly enabled
+   * for local development and tests; refused in production until its production blockers are resolved (see
+   * docs/course-package-format.md: orphan-file recovery after a crash, malware scanning, cross-instance limits).
+   */
+  archiveImport: { enabled: boolean };
+  /**
    * The institution (AP-025). `timeZone` is the IANA zone used for calendar dates that have none of their
    * own (assignment due dates, all-day defaults); the Peru-based institution defaults to America/Lima.
    */
@@ -101,6 +107,15 @@ function parseMountCheck(raw: string | undefined, isProduction: boolean): Storag
   // Production always checks its storage; it may be stricter, never weaker.
   if (isProduction && value === 'off') throw new Error('DOCUMENT_STORAGE_MOUNT_CHECK cannot be off in production');
   return value;
+}
+
+function parseArchiveImportEnabled(raw: string | undefined, isProduction: boolean): boolean {
+  const value = raw?.trim() || 'false';
+  if (value !== 'true' && value !== 'false') throw new Error('ARCHIVE_IMPORT_ENABLED must be true or false');
+  if (isProduction && value === 'true') {
+    throw new Error('ARCHIVE_IMPORT_ENABLED cannot be true in production yet: archive import is for local development and tests (see docs/course-package-format.md)');
+  }
+  return value === 'true';
 }
 
 function parseStorageDir(raw: string | undefined, isProduction: boolean): string {
@@ -237,6 +252,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       mountCheck: parseMountCheck(env.DOCUMENT_STORAGE_MOUNT_CHECK, isProduction),
       createStorageDir: !isProduction,
     },
+    archiveImport: { enabled: parseArchiveImportEnabled(env.ARCHIVE_IMPORT_ENABLED, isProduction) },
     institution: {
       timeZone: parseTimeZone(env.INSTITUTION_TIME_ZONE),
     },
