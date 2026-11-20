@@ -22,6 +22,7 @@ import type { MalwareScanner } from '../documents/scanner.js';
 import type { DocumentStorage } from '../documents/storage.js';
 import type { DocumentSummaryProvider } from '../documents/summary.js';
 import { ApiProblem } from '../http/errors.js';
+import { readUploadedFile } from '../http/uploads.js';
 import { courseActivityParamsSchema, courseSectionParamsSchema } from './activity-schemas.js';
 import { findActivity } from './activities.js';
 import { documentDetailSchema, studyBriefSchema } from './document-schemas.js';
@@ -225,16 +226,10 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
         throw await reject('UNSUPPORTED_FILE_TYPE', 'Only PDF (.pdf), Word (.docx) and PowerPoint (.pptx) files are accepted.', null);
       }
       const title = titleFrom(part.fields.title, fileName);
-      let bytes: Buffer;
-      try {
-        bytes = await part.toBuffer();
-      } catch (error) {
-        if ((error as { code?: string }).code === 'FST_REQ_FILE_TOO_LARGE') {
-          const limitMb = Math.round(config.documents.maxUploadBytes / (1024 * 1024));
-          throw await reject('PAYLOAD_TOO_LARGE', `The file exceeds the ${limitMb} MB upload limit.`, null);
-        }
-        throw error;
-      }
+      // A file cut off at the limit is refused (and the refusal audited) before it is scanned, extracted, summarized or
+      // stored: no document, activity, stored file or upload audit is ever created from incomplete bytes (AP-SEC-02).
+      const limitMb = Math.round(config.documents.maxUploadBytes / (1024 * 1024));
+      const bytes = await readUploadedFile(part, () => reject('PAYLOAD_TOO_LARGE', `The file exceeds the ${limitMb} MB upload limit.`, null));
 
       const scan = await scanner.scan(bytes, { fileName, format });
       if (scan.status === 'infected') throw await reject('MALWARE_DETECTED', 'The file was rejected by the malware scanner.', bytes.length);

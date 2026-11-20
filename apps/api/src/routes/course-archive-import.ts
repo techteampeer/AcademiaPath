@@ -2,6 +2,7 @@ import multipart from '@fastify/multipart';
 import type { FastifyPluginAsync } from 'fastify';
 import { getAuth } from '../auth/hooks.js';
 import { ApiProblem } from '../http/errors.js';
+import { readUploadedFile } from '../http/uploads.js';
 import { validateCourseArchiveInWorker } from '../portability/archive-preview.js';
 import { ARCHIVE_VALIDATION_LIMITS } from '../portability/archive-validation.js';
 import { archivePreviewReportSchema } from './course-archive-import-schemas.js';
@@ -57,17 +58,8 @@ export const courseArchiveImportRoutes: FastifyPluginAsync = async (app) => {
           part.file.resume();
           throw new ApiProblem(415, 'UNSUPPORTED_FILE_TYPE', 'A course archive must be a .zip file exported by AcademiaPath.');
         }
-        const tooLarge = () => new ApiProblem(413, 'PAYLOAD_TOO_LARGE', `The archive exceeds the ${archiveMb} MB limit.`);
-        let bytes: Buffer;
-        try {
-          bytes = await part.toBuffer();
-        } catch (error) {
-          if ((error as { code?: string }).code === 'FST_REQ_FILE_TOO_LARGE') throw tooLarge();
-          throw error;
-        }
-        // @fastify/multipart checks the limit only while chunks arrive: over real HTTP, a file cut off exactly at the limit
-        // can come back without an error. Busboy's `truncated` flag is final once the stream has ended, so it decides.
-        if (part.file.truncated) throw tooLarge();
+        // An archive cut off at the limit is refused, never validated as if it were complete (AP-SEC-02).
+        const bytes = await readUploadedFile(part, () => new ApiProblem(413, 'PAYLOAD_TOO_LARGE', `The archive exceeds the ${archiveMb} MB limit.`));
         const report = await validateCourseArchiveInWorker(bytes);
         // Diagnostics only: no file name, title, entry name or archive content.
         request.log.info(
