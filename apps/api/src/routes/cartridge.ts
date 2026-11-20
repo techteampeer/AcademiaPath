@@ -5,6 +5,7 @@ import { getAuth } from '../auth/hooks.js';
 import { inspectCartridgeInWorker } from '../cartridge/inspection.js';
 import { CARTRIDGE_LIMITS } from '../cartridge/report.js';
 import { ApiProblem } from '../http/errors.js';
+import { readUploadedFile } from '../http/uploads.js';
 import { cartridgeInspectionReportSchema } from './cartridge-schemas.js';
 import { courseIdParamsSchema } from './course-schemas.js';
 
@@ -51,15 +52,8 @@ export const cartridgeRoutes: FastifyPluginAsync = async (app) => {
         part.file.resume();
         throw new ApiProblem(415, 'UNSUPPORTED_FILE_TYPE', 'A Common Cartridge must be an .imscc (or .zip) file.');
       }
-      let bytes: Buffer;
-      try {
-        bytes = await part.toBuffer();
-      } catch (error) {
-        if ((error as { code?: string }).code === 'FST_REQ_FILE_TOO_LARGE') {
-          throw new ApiProblem(413, 'PAYLOAD_TOO_LARGE', `The package exceeds the ${CARTRIDGE_LIMITS.maxPackageBytes / (1024 * 1024)} MB inspection limit.`);
-        }
-        throw error;
-      }
+      // A package cut off at the limit is refused, never inspected as if it were complete (AP-SEC-02).
+      const bytes = await readUploadedFile(part, () => new ApiProblem(413, 'PAYLOAD_TOO_LARGE', `The package exceeds the ${CARTRIDGE_LIMITS.maxPackageBytes / (1024 * 1024)} MB inspection limit.`));
       const report = await inspectCartridgeInWorker(bytes, { fileName: part.filename });
       // Diagnostics only: no file name, title or package content.
       request.log.info(
