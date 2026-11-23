@@ -87,7 +87,7 @@ export const documentSummaries = pgTable(
 );
 
 /**
- * AP-040R write-ahead journal for document files. Before a file is written to document storage, its (pre-chosen)
+ * AP-040R write-ahead journal for document files (course archive imports, and document uploads since AP-040R2). Before a file is written to document storage, its (pre-chosen)
  * storage key is recorded here in its own committed statement, with a lease. The transaction that makes the file
  * referenced (a course_documents row) deletes the entry in the same commit, and a handled failure removes the file and
  * then the entry. An entry that outlives its lease therefore marks a file whose writer died, failed to clean up or gave
@@ -99,9 +99,9 @@ export const documentStorageIntents = pgTable(
   {
     id: primaryId(),
     storageKey: uuid('storage_key').notNull().unique(),
-    /** What wrote the file (`archive_import` today). */
+    /** What wrote the file: `archive_import` or `document_upload`. */
     operation: text('operation').notNull(),
-    /** Groups the files of one operation (one archive import). */
+    /** Groups the files of one operation (one archive import, or one upload). */
     operationId: uuid('operation_id').notNull(),
     actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -115,7 +115,7 @@ export const documentStorageIntents = pgTable(
   (t) => [
     index('document_storage_intents_lease_idx').on(t.leaseExpiresAt),
     index('document_storage_intents_operation_idx').on(t.operationId),
-    check('document_storage_intents_operation_check', sql`${t.operation} IN ('archive_import')`),
+    check('document_storage_intents_operation_check', sql`${t.operation} IN ('archive_import', 'document_upload')`),
     check('document_storage_intents_attempts_check', sql`${t.attempts} >= 0`),
   ],
 );

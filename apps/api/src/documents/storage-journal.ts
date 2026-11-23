@@ -20,7 +20,8 @@ import { documentStorageIntents } from '../db/schema/index.js';
 /** How long a writer may go without renewing its lease before its files may be recovered (30 minutes). */
 export const STORAGE_INTENT_LEASE_SECONDS = 30 * 60;
 
-export type StorageJournalOperation = 'archive_import';
+/** The writers that journal their files: course archive imports (AP-040R) and document uploads (AP-040R2). */
+export type StorageJournalOperation = 'archive_import' | 'document_upload';
 
 export class StorageJournalError extends Error {
   constructor(message: string) {

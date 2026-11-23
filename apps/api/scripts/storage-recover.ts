@@ -1,11 +1,11 @@
 /**
- * AP-040R storage recovery for files abandoned by interrupted course archive imports (see
+ * AP-040R storage recovery for files abandoned by interrupted course archive imports and document uploads (see
  * src/documents/storage-recovery.ts and docs/storage-integrity.md).
  *
  * Dry run by default: it lists the write-ahead journal and what recovery would do, and changes nothing. With
  * `--apply` it removes the files of entries whose lease has run out and that no document refers to, one entry per
  * transaction, with an audit event for each. Entries whose lease is still running are never touched. Files that were
- * never journaled are not this tool's business: `pnpm storage:audit` reports them.
+ * never journaled (written before the journal existed) are not this tool's business: `pnpm storage:audit` reports them.
  *
  * LOCAL USE ONLY, like the storage audit: it refuses production, Cloud Run, the /mnt/documents bucket mount and any
  * non-local database. Nothing runs it automatically; recovering production storage needs a reviewed change and explicit

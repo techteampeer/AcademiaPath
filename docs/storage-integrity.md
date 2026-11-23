@@ -189,11 +189,12 @@ It would need, in order:
 4. **Handling of the report** as internal data. It lists record IDs and storage keys only. Findings are **reported,
    not repaired**: restoring or removing files is a separate, approved operation.
 
-## 4. Crash recovery of archive import writes (AP-040R)
+## 4. Crash recovery of archive import and upload writes (AP-040R, AP-040R2)
 
 A file write and a database commit cannot be atomic, and a process can be killed between them (a stopped container,
-an out-of-memory kill), so try/catch clean-up is not enough. Course archive imports therefore keep a **write-ahead
-journal**, the `document_storage_intents` table (migration `0036_storage_write_intents`):
+an out-of-memory kill), so try/catch clean-up is not enough. Course archive imports and, since AP-040R2, document
+uploads therefore keep a **write-ahead journal**, the `document_storage_intents` table (migration
+`0036_storage_write_intents`; `0037_upload_write_intents` allows the `document_upload` operation). For an import:
 
 1. Before each file is written, the import chooses its storage key and journals it in its own committed statement,
    with a **lease** (30 minutes). Journaling a file also renews the lease of the import's earlier files, so a slow
@@ -203,6 +204,16 @@ journal**, the `document_storage_intents` table (migration `0036_storage_write_i
    after its lease ran out), the import aborts instead of referring to a file that may be gone.
 4. A handled failure removes the import's files and then forgets their entries. Entries of files it could not remove
    stay journaled.
+
+An upload follows the same steps for its one file:
+
+- The key and lease are journaled just before the write.
+- The entry is taken back in the transaction that creates the document. If recovery took it, the upload is refused
+  with `503 DOCUMENT_STORAGE_UNAVAILABLE`, and no document is created without its file.
+- After a failed write (which may leave part of a file) or a failed transaction, the file is removed and then the entry
+  is forgotten. If the file cannot be removed, its entry stays.
+
+Storage keys are never returned or logged.
 
 Anything still journaled after its lease has run out belongs to a writer that died or could not clean up.
 
@@ -239,8 +250,8 @@ response) lists storage keys for the operator.
 `3` refused. It refuses exactly what the audit refuses (section 3), and also a storage directory that does not exist
 (an unmounted bucket would make every file look already removed).
 
-**Not covered:** document uploads (a single file per request) are not journaled. Their crash or failed-removal
-orphans, and any file written before the journal existed, are reported by `pnpm storage:audit` only.
+**Not covered:** files written before the journal existed (before migrations `0036`/`0037`) are reported by
+`pnpm storage:audit` only.
 
 **Production:** nothing runs recovery automatically, and the command refuses production. Recovering the production
 bucket needs the same approvals as a production scan (section 3), plus delete access, which the read-only scan does
@@ -261,7 +272,6 @@ Storage API, or disable the negative stat cache for that job).
 - **Mount detection not yet verified in the API service** (see section 1). Until then production runs in `report`
   mode. An existing but unmounted storage directory is reported (warning log, `degraded`) but **still accepts
   uploads** into the instance's temporary in-memory storage. A storage directory that does not exist refuses uploads.
-- **Orphans after failed uploads.** If an upload's database transaction fails, the API removes the file it has just
-  written. If that removal also fails, or the process dies between the write and the commit, the file remains, and
-  nothing cleans it up automatically. The audit reports it as orphaned once the grace period has passed. (Archive
-  imports are journaled and recoverable, section 4; uploads are not.)
+- **Orphans after failed uploads (local recovery only).** Since AP-040R2 a file left by a failed or interrupted upload
+  is journaled and `pnpm storage:recover` removes it (section 4), but that command is local-only: nothing recovers
+  production storage yet, so such files stay (unreferenced, never served) until a reviewed production procedure exists.

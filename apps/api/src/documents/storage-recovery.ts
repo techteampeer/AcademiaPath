@@ -5,8 +5,8 @@ import { courseDocuments, documentStorageIntents } from '../db/schema/index.js';
 import type { DocumentStorage } from './storage.js';
 
 /**
- * AP-040R: recovery of document files abandoned by interrupted writers, from the write-ahead journal
- * (`document_storage_intents`, see storage-journal.ts).
+ * AP-040R: recovery of document files abandoned by interrupted writers (course archive imports and, since AP-040R2,
+ * document uploads), from the write-ahead journal (`document_storage_intents`, see storage-journal.ts).
  *
  * A journal entry whose lease is still running belongs to a writer that may be alive (a slow import renews its lease
  * with every file), so it is never touched. An entry whose lease ran out is abandoned: its writer died, or failed and
@@ -17,8 +17,8 @@ import type { DocumentStorage } from './storage.js';
  *   audit event. A crash in between leaves the entry, and the next run finds the file already missing.
  * - a removal that fails keeps the entry, counts the attempt and records the error code, with a failure audit event.
  *
- * Nothing else is ever removed: files that were never journaled (uploads, or files written before the journal existed)
- * are only reported by the read-only storage audit. Audit events and stored errors hold no storage keys, file
+ * Nothing else is ever removed: files that were never journaled (written before the journal existed) are only reported
+ * by the read-only storage audit. Audit events and stored errors hold no storage keys, file
  * contents, paths or messages; the operator's report (never an API response) lists storage keys.
  */
 

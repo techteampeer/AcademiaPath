@@ -1,25 +1,31 @@
 /**
- * AP-040R: one course archive import, or one storage recovery, run in a child process so that the test can kill it
- * with SIGKILL at an exact point (no try/catch, no `finally`, no clean-up runs, as when a container is stopped).
+ * AP-040R: one course archive import, one document upload (AP-040R2, through the real upload route) or one storage
+ * recovery, run in a child process so that the test can kill it with SIGKILL at an exact point (no try/catch, no
+ * `finally`, no clean-up runs, as when a container is stopped).
  *
- * Environment (set by test/documents/storage-recovery.test.ts):
- *   CRASH_MODE           import | recover
+ * Environment (set by test/documents/storage-recovery.test.ts and upload-recovery.test.ts):
+ *   CRASH_MODE           import | upload | recover
  *   CRASH_PAUSE          where to stop and wait to be killed, `<point>:<n>` (the n-th call), or empty for no pause:
  *                        before-put / after-put (import), before-remove / after-remove (either mode)
  *   CRASH_FAIL_PUT_AT    import: make the n-th file write fail (so the import's own clean-up runs)
  *   CRASH_DATABASE_URL, CRASH_STORAGE_DIR, CRASH_LEASE_SECONDS
  *   CRASH_ARCHIVE, CRASH_ACTOR, CRASH_PROGRAM, CRASH_TERM, CRASH_CODE   import input
+ *   CRASH_FILE, CRASH_COURSE, CRASH_SECTION, CRASH_SESSION, CRASH_CSRF   upload input (a signed-in session)
+ *   CRASH_FAIL_TRANSACTION   upload: make the database transaction fail (so the upload's own clean-up runs)
  *
  * Writes `PAUSED <point>:<n>` when it stops, `RESULT <json>` when it finishes.
  */
 import { readFile } from 'node:fs/promises';
-import { createDatabase } from '../../src/db/client.js';
+import { buildApp } from '../../src/app.js';
+import { loadConfig } from '../../src/config.js';
+import { createDatabase, type Database } from '../../src/db/client.js';
 import { extractInWorker } from '../../src/documents/extraction.js';
 import { noMalwareScanner } from '../../src/documents/scanner.js';
 import { LocalDocumentStorage } from '../../src/documents/storage.js';
 import { recoverAbandonedStorageWrites } from '../../src/documents/storage-recovery.js';
 import { mockSummaryProvider } from '../../src/documents/summary.js';
 import { ArchiveImportError, importCourseArchive } from '../../src/portability/archive-import.js';
+import { multipartBody } from './documents.js';
 
 const env = process.env;
 const pause = env.CRASH_PAUSE ?? '';
@@ -56,8 +62,29 @@ const storage = {
   },
 };
 
+async function upload(): Promise<unknown> {
+  const failing = env.CRASH_FAIL_TRANSACTION ? (Object.create(db, { transaction: { value: async () => Promise.reject(new Error('simulated database failure')) } }) as Database) : db;
+  const origin = 'http://localhost:3000';
+  const app = buildApp({
+    config: loadConfig({ NODE_ENV: 'test', APP_ORIGINS: origin, DOCUMENT_STORAGE_DIR: env.CRASH_STORAGE_DIR, DOCUMENT_MAX_UPLOAD_MB: '5' }),
+    database: failing,
+    documents: { storage },
+  });
+  await app.ready();
+  const { payload, contentType } = multipartBody([{ name: 'file', filename: 'crash-test.pdf', data: await readFile(env.CRASH_FILE!) }]);
+  const res = await app.inject({
+    method: 'POST',
+    url: `/api/v1/courses/${env.CRASH_COURSE}/sections/${env.CRASH_SECTION}/documents`,
+    payload,
+    cookies: { ap_session: env.CRASH_SESSION! },
+    headers: { 'content-type': contentType, 'x-csrf-token': env.CRASH_CSRF!, origin },
+  });
+  return { status: res.statusCode, code: res.statusCode >= 400 ? (res.json() as { code?: string }).code : null };
+}
+
 async function run(): Promise<unknown> {
   if (env.CRASH_MODE === 'recover') return recoverAbandonedStorageWrites({ db, storage });
+  if (env.CRASH_MODE === 'upload') return upload();
   try {
     const result = await importCourseArchive(
       {
