@@ -4,7 +4,7 @@
  * `finally`, no clean-up runs, as when a container is stopped).
  *
  * Environment (set by test/documents/storage-recovery.test.ts and upload-recovery.test.ts):
- *   CRASH_MODE           import | upload | recover | approved-apply (AP-OPS-02)
+ *   CRASH_MODE           import | upload | recover | approved-claim | approved-run (AP-OPS-03)
  *   CRASH_PAUSE          where to stop and wait to be killed, `<point>:<n>` (the n-th call), or empty for no pause:
  *                        before-put / after-put (import), before-remove / after-remove (either mode)
  *   CRASH_FAIL_PUT_AT    import: make the n-th file write fail (so the import's own clean-up runs)
@@ -12,7 +12,9 @@
  *   CRASH_ARCHIVE, CRASH_ACTOR, CRASH_PROGRAM, CRASH_TERM, CRASH_CODE   import input
  *   CRASH_FILE, CRASH_COURSE, CRASH_SECTION, CRASH_SESSION, CRASH_CSRF   upload input (a signed-in session)
  *   CRASH_FAIL_TRANSACTION   upload: make the database transaction fail (so the upload's own clean-up runs)
- *   CRASH_PLAN, CRASH_DIGEST, CRASH_BUCKET, CRASH_API_URL, CRASH_DATABASE_ID   approved-apply input (a simulated API)
+ *   CRASH_PLAN_ID, CRASH_IDENTITY_KEY, CRASH_CREDENTIAL, CRASH_CLAIM_TTL, CRASH_BUCKET, CRASH_API_URL, CRASH_DATABASE_ID,
+ *   CRASH_ENVIRONMENT   approved-claim (claim the plan, then pause at `claimed:1`) and approved-run (claim and execute)
+ *                        input: a simulated API and the tests' signed-token operator identity
  *
  * Writes `PAUSED <point>:<n>` when it stops, `RESULT <json>` when it finishes.
  */
@@ -23,12 +25,13 @@ import { createDatabase, type Database } from '../../src/db/client.js';
 import { extractInWorker } from '../../src/documents/extraction.js';
 import { noMalwareScanner } from '../../src/documents/scanner.js';
 import { LocalDocumentStorage } from '../../src/documents/storage.js';
-import { applyApprovedRecovery } from '../../src/documents/approved-recovery.js';
+import { claimRecoveryPlan, executeRecoveryPlan } from '../../src/documents/approved-recovery.js';
 import { GcsJsonObjectStore } from '../../src/documents/object-store.js';
 import { recoverAbandonedStorageWrites } from '../../src/documents/storage-recovery.js';
 import { mockSummaryProvider } from '../../src/documents/summary.js';
 import { ArchiveImportError, importCourseArchive } from '../../src/portability/archive-import.js';
 import { multipartBody } from './documents.js';
+import { testOperatorIdentity } from './operator-identity.js';
 
 const env = process.env;
 const pause = env.CRASH_PAUSE ?? '';
@@ -87,9 +90,13 @@ async function upload(): Promise<unknown> {
 
 async function run(): Promise<unknown> {
   if (env.CRASH_MODE === 'recover') return recoverAbandonedStorageWrites({ db, storage });
-  if (env.CRASH_MODE === 'approved-apply') {
+  if (env.CRASH_MODE === 'approved-claim' || env.CRASH_MODE === 'approved-run') {
     const store = new GcsJsonObjectStore({ bucket: env.CRASH_BUCKET!, baseUrl: env.CRASH_API_URL, getAccessToken: async () => 'local-emulator', timeoutMs: 60_000 });
-    return applyApprovedRecovery({ db, store, database: env.CRASH_DATABASE_ID! }, { plan: JSON.parse(await readFile(env.CRASH_PLAN!, 'utf8')), approvedDigest: env.CRASH_DIGEST! });
+    const deps = { db, store, identity: testOperatorIdentity({ keyHex: env.CRASH_IDENTITY_KEY! }).provider, database: env.CRASH_DATABASE_ID!, environment: env.CRASH_ENVIRONMENT! };
+    const claimed = await claimRecoveryPlan(deps, { credential: env.CRASH_CREDENTIAL, planId: env.CRASH_PLAN_ID!, claimTtlSeconds: Number(env.CRASH_CLAIM_TTL) });
+    if (!claimed.ok) return claimed;
+    await checkpoint('claimed');
+    return executeRecoveryPlan(deps, claimed.claim);
   }
   if (env.CRASH_MODE === 'upload') return upload();
   try {

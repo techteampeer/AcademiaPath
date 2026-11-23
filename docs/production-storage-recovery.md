@@ -1,13 +1,15 @@
-# Production storage recovery: design, approval workflow and activation plan (AP-OPS-01, AP-OPS-02)
+# Production storage recovery: design, approvals and activation plan (AP-OPS-01, AP-OPS-02, AP-OPS-03)
 
 **Status:** production recovery is **not** active and cannot be activated by merging this code.
 
 - **AP-OPS-01** designed recovery and added two local safeguards (§5).
-- **AP-OPS-02** adds a Cloud Storage API adapter and a two-stage, approval-based recovery (§6). Both are tested only
-  against a local, simulated Cloud Storage API with a disposable database and synthetic files.
+- **AP-OPS-02** added a Cloud Storage API adapter (§6.1).
+- **AP-OPS-03** replaces AP-OPS-02's digest-only approval with durable, authenticated and auditable plans and
+  approvals (§6.2–§6.9).
 
-Nothing in production has been changed, and no production file has been read or deleted. Activation is a separate,
-reviewed change with the infrastructure and approvals in §7–§9.
+All of it is tested only against a local, simulated Cloud Storage API, with a disposable database, synthetic files and
+a test identity provider. Nothing in production has been changed, and no production file has been read or deleted.
+Activation is a separate, approved milestone (§7–§10).
 
 ## 1. What exists today (verified on `main` at `0b94b6d`)
 
@@ -69,7 +71,7 @@ in the journal.
     - every entry handled writes an audit event (`storage.write_recovered` or `storage.write_recovery_failed`), with
       no storage keys;
     - the run's JSON report goes to Cloud Logging;
-    - an apply must be approved against a dry run (§6).
+    - a deletion runs only under a durable approval by a verified operator (§6).
 
 ## 4. Options compared
 
@@ -103,288 +105,349 @@ for the small volume expected: orphans come only from crashes and failed clean-u
   (`storage-recovery.test.ts`, `upload-recovery.test.ts`).
 
 
-## 6. Approval-based recovery through the Cloud Storage API (AP-OPS-02: built, disabled in production)
+## 6. Durable, approval-based recovery through the Cloud Storage API (AP-OPS-02 and AP-OPS-03: built, disabled in production)
 
 ### 6.1 Architecture and security boundaries
 
 | Part | File | Role |
 | --- | --- | --- |
-| Storage adapter | `apps/api/src/documents/object-store.ts` | `GcsJsonObjectStore`: Cloud Storage JSON API over Node's built-in `fetch`. Separate from the FUSE-backed `LocalDocumentStorage` the API uses. |
-| Recovery engine | `apps/api/src/documents/approved-recovery.ts` | `planApprovedRecovery` (stage A) and `applyApprovedRecovery` (stage B). |
-| Command | `apps/api/scripts/storage-recover-approved.ts` | `pnpm storage:recover:approved -- plan …` and `-- apply …`; **local emulator only** (§6.6). |
-| Simulator | `apps/api/test/helpers/fake-gcs.ts` | A loopback JSON API server backed by a temporary directory, with injectable faults. |
+| Storage adapter (AP-OPS-02) | `apps/api/src/documents/object-store.ts` | `GcsJsonObjectStore`: the Cloud Storage JSON API over Node's built-in `fetch`. Separate from the FUSE-backed `LocalDocumentStorage` the API uses. |
+| Plan and approval records (AP-OPS-03) | `apps/api/src/db/schema/storage-recovery.ts`, migration `0038_storage_recovery_approvals` | `storage_recovery_plans` and `storage_recovery_plan_entries`, with database guards (§6.3). |
+| Lifecycle service (AP-OPS-03) | `apps/api/src/documents/approved-recovery.ts` | Functions to create, review, approve, revoke, claim (or resume) and execute plans. |
+| Operator identity (AP-OPS-03) | `apps/api/src/documents/operator-identity.ts` | The trusted identity-provider interface and roles. The only provider shipped, `NO_TRUSTED_OPERATOR_IDENTITY`, rejects every credential. |
+| Command | `apps/api/scripts/storage-recover-approved.ts` | `pnpm storage:recover:approved -- preview …`: a read-only preview, **local emulator only**. It has no approve or apply command. |
+| Test doubles | `apps/api/test/helpers/fake-gcs.ts`, `test/helpers/operator-identity.ts` | A loopback simulated JSON API with injectable faults, and a signed-token identity provider used only in tests. |
 
 **What the adapter will and will not do:**
 
-- **Two operations only.**
-  - Object metadata: `GET …/o/{name}?fields=bucket,name,generation,size`.
-  - Generation-matched deletion: `DELETE …/o/{name}?ifGenerationMatch={generation}`.
+- **Two operations only.** It reads object metadata (`GET …/o/{name}?fields=bucket,name,generation,size`) and deletes
+  a given generation (`DELETE …/o/{name}?ifGenerationMatch={generation}`). It never lists a bucket, never downloads
+  content and never deletes without a generation precondition.
+- **One bucket and one key namespace.** Only server-generated storage keys under the configured prefix are accepted.
+  The endpoint must be a bare origin and redirects are refused. A metadata answer must name exactly the requested
+  object.
+- **No failure means "missing".** Only a 404 does. Permission errors, timeouts, an unavailable API, a 412 and malformed
+  answers are distinct errors. Access tokens come from an injected provider and are never logged.
 
-  It never lists a bucket, never downloads content (`alt=media`) and never deletes without a generation precondition.
-- **One bucket and one key namespace.**
-  - The bucket and an optional fixed prefix are validated at construction.
-  - Object names must be server-generated storage keys (UUIDs), so a path, `..` or any other name is refused
-    (`invalid_key`) before any request is sent.
-  - The endpoint must be an origin, with no credentials, path or query, and redirects are refused.
-  - A metadata answer must name exactly the requested bucket and object, with a valid generation; anything else is
-    treated as an error.
-- **Exact observations.** `stat` returns either `present` with the live generation, or `missing` for an HTTP 404 only.
-  Every other outcome is an `ObjectStoreError` with a distinct kind, and none of them is ever taken to mean "missing":
+**No storage keys anywhere.** Plans, entries, reports, previews and audit events identify files by a one-way
+`keyRef` (SHA-256 of the key with a fixed domain prefix). Storage keys are random UUIDs, so the hash cannot be
+reversed by guessing. Plan rows never store keys at all: execution reads each key from its journal entry.
 
-  | Outcome | Error kind |
-  | --- | --- |
-  | 401, 403, or no access token | `permission_denied` |
-  | client timeout, or 408 | `timeout` |
-  | 429, 5xx, or connection failure | `unavailable` |
-  | 412 | `precondition_failed` |
-  | anything else, including malformed answers | `error` |
+### 6.2 Why a digest alone does not authorize anything
 
-- **Injected credentials.** The access token comes from an injected provider.
-  - Tests and the local command use a fixed emulator token.
-  - `metadataServerToken()` (the Cloud Run metadata server, so no key file) exists for the activation change, but
-    nothing uses it in this build.
-  - Tokens are never logged.
-- **No private keys in output.**
-  - Plans, reports, command summaries and audit events identify files by `keyRef`, a one-way SHA-256 of the storage
-    key with a fixed domain prefix. Storage keys are random UUIDs, so the hash cannot be reversed by guessing.
-  - Plans and reports never contain document names or contents.
+AP-OPS-02 accepted a plan file plus its SHA-256 digest as the approval. AP-OPS-03 replaces that. A digest is a
+fingerprint of content: anyone who can read a plan can compute it, and it says nothing about who agreed to it. On its
+own, a digest:
 
-### 6.2 Dry run and approval procedure
+- is not a secret, so it cannot prove that an operator, rather than the plan's author, chose to approve;
+- does not say who approved, so there would be no accountability and no way to enforce that the creator is not the
+  approver;
+- cannot be revoked: once typed, it would authorize the plan until expiry;
+- does not survive in a temporary file in an auditable, tamper-evident way.
 
-1. **Plan (stage A, the dry run).** It changes nothing: one REPEATABLE READ, READ ONLY transaction, and metadata reads
-   only.
-   - It first runs the storage witness (§5). If the store cannot be read or trusted, the plan is `refused`
-     (`storage_error` or `storage_unverified`) and proposes nothing.
-   - Each journal entry is then classified with the **database clock**:
+**What the digest is still used for:**
 
-     | Entry | Plan |
-     | --- | --- |
-     | lease still running | skipped (`lease_active`) |
-     | a document refers to the file | `forget_referenced` (the file is kept) |
-     | object present | `delete`, at exactly the generation just observed |
-     | object missing (404) | `forget_missing` |
-     | any storage error | skipped (`storage_error`), counted as uncertain |
+- the approver must quote the digest of the plan they reviewed, which confirms that they approve exactly that content;
+- every later step recomputes it from the stored rows, so tampering is detected even when the database guards are
+  bypassed.
 
-   - The plan records:
-     - the environment: the database identity (host, port and name, never credentials), the storage API endpoint and
-       the bucket;
-     - its creation time, and an expiry from the database clock (60 minutes by default, 1 minute to 24 hours);
-     - the counts, the items and the skip reasons;
-     - a **digest**: SHA-256 over the canonical form of the format, environment, expiry, status and every item
-       (intent ID, operation, `keyRef`, action, generation).
-   - The command writes the plan to a new file (never overwriting, mode `0600`). It prints the counts, uncertainty,
-     expiry and digest, with no storage keys.
-   - Exit code 1 means the plan awaits approval; 2 means it was refused or something is uncertain.
-2. **Review.** The approver reads the summary: the counts, the uncertain entries, the bucket and the database. No
-   deletion is possible without the next step.
-3. **Apply (stage B).** `apply --plan FILE --approve DIGEST` acts only when all of these hold; otherwise it refuses
-   and changes nothing:
-   - the plan file has exactly the expected shape (`invalid_plan` otherwise);
-   - its recomputed digest equals both the digest in the file and the digest typed by the approver (`digest_mismatch`
-     otherwise), so a plan edited after approval or another plan's digest is refused;
-   - the plan was not refused (`plan_refused`);
-   - it is applied against the same database and API endpoint (`wrong_environment`) and the same bucket
-     (`wrong_bucket`);
-   - it has not expired by the database clock (`approval_expired`);
-   - the storage witness still passes.
+**What authorizes:**
 
-**An approval never covers anything new.** Apply handles only the entries listed in the plan, each one only at its
-planned generation and only for its planned action. A file uploaded after the plan, a rewritten object (a new
-generation) and an entry whose lease was renewed are therefore never deleted under an old digest.
+- a verified operator identity with the right role;
+- separation of duties: the plan's creator can never approve it;
+- the database state machine, with its expiry and revocation;
+- a fencing claim for execution.
 
-### 6.3 What apply checks for each item
+### 6.3 The approval lifecycle
 
-Items are handled in intent-ID order, **one transaction each**:
+```
+draft ──► awaiting_approval ──► approved ──► applying ──► completed
+ (inside the       │                │          │  ▲  │
+  creating         │                │          │  │  └──► partially_completed ──► applying (resume)
+  transaction)     ▼                ▼          ▼  │
+                revoked / expired  revoked / expired   applying (resume after a lapsed claim)
+```
 
-1. Lock the journal entry (`FOR UPDATE SKIP LOCKED`). The lock is taken only while the entry's lease is still expired
-   and the approval still valid, both judged by the database clock. Otherwise the item is reported as
-   `skipped_lease_active`, `skipped_approval_expired`, `skipped_locked` (another job holds it) or `skipped_entry_gone`.
-2. The entry's key and operation must still match the plan (`skipped_state_changed`).
-3. Recheck the references inside the same transaction.
-   - A `forget_referenced` item is forgotten only if the file is still referenced; its file is kept.
-   - A file that a document refers to **now** is never deleted or forgotten (`skipped_now_referenced`).
-4. Read the object's metadata. Any storage error fails the item with its code (`PERMISSION_DENIED`, `TIMEOUT`,
-   `UNAVAILABLE`, `ERROR`).
-5. If the live generation differs from the planned one, the item fails with `GENERATION_CHANGED`, and no deletion is
-   even attempted.
-6. Delete with `ifGenerationMatch` set to the planned generation. A 412 (changed in the meantime) fails the item with
-   `GENERATION_CHANGED`.
-7. Verify: the object must now be missing. If not, the item fails with `STILL_PRESENT` (same generation) or
-   `GENERATION_CHANGED`.
-8. In the same commit, delete the journal entry and write the audit event.
+| Step | Function | Who | Result |
+| --- | --- | --- | --- |
+| Create | `createRecoveryPlan` | a verified **planner** | A plan with a database-generated UUID, bound to the environment label, database identity, storage endpoint, bucket and object prefix. It records the exact journal entries and object generations observed, a summary of what was left out and why, an expiry (1 second to 4 hours; default 1 hour) and the creator's verified issuer and subject. Status `awaiting_approval`. |
+| Review | `reviewRecoveryPlan` | any verified recovery operator | A read-only view, with the recomputed integrity state (`intact` or `mismatch`). |
+| Approve | `approveRecoveryPlan` | a verified **approver** who is not the creator, quoting the reviewed digest | `approved`, with the approver's issuer and subject and the time. Refused if the plan is expired, from another environment, tampered with, quoted with another digest, or the approver is its creator. |
+| Revoke | `revokeRecoveryPlan` | an approver, or the plan's creator, with a reason | `revoked`, at any point before the plan is finished, including during execution. |
+| Claim or resume | `claimRecoveryPlan` | a verified **executor** | `applying`, with a random fencing token and a short claim lease (1 second to 1 hour; default 5 minutes) renewed with every entry. A plan whose claim lapsed (a crashed worker) or that was left `partially_completed` is resumed; a live claim is never shared. |
+| Execute | `executeRecoveryPlan` | the claim holder only | Handles only the plan's own entries (§6.5), then marks the plan `completed`, or `partially_completed` while retryable failures remain. |
 
-A `forget_missing` item is forgotten only if the object is still missing; a file that has reappeared needs a new
-plan. When any item fails, the run is `incomplete` (exit 2), the entry is kept with `attempts`, `last_error` and
-`last_attempt_at` updated, and a failure audit event is written.
+Expired, revoked and completed plans are closed: nothing can act on them again.
 
-### 6.4 Audit events
+**Database guards (migration 0038), whatever the connecting role:**
 
-Both events are written in the same transaction as the journal change. The `entity` is the journal entry
-(`document_storage_intent`, its ID), and the actor is the system.
+- **Plans.**
+  - The contents (binding, summary, creator, times) and, once out of `draft`, the digest can never change.
+  - The status follows only the transitions above.
+  - An approval, once recorded, never changes.
+  - Approving or claiming after the expiry is rejected, and so is marking a plan expired before its expiry.
+  - A CHECK constraint forbids the approver from being the creator.
+  - Plans can be neither deleted nor truncated.
+- **Entries.**
+  - Entries can be added only while the plan is a `draft`, which is inside the transaction that creates it, so an
+    approved plan can never grow.
+  - Their reviewed contents (journal entry, operation, `keyRef`, action, generation) never change.
+  - Outcomes can be recorded only while the plan is `applying`, and a finished entry never changes again.
+  - Entries can be neither deleted nor truncated.
+- **Audit log.** It is append-only (migration 0001).
 
-| Event | When | `after` holds |
+### 6.4 Trusted operator identity requirements
+
+- **Opaque credentials only.** Every lifecycle function takes an opaque credential and asks an injected
+  `OperatorIdentityProvider` to verify it.
+  - Only the provider's answer is trusted: its issuer, its subject, and the roles `storage_recovery.planner`,
+    `storage_recovery.approver` and `storage_recovery.executor`.
+  - No function accepts an operator name, a command-line flag, an environment variable or a caller-built identity
+    object.
+  - A provider error or a malformed answer is a rejection, and there is no fallback.
+- **No production provider.** Because the only provider shipped rejects everything, nothing can be planned, approved or
+  executed outside the tests.
+- **The tests' provider** (`test/helpers/operator-identity.ts`) issues HMAC-signed tokens with a random per-run key. It
+  rejects tokens with a changed subject or roles, another key, another issuer or audience, or a past expiry.
+- **What a production provider must guarantee** (for the activation milestone):
+  - cryptographic verification of a short-lived credential issued by a trusted authority, bound to a recovery-specific
+    audience;
+  - a stable, unique subject, not an editable display name or email;
+  - roles granted from an authoritative, reviewed source, not from the credential holder;
+  - no caching of a rejection as an acceptance, and no logging of credentials.
+
+### 6.5 What execution checks for each entry
+
+Entries are handled in journal-entry order, each **at most once**:
+
+1. **Fence, in a short transaction with no network call.** The plan must still be `applying` under this worker's claim
+   token, with the claim live, not revoked and not expired (by the database clock). The claim is renewed. This
+   transaction stops a revoked, expired or taken-over run before it reads storage.
+2. **Observe the object outside any transaction.** The key is read from the journal entry, then its metadata from
+   Cloud Storage.
+3. **Decide and act in one short, bounded transaction.**
+   1. Lock the plan row, and recheck the fence: a revocation committed meanwhile stops the run here.
+   2. Lock the plan entry.
+   3. Lock the journal entry (`SKIP LOCKED`), only while its lease is still expired by the database clock.
+   4. Check that the entry's key and operation still match the plan.
+   5. Recheck the document references.
+
+   Then:
+
+   | Situation | Outcome |
+   | --- | --- |
+   | `forget_referenced`, still referenced | the entry is forgotten and the file kept |
+   | a document now refers to the file | `skipped_now_referenced`; never deleted or forgotten |
+   | lease renewed | `skipped_lease_active`; the writer keeps its entry |
+   | journal entry gone | `skipped_entry_gone` |
+   | held by another worker | left `pending`, retried later |
+   | storage error | `failed` (retryable), with its code |
+   | object missing | forgotten (`file_already_missing`) |
+   | live generation differs from the plan's | `failed_final` (`GENERATION_CHANGED`); **no deletion is even attempted** |
+   | same generation | deleted with `ifGenerationMatch`, then verified gone |
+
+   After the deletion:
+   - A 412 means the object was replaced in between, so the entry becomes `failed_final` (`GENERATION_CHANGED`).
+   - An object still present after deletion becomes `failed_final` (`STILL_PRESENT`).
+   - Otherwise, the entry outcome, the deletion of the journal entry and the audit event are committed together.
+
+### 6.6 Transactions and network calls
+
+Every storage read happens outside a transaction: the storage witness, plan observations, and the per-entry
+observation (tested: no session is "idle in transaction" while an object is being read). **The only network calls
+made inside a transaction** are the generation-matched deletion and its verification read.
+
+**Why this is the smallest defensible design.** Writers (`storage-journal.ts`) renew their leases and commit by
+deleting their journal entries; neither step checks any recovery claim. The only thing that stops a writer from
+committing a reference to a file in the middle of its deletion is the journal entry's row lock, held across the
+deletion. A design with no transaction open across that deletion would need a durable recovery claim that writers
+respect in `reserve()` and `settle()`. That is a change to the upload and archive-import write protocol, outside
+this milestone; it is the precise blocker to going further.
+
+**These transactions are bounded:**
+- the store's per-request timeout (10 seconds by default);
+- per-transaction PostgreSQL limits: `lock_timeout` 5 s, `statement_timeout` 15 s and
+  `idle_in_transaction_session_timeout` 60 s.
+
+PostgreSQL ends a hung worker's session and rolls it back, which releases its locks. A revocation issued during a
+deletion waits at most that long, then takes effect before the next entry (tested).
+
+### 6.7 Expiration and revocation
+
+- **Expiry.**
+  - Every plan expires at a fixed time chosen at creation: at most 4 hours, 1 hour by default.
+  - Expiry is judged by the database clock at approval, at claim, at every entry and at the end of a run. An expired
+    plan is marked `expired` and audited.
+  - An expiry during a run stops it before the next deletion (tested).
+  - The trigger also rejects any approval or claim after the expiry.
+- **Revocation.**
+  - It is available to approvers and to the plan's creator, requires a reason, and is recorded with the revoker's
+    verified identity.
+  - It takes effect atomically: a run checks the plan, under its row lock, before every entry. An entry already being
+    deleted finishes, and nothing runs after it.
+- **Approvals do not travel.** An approval is valid only for the plan's own binding (environment label, database,
+  storage endpoint, bucket, prefix). It is refused anywhere else, at approval, at claim and at execution.
+
+### 6.8 Crashes, retries and concurrency
+
+| Situation | What happens |
+| --- | --- |
+| a worker dies after claiming | its claim lapses (5 minutes by default), and another executor resumes the plan; the audit names both |
+| a worker dies after deleting an object, before committing | the entry's transaction rolls back (the journal entry, plan entry and audit are unchanged). On resume the object is found missing, so the entry is forgotten (`file_already_missing`). Tested with SIGKILL |
+| a stale worker wakes after a takeover | its claim token no longer matches: it stops (`claim_lost`) and deletes nothing |
+| two executors claim at once | exactly one wins; the others are refused (`in_progress`) |
+| a storage error (timeout, unavailable, permission) | the entry is `failed` and kept, with its attempts and error code, on the plan and on the journal entry. The plan ends `partially_completed`, and resuming it before expiry retries only the failed entries |
+| `GENERATION_CHANGED` or `STILL_PRESENT` | `failed_final`: kept and flagged for inspection; only a new plan, with a new approval, can act on it |
+| a database error | that entry's transaction rolls back and the run stops; resuming retries it |
+| a completed plan run again | refused (`completed`); an old claim executes nothing |
+
+### 6.9 Audit events
+
+All events go to the append-only `audit_log`, with a system actor and the verified operator (issuer and subject) in
+the metadata. None contains a storage key, file name or document content.
+
+| Event | Entity | Records |
 | --- | --- | --- |
-| `storage.write_recovered` | an item is done | `outcome` (`file_removed`, `file_already_missing` or `file_kept_referenced`), `mode: approved`, `planDigest`, `generation` |
-| `storage.write_recovery_failed` | an item fails | `outcome: failed`, `mode: approved`, `planDigest`, `errorCode`, `attempts` |
+| `storage.recovery_plan_created` | plan | creator, digest, expiry, counts |
+| `storage.recovery_plan_approved` | plan | approver, digest, expiry |
+| `storage.recovery_plan_revoked` | plan | revoker, reason, previous status |
+| `storage.recovery_plan_claimed` / `storage.recovery_plan_resumed` | plan | executor; for a resume, the previous claimant |
+| `storage.recovery_plan_completed` / `storage.recovery_plan_partially_completed` | plan | executor, entry states, run counts |
+| `storage.recovery_plan_expired` | plan | when it was noticed |
+| `storage.recovery_request_rejected` | plan, when the request named a valid one | the attempted action, the refusal, and the verified operator (or none, for a rejected credential) |
+| `storage.write_recovered` / `storage.write_recovery_failed` / `storage.write_recovery_skipped` | journal entry | outcome, plan, digest, executor, and the generation or error code |
 
-`before` holds the entry's operation, operation ID, journal time and previous attempts. No event contains a storage
-key, a file name or document content.
+### 6.10 Why merging this does not enable production deletion
 
-Refusals of a whole plan or apply change nothing, so they write no audit row. They are reported by the exit code and
-the command's report, which in production would go to Cloud Logging. The identity that ran a production job
-execution is recorded by Cloud Audit Logs (§7.4).
+- **No production identity.** No trusted operator identity provider exists outside the tests, so no plan can be
+  created, approved or executed.
+- **A refusal no setting can lift.** Every step that reads or changes storage (create, claim, execute, preview)
+  refuses in production, on Cloud Run, and against any storage endpoint other than a local emulator (a loopback
+  `http://` address). No setting lifts this.
+- **Preview only.** The command can only preview, and refuses production, Cloud Run, non-local databases and the real
+  API.
+- **No other entry point.** There is no API endpoint, no job, no workflow change and no new service account, secret or
+  IAM binding.
+- **Merging does change production's database.** Migration `0038` creates two empty tables, their triggers and
+  functions when `deploy.yml` runs its migrate job. The change is additive and nothing in the application uses these
+  tables; the previous code runs unchanged with them present.
 
-### 6.5 Retry and crash behaviour
+### 6.11 Tests
 
-| Situation | Outcome | How it is retried |
+All tests run against a disposable PostgreSQL 16 database, synthetic files, the simulated API and the tests' signed-token
+identities. Uploads and workers are killed with SIGKILL.
+
+- **`test/documents/object-store.test.ts`** (5 tests) covers the adapter.
+- **`test/documents/approved-recovery.test.ts`** (22 tests) covers each of the AP-OPS-03 cases:
+  1. valid plan creation;
+  2. immutable plan contents;
+  3. unauthorized approval, including self-approval and a creator bypass;
+  4. trusted approval;
+  5. forged identities: a tampered token, another key, issuer or audience, an expired token, a plain name, a
+     caller-built object, or no provider;
+  6. invalid digests;
+  7. a modified plan;
+  8. expiry, including during a run;
+  9. revocation before execution;
+  10. revocation during execution, both between entries and during a deletion;
+  11. competing, forged and stale workers;
+  12. a crash after claiming;
+  13. a crash after deletion;
+  14. a retry after failure, and untrusted or unavailable storage;
+  15. generation changes before and during the deletion, and a deletion that did not take effect;
+  16. lease renewal;
+  17. referenced documents;
+  18. a changed database, environment, endpoint, bucket or prefix;
+  19. extra entries, both through the guard and by bypassing the triggers;
+  20. a completed plan;
+  21. the audit history;
+  22. production still blocked.
+- **The migration test** (1 test, in the same file) migrates a database through `0037`, journals writes, applies
+  `0038`, checks that the writes are unchanged and the guards present, and runs a plan end to end on it.
+  `test/db/migrations.test.ts` and `test/db/release-upgrade.test.ts` were updated for the two new tables and the
+  39th migration.
+- **Mutation proofs.** 25 safeguards were removed one at a time; each removal was caught by at least one failing test,
+  and every mutation was restored, verified by checksum. The safeguards:
+  - **identity:** the identity fallback, the role check, and separation of duties, both in the service and in the
+    database;
+  - **content:** the digest check, integrity at approval and at claim;
+  - **expiry and claims:** expiry at approval and during execution, revocation during execution, the claim token and
+    live-claim checks;
+  - **rechecks:** environment binding, the lease, reference and generation rechecks, the generation precondition and
+    post-delete verification;
+  - **production and storage trust:** both production refusals and the storage witness;
+  - **database triggers:** four guards (entries only in drafts, immutable entry and plan contents, no skipped
+    approval).
+
+### 6.12 Dependencies
+
+None were added. The adapter calls the documented Cloud Storage JSON API with Node 22's `fetch`, and the identity
+interface is plain TypeScript.
+
+## 7. Production activation (a separate, approved milestone; not built)
+
+### 7.1 Code changes for activation
+
+1. **A production identity provider.** Proposal:
+   - Each operator presents a Google-signed OIDC ID token for a recovery-specific audience
+     (`gcloud auth print-identity-token --audiences=…`).
+   - The token is verified against Google's published keys (issuer `https://accounts.google.com`, the audience, and
+     its expiry).
+   - The subject is the account's stable `sub` claim, not its email.
+   - Roles come from a reviewed source: Google Groups membership, or a role map reviewed in the repository and
+     deployed with the job. Never from the token holder.
+   - The executor is the job's own service account, verified the same way through the metadata server.
+2. **Lifting the emulator-only guard.** It should be lifted for the recovery job only: an explicit setting present
+   only on that job, together with the production provider. The guard stays in force for the API service, which must
+   never run recovery.
+3. **The job's entry point.** It takes `create`, `approve <plan> <digest>`, `revoke <plan> <reason>` and
+   `run <plan>`, each with the operator's credential, and logs JSON reports with no storage keys and no credentials.
+
+### 7.2 IAM: separation-of-duties proposal
+
+| Principal | Holds | Never holds |
 | --- | --- | --- |
-| a timeout, unavailability or permission error | the entry is kept with its error code and attempts | re-apply the same plan before it expires, or make a new plan |
-| `GENERATION_CHANGED` or `STILL_PRESENT` | the entry is kept and flagged | **investigate**; only a new plan, with a new approval, can act on it |
-| a database error | the item's transaction rolls back (`DATABASE_ERROR`) | re-apply |
-| locked by another job | `skipped_locked`; the other job handles it once | nothing to do |
-| a crash after the deletion but before the commit | the transaction rolls back, so the entry and audit are untouched | re-applying the same plan finds the object gone and records `file_already_missing` (tested with SIGKILL) |
-| applying the same plan again after it completed | `skipped_entry_gone` for every item; nothing changes | nothing to do |
-| concurrent jobs with the same plan | each item is handled exactly once (row locks) | nothing to do |
+| Planners (operators, for example a `storage-recovery-planners` group) | `run.jobs.runWithOverrides` on the recovery job, and the planner role | bucket or database access |
+| Approvers (Sagar Patel, or a `storage-recovery-approvers` group) | `run.jobs.runWithOverrides` on the job, and the approver role; cannot approve their own plans (enforced in code and in the database) | bucket or database access |
+| Job service account `academiapath-recovery` (the executor) | `storage.objects.get` and `storage.objects.delete` on the documents bucket only (a custom role); `roles/cloudsql.client`; access to its own database secret | listing, object creation, any other bucket, project-wide roles |
+| API runtime account `academiapath-runtime` | — | the project-wide `roles/storage.objectAdmin` it holds today must be removed (an open item) |
 
-A generation-matched delete is safe to retry: if the object is already gone, it answers 404, which is reported as
-`already_gone`.
+Nobody receives a service-account key. Cloud Audit Logs record who started each job execution, and `audit_log`
+records the verified operator of each lifecycle step.
 
-### 6.6 Why merging this does not enable production deletion
+### 7.3 Database permissions for the job's dedicated login
 
-- **The command refuses unconditionally**, with exit code 3 and before any request, when any of these hold:
-  - `NODE_ENV=production`;
-  - it runs on Cloud Run (`K_SERVICE` or `CLOUD_RUN_JOB` is set);
-  - `DATABASE_URL` is missing or not on the local machine;
-  - the storage API URL is not a loopback `http://` address, so the real Cloud Storage API can never be reached.
+| Table | Privileges |
+| --- | --- |
+| `document_storage_intents` | SELECT, UPDATE, DELETE (UPDATE also covers `FOR UPDATE` locks) |
+| `course_documents` | SELECT |
+| `storage_recovery_plans` | SELECT, INSERT, UPDATE |
+| `storage_recovery_plan_entries` | SELECT, INSERT, UPDATE |
+| `audit_log` | INSERT |
 
-  There is no setting, flag or environment variable that lifts these refusals.
-- **No real credential is obtained.** The command only ever sends the fixed emulator token. `metadataServerToken` is not
-  wired anywhere.
-- **Nothing else uses this code.** The API server, `deploy.yml` and every workflow are unchanged, and nothing imports
-  the adapter or engine except the command and the tests.
-- **No infrastructure exists for it.** There is no recovery job, no recovery service account and no recovery secret.
-- **Activation is a separate change (§7)** that must replace the refusal and wire a real token provider. It needs
-  Sagar's review, the infrastructure in §7, and Claudio's approval for its costs.
+The triggers in §6.3 still constrain what UPDATE can do. The login's connection URL lives in its own Secret Manager
+secret, readable only by the job's service account. Creating the login is a production database change that needs
+Sagar's authorization; it is not part of the regular migrations.
 
-### 6.7 Tests
+### 7.4 Safe Cloud Run job execution model (proposal; do not create without approval)
 
-All tests run against a disposable PostgreSQL 16 database, synthetic files and the simulated API. Uploads and archive
-imports are killed with SIGKILL.
-
-- **`test/documents/object-store.test.ts`** (5 tests) covers the adapter:
-  - metadata only, with credentials;
-  - exact-generation deletion;
-  - every failure mapped to its own kind, and never to "missing";
-  - the bucket and namespace limits;
-  - the metadata-server token.
-- **`test/documents/approved-recovery.test.ts`** (14 tests) covers the 22 required cases:
-
-  | Case | Test |
-  | --- | --- |
-  | 1 expired abandoned upload; 5 successful dry run; 6 dry run without approval; 7 correct digest | upload killed after writing |
-  | 2 active upload; 12 lease renewed after the dry run | active upload / renewed lease |
-  | 3 referenced document; 11 becomes referenced after the dry run | referenced document |
-  | 4 interrupted archive import | import killed after two files |
-  | 8 incorrect digest (also: no approval, another plan's digest, a tampered plan, malformed plans) | approval |
-  | 9 expired or stale approval (also: expiry during a run) | expiry |
-  | 10 generation changes between preview and deletion (also: between the check and the deletion, giving a 412) | generation |
-  | 13 object already missing | already gone |
-  | 14 permission denied; 15 network timeout; 16 storage API unavailable | failures |
-  | 17 concurrent recovery jobs | concurrency |
-  | 18 crash after deletion before the journal update; 19 repeated recovery | SIGKILL during apply |
-  | 20 attempted access to a different bucket (also: another endpoint or database) | environment |
-  | 21 production execution still refused | command refusals and the local happy path |
-  | 22 no deletion when storage observations cannot be trusted (unverified storage, a deletion that did not take effect) | untrusted storage |
-
-- **Mutation proofs.** Twenty guards were removed one at a time, and each removal made at least one of these tests
-  fail. Every mutation was restored, and the files were verified by checksum. The guards:
-  - the generation precondition;
-  - the generation comparison;
-  - the digest checks, the typed approval, and the generation's place in the digest;
-  - the up-front and per-item expiry checks;
-  - the lease recheck and the reference recheck;
-  - storage errors treated as missing, both at apply time and in the adapter (HTTP errors, network errors);
-  - the bucket check and the database-identity check;
-  - the storage witness and the post-deletion verification;
-  - the adapter's key-namespace and response-identity checks;
-  - the command's production and Cloud Run refusals.
-
-  The command's local-database and loopback-URL refusals were deliberately **not** mutated: removing them would make
-  the test contact a remote host.
-
-### 6.8 Dependencies
-
-None were added. The adapter calls the documented Cloud Storage JSON API (the interface the official client library
-wraps) with Node 22's built-in `fetch`. Only two calls are needed (object metadata and a conditional delete), so the
-official `@google-cloud/storage` client and its transitive dependencies would add supply-chain surface for no
-functional gain. Tokens come from the documented metadata-server endpoint, so there is no key file and no auth
-library.
-
-## 7. Production activation (separate change; not built; needs approvals)
-
-### 7.1 Code changes for activation (a separate pull request)
-
-1. **A production mode for the command, replacing the unconditional refusal.**
-   - It runs only as the dedicated Cloud Run job (§7.4), against the real JSON API, with `metadataServerToken`.
-   - It is enabled by an explicit setting present only on that job.
-   - The bucket is fixed by the job's configuration, not by the operator.
-2. **Plan storage.** A Cloud Run job has no persistent disk, so the plan file cannot be carried from the plan execution
-   to the apply execution.
-   - Proposal: an insert-only `storage_recovery_plans` table (a new migration) holding each plan by its digest.
-   - `apply --approve DIGEST` would then load the plan from the database, where it was written by the plan execution.
-3. **Reports to Cloud Logging** as JSON, with no storage keys (already the case for the reports).
-
-### 7.2 IAM (least privilege)
-
-The dedicated job runs as a new service account, `academiapath-recovery`.
-
-- **Cloud Storage.** A custom role with only `storage.objects.get` and `storage.objects.delete`, bound on the
-  documents bucket only. `roles/storage.objectUser` on the bucket is the predefined alternative, but it also allows
-  creating and listing objects.
-- **Cloud SQL.** `roles/cloudsql.client`, plus the database role in §7.3.
-- **Secret Manager.** `roles/secretmanager.secretAccessor` on the one recovery database secret only.
-- **Operators.** `run.jobs.run`, plus `run.jobs.runWithOverrides` to pass `plan` or `apply --approve …`, on that job
-  only. No one receives a key for the service account.
-- **Separately,** remove the runtime account's project-wide `roles/storage.objectAdmin`. This was already an open item
-  in `infra/README.md`. Until it is removed, the API's own identity can delete any object in the project.
-
-### 7.3 Database access
-
-The job needs a dedicated database login (not the application's), with only:
-
-| Table | Privileges | Why |
-| --- | --- | --- |
-| `document_storage_intents` | SELECT, UPDATE, DELETE | UPDATE is also needed for `FOR UPDATE` locks |
-| `course_documents` | SELECT | the reference checks |
-| `audit_log` | INSERT | the audit events |
-| `storage_recovery_plans` | SELECT, INSERT | only if §7.1 item 2 is adopted |
-
-- Its connection URL lives in its own Secret Manager secret, readable only by `academiapath-recovery`.
-- Creating that login is a production database change. It needs Sagar's authorization and is **not** part of the
-  regular migrations.
-
-### 7.4 Cloud Run job configuration (proposal; do not create without approval)
-
-The job would be named `academiapath-storage-recover`, in `us-central1`, and configured as follows:
-
-- **Image:** the release's `migrate` image, which already contains the API workspace, so no new image is built.
-- **Identity:** `academiapath-recovery` (§7.2).
-- **Cloud SQL:** the `academiapath-db` connection.
-- **Secrets:** `DATABASE_URL` from the recovery secret.
-- **Environment:**
-  - the activation setting;
-  - `STORAGE_RECOVERY_BUCKET=elearning-514315-academiapath-files`.
-- **No** bucket volume mount, and no ingress (it is a job).
-- **Retries:** `--max-retries=0`. Retrying is a human decision.
-- **Sizing:**
-  - `--tasks=1 --parallelism=1`;
-  - `--task-timeout=10m`;
-  - 1 vCPU and 512 MiB.
-- **Executions:**
-  - `gcloud run jobs execute … --args=plan` for the dry run;
-  - `--args=apply,--approve,<digest>` after approval.
-
-Each execution, and the identity that started it, is recorded in Cloud Audit Logs.
+- **One job**, `academiapath-storage-recover`, in `us-central1`, configured as follows:
+  - **Image:** the release's `migrate` image.
+  - **Identity:** the `academiapath-recovery` service account.
+  - **Cloud SQL:** the `academiapath-db` connection.
+  - **Secrets:** only the recovery database secret.
+  - **Bucket:** no volume mount; the job uses the API.
+  - **Ingress:** none.
+  - **Sizing:** `--tasks=1 --parallelism=1 --max-retries=0 --task-timeout=10m`, 1 vCPU and 512 MiB.
+- **Each lifecycle step is a separate execution** with overridden arguments: create, review, approve, run, revoke. The
+  durable records carry state between executions, so no file or disk is needed.
+- **Approvals happen outside the run.** A run execution only claims an already-approved plan; an approval is never
+  part of a run.
+- **Retries are deliberate.** A failed or interrupted run is resumed by a new execution after its claim lapses. Retrying
+  is a human decision, which is why `max-retries` is 0.
+- **Credentials.** Operators' credentials are passed per execution and are short-lived and audience-bound. The
+  activation review must decide how to keep them out of the execution's stored configuration (for example by reading
+  the token on standard input from a wrapper script).
 
 ### 7.5 Bucket prerequisites: soft delete and versioning
 
@@ -407,14 +470,14 @@ recovery from a permanent deletion is promised anywhere in this design.
 
 | Cost driver | Expected cost |
 | --- | --- |
-| Cloud Run job | billed only while it runs, with a 1-minute minimum per instance ([pricing](https://cloud.google.com/run/pricing)). A run of under a minute at 1 vCPU and 512 MiB costs a fraction of a cent, likely within the free tier. Two executions per recovery: plan and apply. |
-| Cloud Storage operations | each plan and each apply reads metadata once per entry, plus three witness reads. These are Class B operations ($0.0004 per 1,000 for Standard storage). Deletes are free ([pricing](https://cloud.google.com/storage/pricing)). |
-| Soft-deleted or noncurrent bytes | deleted orphans stay billed for the soft-delete retention period, or until noncurrent versions are removed. Orphans are rare, so this is small. Enabling soft delete on the bucket, if it is off, applies to **every** deleted object, not only recovery's. |
-| Secret Manager | one new secret (the restricted database URL): an active-version charge per month, plus negligible accesses. |
-| Cloud SQL | none: no new instance, and one short connection per execution. |
-| Image | none: the job reuses the `migrate` image. |
-| Logging | within the free allotment for a few runs. |
-| Cloud Scheduler | none: runs are manual (option B in §4). |
+| Plan and approval tables (this milestone) | none beyond negligible storage in the existing Cloud SQL instance: two small tables, created empty. |
+| Cloud Run job | billed only while it runs, with a 1-minute minimum per instance ([pricing](https://cloud.google.com/run/pricing)). Each lifecycle step is one short execution (create, approve, run, and possibly revoke or resume), each a fraction of a cent and likely within the free tier. |
+| Cloud Storage operations | each plan and each run reads metadata once per entry, plus the witness reads. These are Class B operations ($0.0004 per 1,000 for Standard storage). Deletes are free ([pricing](https://cloud.google.com/storage/pricing)). |
+| Soft-deleted or noncurrent bytes | deleted orphans stay billed for the retention period. Enabling soft delete on the bucket, if it is off, applies to **every** deleted object, not only recovery's. |
+| Secret Manager | one new secret (the restricted database URL): an active-version charge per month. |
+| Identity | none expected: Google ID tokens and group membership checks carry no charge at this scale. |
+| Logging | within the free allotment. |
+| Cloud Scheduler | none: runs are manual. |
 
 **Claudio's approval** is needed for:
 
@@ -425,57 +488,56 @@ recovery from a permanent deletion is promised anywhere in this design.
 
 **Sagar's authorization** is needed for:
 
-- the activation pull request (merging deploys);
+- merging, which deploys and runs migration `0038`;
+- the activation milestone;
 - the database login;
-- every production apply.
+- every production approval.
 
 ## 9. Deployment and rollback (when approved)
 
 **Deployment:**
 
-1. **This change.** Merging deploys nothing new to production behaviour. The command still refuses production.
+1. **This change.** Merging deploys migration `0038`: two empty tables, with their triggers and functions. Nothing uses
+   them in production, and recovery stays impossible (§6.10).
 2. **Read-only checks** by an authorized operator:
    - the bucket settings (§7.5);
    - the count of expired journal entries.
-3. **Create the infrastructure** (Claudio and Sagar approval): the service account and its bucket-scoped role, the
-   database login and its secret, and the job (§7.2–§7.4).
-4. **The activation pull request** (§7.1), reviewed by Sagar. Merging it deploys it.
-5. **First run:**
-   1. Execute a plan and review its summary and digest.
-   2. Sagar approves the digest.
-   3. Execute the apply with `--approve <digest>`.
-   4. Confirm exit code 0, the audit events, and the per-entry outcomes in Cloud Logging.
+3. **The activation milestone** (§7.1), reviewed by Sagar.
+4. **Create the infrastructure** (Claudio and Sagar): the service account and its bucket-scoped role, the database
+   login and its secret, and the job (§7.2–§7.4).
+5. **First production use:**
+   1. A planner creates a plan.
+   2. Sagar reviews it and approves it, quoting its digest.
+   3. An executor runs it.
+   4. Confirm the per-entry outcomes and the audit events.
 
 **Rollback:**
 
-- **To stop:** remove the operators' `run.jobs.run`, delete the job, or revoke the account's bucket role. Any one of
-  these is enough.
+- **To stop recovery:** revoke any open plan; to stop entirely, remove the operators' `run.jobs.run*` permissions or
+  delete the job. Either is immediate.
 - **To undo a mistaken deletion:** possible **only** if §7.5 showed soft delete or versioning. Restore the object
-  generation named in the `storage.write_recovered` event. Without either, a deletion cannot be undone.
-- **Database:** the changes are journal deletions, attempt counters and audit inserts. They can be restored from Cloud
-  SQL backups, but the journal is not needed once its files are gone.
+  generation named in the `storage.write_recovered` event.
+- **To undo the application:** an older release runs unchanged with the new tables present. The tables and triggers
+  can stay; dropping them would need a new, reviewed migration, and plan records are an audit trail.
 
-## 10. Remaining risks
+## 10. Remaining blockers before activation
 
-- **Unverified bucket settings.** Soft delete and versioning are unknown (§7.5). Until they are checked, every
-  deletion must be treated as permanent.
-- **A production plan store** (§7.1) is designed but not built. Until it exists, the approval flow has only been
-  tested with plan files.
-- **A deleted-then-revived writer.** A writer stalled for more than 30 minutes between journaling and writing, whose
-  entry is recovered and which then writes and crashes before its own clean-up, leaves an untraceable file. This is
-  rare (it takes two failures), and a read-only production audit could find such files; that audit is not built.
-- **Pre-journal orphans.** Files written before `0036` and `0037` are not journaled. Only a production listing, which
-  is not built and would need approval, can find them.
-- **The witness is a sample.** It checks the three most recent documents. A store that shows those files but hides
-  others would pass it, but per-item generation checks and post-deletion verification still apply.
-- **Simulator fidelity.** The simulated API follows the documented JSON API status codes and generation semantics. It
-  is not Google's service, so the adapter is unproven against the real API until the activation run.
+- **No production identity provider.** It must verify Google-issued credentials and take roles from a reviewed source
+  (§7.1).
+- **Credential handling.** The activation review must decide how operators' credentials reach a job execution without
+  being stored in its configuration (§7.4).
+- **The writer protocol.** A transaction is still held across each generation-matched deletion and its verification
+  (bounded; §6.6). Removing it would need writers to honour a durable recovery claim.
+- **Unverified bucket settings.** Soft delete and versioning are unknown (§7.5); until checked, every deletion must be
+  treated as permanent.
+- **Infrastructure and approvals.** The job, service account, database login and secret are not created; they need
+  Claudio's and Sagar's approval.
 - **Production permissions.** The runtime account's project-wide `objectAdmin` remains an exposure until it is
   removed.
+- **Other residual risks:**
+  - a writer stalled for more than 30 minutes that revives after recovery can leave an untraceable file (rare; never
+    data loss);
+  - files written before migrations `0036` and `0037` are not journaled;
+  - the simulator is not Google's service, so the adapter is unproven against the real API until activation.
 
-**Ready for production activation: NO.** Activation needs:
-
-- the activation change (§7.1);
-- the IAM, database login and job (§7.2–§7.4);
-- the bucket check (§7.5);
-- Claudio's approval for the costs, and Sagar's authorization.
+**Ready for production activation: NO.**

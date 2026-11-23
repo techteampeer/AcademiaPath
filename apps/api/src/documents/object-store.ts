@@ -41,6 +41,8 @@ export interface RecoveryObjectStore {
   readonly bucket: string;
   /** A description of the API endpoint, without credentials (bound into recovery approvals). */
   readonly endpoint: string;
+  /** The fixed object-name prefix (the key namespace) inside the bucket, '' for none (bound into recovery approvals). */
+  readonly prefix: string;
   stat(key: string): Promise<ObjectObservation>;
   /** Deletes exactly this generation. `already_gone` when no such object exists; throws `precondition_failed` when it changed. */
   deleteGeneration(key: string, generation: string): Promise<'deleted' | 'already_gone'>;
@@ -65,7 +67,7 @@ const PREFIX = /^(?:[a-z0-9][a-z0-9._-]*\/)?$/;
 export class GcsJsonObjectStore implements RecoveryObjectStore {
   readonly bucket: string;
   readonly endpoint: string;
-  private readonly prefix: string;
+  readonly prefix: string;
   private readonly timeoutMs: number;
   private readonly fetcher: typeof fetch;
 

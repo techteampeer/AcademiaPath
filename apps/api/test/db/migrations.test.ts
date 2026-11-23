@@ -127,6 +127,8 @@ describe('database migrations (PostgreSQL)', { skip: testServerUrl ? false : 'TE
         'section_prerequisites',
         'sections',
         'sessions',
+        'storage_recovery_plan_entries',
+        'storage_recovery_plans',
         'student_group_members',
         'student_groups',
         'terms',

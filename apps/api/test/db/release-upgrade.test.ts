@@ -115,7 +115,7 @@ describe('stakeholder release upgrade from 0033 (PostgreSQL)', { skip: testServe
 
   it('both migrations apply in order on top of the existing data', async () => {
     const applied = await raw<{ n: number }>('SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations');
-    assert.equal(applied[0]!.n, 38, 'migrations 0000–0037');
+    assert.equal(applied[0]!.n, 39, 'migrations 0000–0038');
     // 0036 (AP-040R storage write journal) is additive and applies on top of the same data; 0037 (AP-040R2) lets
     // document uploads journal their files too.
     const journal = await raw<{ t: string | null }>("SELECT to_regclass('document_storage_intents')::text AS t");

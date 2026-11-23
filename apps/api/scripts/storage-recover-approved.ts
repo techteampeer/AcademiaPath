@@ -1,27 +1,24 @@
 /**
- * AP-OPS-02 approval-based storage recovery through the Cloud Storage JSON API (src/documents/approved-recovery.ts),
- * in two stages:
+ * AP-OPS-03 storage recovery preview through the Cloud Storage JSON API (src/documents/approved-recovery.ts):
  *
- *   pnpm storage:recover:approved -- plan  --bucket NAME --api-url URL [--prefix P] [--ttl-minutes 60] --out plan.json
- *   pnpm storage:recover:approved -- apply --bucket NAME --api-url URL [--prefix P] --plan plan.json --approve DIGEST
+ *   pnpm storage:recover:approved -- preview --bucket NAME --api-url URL [--prefix P] [--json]
  *
- * `plan` changes nothing: it writes the plan (no storage keys, only one-way references) and prints a summary with the
- * digest. `apply` acts only on that plan, with that digest typed back, before the plan expires, in the same
- * environment (database, storage API, bucket).
+ * `preview` changes nothing and stores nothing: it prints what a recovery plan would contain (counts only, no storage
+ * keys). Plans, approvals and execution are durable records that require a verified operator identity
+ * (src/documents/operator-identity.ts); this build has no trusted identity provider outside the tests, so this command
+ * offers no way to approve or apply anything. The AP-OPS-02 `apply --approve DIGEST` command was removed: a digest
+ * identifies a plan, it does not authorize one.
  *
  * PRODUCTION RECOVERY IS NOT ENABLED IN THIS BUILD. This command refuses production, Cloud Run, any non-local database
- * and any storage API other than a local emulator (a loopback http address): it cannot reach the real Cloud Storage
- * API. Enabling production recovery needs a separate, reviewed change and the approvals in
- * docs/production-storage-recovery.md; merging this code does not enable any deletion.
+ * and any storage API other than a local emulator (a loopback http address).
  */
-import { readFile, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { createDatabase } from '../src/db/client.js';
-import { applyApprovedRecovery, planApprovedRecovery, type ApplyReport, type RecoveryPlan } from '../src/documents/approved-recovery.js';
+import { previewRecovery } from '../src/documents/approved-recovery.js';
 import { GcsJsonObjectStore } from '../src/documents/object-store.js';
 import { isLocalDatabase } from './seed-dev-users.js';
 
-/** 0: nothing to do / done; 1: a plan awaits approval; 2: refused, uncertain or incomplete; 3: not allowed here. */
+/** 0: nothing to recover; 1: a plan would propose actions; 2: refused or uncertain; 3: not allowed here. */
 export const APPROVED_EXIT = { clean: 0, pending: 1, failed: 2, refused: 3 } as const;
 const LOOPBACK = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\])$/;
 /** The local emulator accepts any token; no real credential is ever obtained by this command. */
@@ -58,83 +55,48 @@ export function approvedRecoveryRefusal(env: NodeJS.ProcessEnv, apiUrl: string |
   return null;
 }
 
-/** The database's identity for approvals: host, port and name, never credentials. */
-function databaseIdentity(databaseUrl: string): string {
-  const url = new URL(databaseUrl);
-  return `${url.hostname}:${url.port || '5432'}${url.pathname}`;
-}
-
-function planSummary(plan: RecoveryPlan, file: string): string {
-  const c = plan.counts;
-  return [
-    `Storage recovery plan (dry run: nothing was changed): ${plan.status.toUpperCase()}${plan.refusal ? ` (${plan.refusal})` : ''}`,
-    `  Bucket ${plan.environment.bucket} · API ${plan.environment.endpoint} · database ${plan.environment.database}`,
-    `  Journal entries: ${c.journaled}; lease running (left alone): ${c.active}; abandoned: ${c.abandoned}${plan.truncated ? ' (more remain: run again after this plan)' : ''}`,
-    `  Proposed: delete ${c.proposedDeletions} object(s) at their observed generation; forget ${c.forgetMissing} entr(y/ies) whose file is already gone; forget ${c.forgetReferenced} entr(y/ies) whose file documents use`,
-    `  Uncertain, left alone: ${c.uncertain}`,
-    `  Expires: ${plan.expiresAt}`,
-    `  Digest: ${plan.digest}`,
-    plan.status === 'ready' && plan.items.length ? `To approve: apply --plan ${file} --approve <digest> with the same bucket and API, before it expires.` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
-}
-
-function applySummary(report: ApplyReport): string {
-  return [
-    `Storage recovery apply: ${report.status.toUpperCase()}${report.refusal ? ` (${report.refusal}: nothing was changed)` : ''}`,
-    ...Object.entries(report.counts).map(([outcome, count]) => `  ${outcome}: ${count}`),
-  ].join('\n');
-}
-
 export async function main(argv = process.argv.slice(2), env = process.env): Promise<number> {
   const { command, flags, json } = parse(argv);
-  if (command !== 'plan' && command !== 'apply') {
-    console.error('Usage: storage:recover:approved plan|apply --bucket NAME --api-url URL ... (see the file header)');
+  if (command !== 'preview') {
+    console.error(
+      command === 'apply' || command === 'plan'
+        ? `"${command}" is not available: recovery plans are approved and executed only as durable records by verified operators, and this build has no trusted operator identity.`
+        : 'Usage: storage:recover:approved preview --bucket NAME --api-url URL [--prefix P] [--json]',
+    );
     return APPROVED_EXIT.refused;
   }
   const refusal = approvedRecoveryRefusal(env, flags['api-url']);
   if (refusal) {
-    console.error(`Refusing approved storage recovery: ${refusal}`);
+    console.error(`Refusing storage recovery preview: ${refusal}`);
     return APPROVED_EXIT.refused;
   }
   let store: GcsJsonObjectStore;
   try {
     store = new GcsJsonObjectStore({ bucket: flags.bucket ?? '', baseUrl: flags['api-url'], prefix: flags.prefix, getAccessToken: async () => EMULATOR_TOKEN });
   } catch (error) {
-    console.error(`Refusing approved storage recovery: ${(error as Error).message}.`);
+    console.error(`Refusing storage recovery preview: ${(error as Error).message}.`);
     return APPROVED_EXIT.refused;
   }
   const { db, pool } = createDatabase(env.DATABASE_URL);
-  const deps = { db, store, database: databaseIdentity(env.DATABASE_URL!) };
   try {
-    if (command === 'plan') {
-      const ttl = Number(flags['ttl-minutes'] ?? 60);
-      if (!Number.isInteger(ttl) || ttl < 1 || ttl > 24 * 60 || !flags.out) {
-        console.error('plan needs --out FILE and an integer --ttl-minutes between 1 and 1440.');
-        return APPROVED_EXIT.refused;
-      }
-      const plan = await planApprovedRecovery(deps, { expiresInSeconds: ttl * 60 });
-      // Never overwrites an existing plan file; readable by the operator only.
-      await writeFile(flags.out, `${JSON.stringify(plan, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
-      console.log(json ? JSON.stringify({ status: plan.status, refusal: plan.refusal, counts: plan.counts, expiresAt: plan.expiresAt, digest: plan.digest }) : planSummary(plan, flags.out));
-      if (plan.status !== 'ready' || plan.counts.uncertain > 0) return APPROVED_EXIT.failed;
-      return plan.items.length ? APPROVED_EXIT.pending : APPROVED_EXIT.clean;
+    const preview = await previewRecovery({ db, store });
+    if (json) console.log(JSON.stringify({ status: preview.status, refusal: preview.refusal, counts: preview.summary?.counts ?? null, truncated: preview.summary?.truncated ?? false }));
+    else {
+      const c = preview.summary?.counts;
+      console.log(
+        [
+          `Storage recovery preview (nothing was changed or stored): ${preview.status.toUpperCase()}${preview.refusal ? ` (${preview.refusal})` : ''}`,
+          `  Bucket ${store.bucket} · API ${store.endpoint}`,
+          c ? `  Journal entries: ${c.journaled}; lease running: ${c.active}; abandoned: ${c.abandoned}${preview.summary!.truncated ? ' (more remain)' : ''}` : '',
+          c ? `  A plan would propose: delete ${c.proposedDeletions}; forget missing ${c.forgetMissing}; forget referenced ${c.forgetReferenced}; uncertain ${c.uncertain}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      );
     }
-    if (!flags.plan || !flags.approve) {
-      console.error('apply needs --plan FILE and --approve DIGEST (the digest printed by plan).');
-      return APPROVED_EXIT.failed;
-    }
-    let plan: unknown;
-    try {
-      plan = JSON.parse(await readFile(flags.plan, 'utf8'));
-    } catch {
-      console.error('The plan file could not be read.');
-      return APPROVED_EXIT.failed;
-    }
-    const report = await applyApprovedRecovery(deps, { plan, approvedDigest: flags.approve });
-    console.log(json ? JSON.stringify(report, null, 2) : applySummary(report));
-    return report.status === 'complete' ? APPROVED_EXIT.clean : APPROVED_EXIT.failed;
+    if (preview.status !== 'ready' || preview.summary!.counts.uncertain > 0) return APPROVED_EXIT.failed;
+    const c = preview.summary!.counts;
+    return c.proposedDeletions + c.forgetMissing + c.forgetReferenced > 0 ? APPROVED_EXIT.pending : APPROVED_EXIT.clean;
   } finally {
     await pool.end();
   }
@@ -146,7 +108,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       process.exitCode = code;
     })
     .catch(() => {
-      console.error('Approved storage recovery failed unexpectedly; every entry it did not finish is unchanged.');
+      console.error('Storage recovery preview failed unexpectedly; nothing was changed.');
       process.exitCode = APPROVED_EXIT.failed;
     });
 }
