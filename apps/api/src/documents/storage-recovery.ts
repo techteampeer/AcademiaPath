@@ -68,7 +68,7 @@ export type RecoveryOptions = {
 };
 
 type Deps = { db: Database; storage: RecoveryStorage };
-type Listed = typeof documentStorageIntents.$inferSelect & { expired: boolean; referenced: boolean };
+export type Listed = typeof documentStorageIntents.$inferSelect & { expired: boolean; referenced: boolean };
 
 const SAFE_CODE = /^[A-Z][A-Z0-9_]{0,39}$/;
 /** An error's code (`EIO`, `ENOSPC`…) when it has a plain one, else UNKNOWN: messages can hold paths. */
@@ -125,7 +125,7 @@ function add(report: RecoveryReport, entry: RecoveryEntry) {
 }
 
 /** The journal, oldest first, with the lease judged by the database clock (one clock for every writer and recoverer). */
-async function listJournal(db: Pick<Database, 'select'>, limit: number): Promise<Listed[]> {
+export async function listJournal(db: Pick<Database, 'select'>, limit: number): Promise<Listed[]> {
   const t = documentStorageIntents;
   return db
     .select({
