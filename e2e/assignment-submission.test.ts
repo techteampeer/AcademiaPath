@@ -3,13 +3,14 @@
  * production build and the demo seed). Assignments take one plain-text submission per student (no attachments).
  *
  * Fixtures: a dedicated course (isolatedCourse) with one approved assignment due in a week; the demo `student` and,
- * as a second student, the demo `ta` account are enrolled as students. Cleanup deactivates the enrollments, so no
- * other suite sees the course, the assignment or the submissions.
+ * as a second student, the demo `ta` account are enrolled as students. AP-QA-04B adds a second course where `ta` is a
+ * non-editing instructor, for the grading roles and release. Cleanup deactivates the enrollments, so no other suite
+ * sees the courses, the assignments or the submissions.
  */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import type { Browser, Page } from 'playwright';
-import { API, apiGet, apiWrite, BASE, context, EMAIL, isolatedCourse, launch, leaks, MESSAGES, sessionCookies, settle, type Locale, type Role } from './support.ts';
+import { API, apiGet, apiWrite, BASE, context, EMAIL, isolatedCourse, launch, leaks, MESSAGES, session, sessionCookies, settle, type Locale, type Role } from './support.ts';
 
 const EN = MESSAGES.en.assignments;
 const ES = MESSAGES.es.assignments;
@@ -21,6 +22,10 @@ let browser: Browser;
 let course: Awaited<ReturnType<typeof isolatedCourse>>;
 let assignmentId: string;
 let dueAt: string;
+/** AP-QA-04B: a second course where `ta` is a NON-EDITING instructor (grading roles and release). */
+let graded: Awaited<ReturnType<typeof isolatedCourse>>;
+let gradedAssignmentId: string;
+const GRADED_TITLE = `QA04 graded fixture ${TAG}`;
 
 type Mine = { acceptingSubmissions: boolean; submission: { id: string; body: string; submittedAt: string; isLate: boolean } | null };
 const mine = (role: Role) => apiGet<Mine>(role, `/courses/${course.courseId}/activities/${assignmentId}/submissions/mine`);
@@ -38,18 +43,48 @@ async function storedSubmissions(): Promise<Array<{ email: string; body: string;
   }
 }
 
+/** A write as `role` that returns the status and problem code instead of throwing. */
+async function writeStatus(role: Role, method: 'POST' | 'PUT', pathname: string, body: unknown): Promise<{ status: number; code: string | null }> {
+  const { cookies, csrfToken } = await session(role);
+  const res = await fetch(`${API}${pathname}`, {
+    method,
+    headers: { cookie: cookies.map((c) => `${c.name}=${c.value}`).join('; '), origin: BASE, 'x-csrf-token': csrfToken, 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  return { status: res.status, code: res.ok ? null : ((JSON.parse(text) as { code?: string }).code ?? null) };
+}
+
+/** An assignment, created by the instructor and approved by the design team. */
+async function approvedAssignment(target: { courseId: string; sectionId: string }, title: string): Promise<string> {
+  const id = (
+    await apiWrite<{ id: string }>('instructor', 'POST', `/courses/${target.courseId}/sections/${target.sectionId}/activities`, {
+      type: 'assignment',
+      title,
+      instructions: INSTRUCTIONS,
+      dueAt,
+      rubric: [{ title: 'Fixture clarity', maxPoints: 5 }],
+    })
+  ).id;
+  await apiWrite('instructor', 'POST', `/courses/${target.courseId}/activities/${id}/submit`, {});
+  await apiWrite('reviewer', 'POST', `/courses/${target.courseId}/activities/${id}/review`, { decision: 'approve' });
+  return id;
+}
+
 /** A GET as `role` that returns the status instead of throwing. */
 async function statusOf(role: Role, pathname: string): Promise<number> {
   const cookie = (await sessionCookies(role)).map((c) => `${c.name}=${c.value}`).join('; ');
   return (await fetch(`${API}${pathname}`, { headers: { cookie } })).status;
 }
 
-async function open(role: Role, locale: Locale): Promise<Page> {
+async function open(role: Role, locale: Locale, target = { courseId: '', activityId: '', title: TITLE }): Promise<Page> {
+  const courseId = target.courseId || course.courseId;
+  const activityId = target.activityId || assignmentId;
   const page = await (await context(browser, locale, role)).newPage();
-  await page.goto(`${BASE}/courses/${course.courseId}`);
+  await page.goto(`${BASE}/courses/${courseId}`);
   await settle(page);
-  await page.getByRole('link', { name: TITLE }).first().click();
-  await page.waitForURL(new RegExp(`/courses/${course.courseId}/activities/${assignmentId}$`));
+  await page.getByRole('link', { name: target.title }).first().click();
+  await page.waitForURL(new RegExp(`/courses/${courseId}/activities/${activityId}$`));
   await settle(page);
   return page;
 }
@@ -85,22 +120,20 @@ before(async () => {
     ['ta', 'student'],
   ]);
   dueAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
-  assignmentId = (
-    await apiWrite<{ id: string }>('instructor', 'POST', `/courses/${course.courseId}/sections/${course.sectionId}/activities`, {
-      type: 'assignment',
-      title: TITLE,
-      instructions: INSTRUCTIONS,
-      dueAt,
-      rubric: [{ title: 'Fixture clarity', maxPoints: 5 }],
-    })
-  ).id;
-  await apiWrite('instructor', 'POST', `/courses/${course.courseId}/activities/${assignmentId}/submit`, {});
-  await apiWrite('reviewer', 'POST', `/courses/${course.courseId}/activities/${assignmentId}/review`, { decision: 'approve' });
+  assignmentId = await approvedAssignment(course, TITLE);
+  graded = await isolatedCourse(`ZZ-QA04-GRD-${TAG}`, `Grading fixture course ${TAG}`, [
+    ['instructor', 'instructor'],
+    ['reviewer', 'design_team'],
+    ['ta', 'non_editing_instructor'],
+    ['student', 'student'],
+  ]);
+  gradedAssignmentId = await approvedAssignment(graded, GRADED_TITLE);
 });
 
 after(async () => {
   await browser?.close();
   await course?.cleanup();
+  await graded?.cleanup();
 });
 
 describe('TC-26 student assignment submission (AP-QA-04)', () => {
@@ -176,5 +209,58 @@ describe('TC-26 student assignment submission (AP-QA-04)', () => {
     assert.equal(await page.getByText(ANSWERS.ta).count(), 0);
     assert.equal(await page.getByRole('heading', { name: EN.grading.heading }).count(), 0, 'no staff submissions panel');
     await page.context().close();
+  });
+
+  it('a duplicate or invalid submission is refused and changes nothing; staff cannot submit; there are no attachments', async () => {
+    const url = `/courses/${course.courseId}/activities/${assignmentId}/submissions`;
+    const before = await storedSubmissions();
+    // One final submission per student: a second one is refused (the application's rule, not a resubmission).
+    assert.deepEqual(await writeStatus('student', 'POST', url, { body: `A second attempt ${TAG}` }), { status: 409, code: 'SUBMISSION_EXISTS' });
+    // Plain text only: empty, blank, too long, unknown fields (for example an attachment) and no body are invalid.
+    for (const body of [{ body: '' }, { body: ' \n\t ' }, { body: 'x'.repeat(50_001) }, { body: 'With a file', attachments: ['work.pdf'] }, {}]) {
+      assert.deepEqual(await writeStatus('student', 'POST', url, body), { status: 400, code: 'VALIDATION_ERROR' }, JSON.stringify(body).slice(0, 60));
+    }
+    // Only enrolled students submit.
+    for (const role of ['instructor', 'reviewer'] as const) {
+      assert.deepEqual(await writeStatus(role, 'POST', url, { body: `Staff text ${TAG}` }), { status: 403, code: 'FORBIDDEN' }, role);
+    }
+    assert.deepEqual(await storedSubmissions(), before, 'the stored submissions are unchanged');
+    const page = await open('student', 'en');
+    await page.getByText(ANSWERS.student).waitFor();
+    assert.equal(await page.locator('input[type="file"]').count(), 0, 'no file upload on the assignment page');
+    await page.context().close();
+  });
+
+  it('a non-editing instructor reads and grades submissions but cannot release grades; the student sees the grade only after release', async () => {
+    const target = { courseId: graded.courseId, activityId: gradedAssignmentId, title: GRADED_TITLE };
+    const base = `/courses/${graded.courseId}/activities/${gradedAssignmentId}`;
+    const submission = await apiWrite<{ id: string }>('student', 'POST', `${base}/submissions`, { body: ANSWERS.student });
+
+    // The non-editing instructor sees the submissions and the text, and is offered no release action.
+    const page = await open('ta', 'en', target);
+    await page.getByRole('heading', { name: EN.grading.heading }).waitFor();
+    await page.getByRole('button', { name: EN.grading.submissionOf(EMAIL.student) }).click();
+    await page.getByText(ANSWERS.student).waitFor();
+    assert.equal(await page.getByRole('button', { name: EN.grading.release }).count(), 0, 'no release button for a non-editing instructor');
+    await page.context().close();
+
+    // Their API permissions: read and grade, never release; the design team does not see student work.
+    const detail = await apiGet<{ rubric: Array<{ id: string }> }>('ta', `${base}/submissions/${submission.id}`);
+    assert.equal((await writeStatus('ta', 'PUT', `${base}/submissions/${submission.id}/grade`, { scores: [{ criterionId: detail.rubric[0]!.id, points: 4 }], feedback: 'Clear.' })).status, 200);
+    assert.deepEqual(await writeStatus('ta', 'POST', `${base}/grades/release`, {}), { status: 403, code: 'FORBIDDEN' });
+    assert.equal(await statusOf('reviewer', `${base}/submissions`), 403, 'the design team cannot list submissions');
+    assert.deepEqual(await writeStatus('ta', 'POST', `${base}/submissions`, { body: `TA text ${TAG}` }), { status: 403, code: 'FORBIDDEN' });
+
+    // Graded but not released: the student still sees "pending". The instructor releases; then the student sees it.
+    const pending = (await apiGet<Mine & { submission: { gradeStatus: string; grade: unknown } }>('student', `${base}/submissions/mine`)).submission!;
+    assert.deepEqual([pending.gradeStatus, pending.grade], ['pending', null]);
+    await apiWrite('instructor', 'POST', `${base}/grades/release`, {});
+    const released = (await apiGet<{ submission: { gradeStatus: string; grade: { points: number; maxPoints: number } } }>('student', `${base}/submissions/mine`)).submission;
+    assert.deepEqual([released.gradeStatus, released.grade.points, released.grade.maxPoints], ['released', 4, 5]);
+    const studentPage = await open('student', 'es', target);
+    await studentPage.getByText(ANSWERS.student).waitFor();
+    assert.equal(await studentPage.getByText(ES.student.pending).count(), 0, 'no longer pending once released');
+    assert.deepEqual(await leaks(studentPage, 'es'), []);
+    await studentPage.context().close();
   });
 });
