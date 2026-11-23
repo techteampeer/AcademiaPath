@@ -42,7 +42,7 @@ type Session = { token: string; csrf: string; userId: string };
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
 type Requirement = { key: string; met: boolean; reason: string | null };
 type Eligibility = { eligible: boolean; requirements: Requirement[]; progress: { completedCount: number; totalCount: number }; releasedGrade: { status: string; percent: number | null } };
-type Certificate = { id: string; certificateNumber: string; status: string; recipientName: string; courseTitle: string; issuerName: string; policyVersion: number; verificationPath: string; revokedAt: string | null; revocationReason: string | null; history?: Array<{ action: string; actor: { id: string } | null; reason: string | null }> };
+type Certificate = { id: string; certificateNumber: string; status: string; recipientName: string; courseTitle: string; issuerName: string; policyVersion: number; verificationPath: string; issuedAt: string; revokedAt: string | null; revocationReason: string | null; history?: Array<{ action: string; actor: { id: string } | null; reason: string | null }> };
 
 describe('course completion certificates (PostgreSQL)', { skip: testServerUrl ? false : 'TEST_DATABASE_URL not set' }, () => {
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
@@ -375,10 +375,21 @@ describe('course completion certificates (PostgreSQL)', { skip: testServerUrl ? 
     const document = await pdfjs.getDocument({ data: new Uint8Array(res.rawPayload), verbosity: 0 }).promise;
     const text = (await (await document.getPage(1)).getTextContent()).items.map((item) => ('str' in item ? item.str : '')).join(' ');
     assert.equal(document.numPages, 1);
-    for (const expected of ['CERTIFICADO DE FINALIZACIÓN', 'Certificate of Completion', certs.s1!.recipientName, 'Certificados', 'Universidad Sintética', certs.s1!.certificateNumber, certs.s1!.verificationPath, 'Semestre 2026-2 (2026)', 'Programa de Certificados']) {
+    // The issue date as the certificate prints it (Lima time), in Spanish and in English.
+    const issuedOn = (locale: string) => new Intl.DateTimeFormat(locale, { dateStyle: 'long', timeZone: 'America/Lima' }).format(new Date(certs.s1!.issuedAt));
+    const period = 'Semestre 2026-2 (2026)';
+    for (const expected of ['CERTIFICADO DE FINALIZACIÓN', 'Certificate of Completion', certs.s1!.recipientName, 'Certificados', 'Universidad Sintética', certs.s1!.certificateNumber, certs.s1!.verificationPath, period, 'Programa de Certificados', issuedOn('es-PE'), issuedOn('en-GB')]) {
       assert.ok(text.includes(expected), `PDF contains ${expected}`);
     }
-    assert.doesNotMatch(text, /@|renombrado|Renamed|85|\/ 20|%/, 'no e-mail, later changes or grades');
+    // AP-QA-06: the certificate number and the verification token are random and printed by design, so they can contain
+    // any digits (for example "85"). What must NOT be printed is checked in the rest of the text, without them.
+    const token = certs.s1!.verificationPath.slice('/verify/'.length);
+    const rest = [certs.s1!.verificationPath, token, certs.s1!.certificateNumber].reduce((remaining, identifier) => remaining.split(identifier).join(' '), text);
+    assert.doesNotMatch(rest, /@|renombrado|Renamed/, 'no e-mail address and no later changes');
+    // No grade (s1 has 85 % released, 17 / 20) and no other figure: the only numbers are those of the issue date and the period.
+    const numbers = (value: string) => (value.match(/\d+(?:[.,]\d+)?/g) ?? []).sort();
+    assert.deepEqual(numbers(rest), numbers([issuedOn('es-PE'), issuedOn('en-GB'), period].join(' ')), 'no grade or other figure');
+    assert.doesNotMatch(rest, /%/, 'no percentage');
     for (const who of ['assistant', 'admin', 'instructor'] as const) assert.equal((await request(who, 'GET', `/certificates/${certs.s1!.id}/pdf`)).statusCode, 200, who);
     for (const who of ['s2', 'outsider', 'instructorB', 'pm', 'reviewer'] as const) {
       problem(await request(who, 'GET', `/certificates/${certs.s1!.id}/pdf`), 404, 'CERTIFICATE_NOT_FOUND');
