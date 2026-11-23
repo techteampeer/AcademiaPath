@@ -18,8 +18,9 @@ import {
 import { buildStudyBrief } from '../documents/brief.js';
 import { readDocumentConfig, type DocumentConfig } from '../documents/model.js';
 import { acceptsUploads } from '../documents/readiness.js';
-import type { MalwareScanner } from '../documents/scanner.js';
+import { decideScan, type MalwareScanner } from '../documents/scanner.js';
 import type { DocumentStorage } from '../documents/storage.js';
+import { openStorageJournal, StorageJournalError } from '../documents/storage-journal.js';
 import type { DocumentSummaryProvider } from '../documents/summary.js';
 import { ApiProblem } from '../http/errors.js';
 import { readUploadedFile } from '../http/uploads.js';
@@ -209,13 +210,13 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
       const fileName = sanitizeFileName(part.filename);
 
       /** Refused uploads are audited (who, which section, which file and why) and never stored. */
-      const reject = async (code: RejectionCode | 'PAYLOAD_TOO_LARGE', message: string, byteSize: number | null) => {
+      const reject = async (code: RejectionCode | 'PAYLOAD_TOO_LARGE', message: string, byteSize: number | null, extra: Record<string, unknown> = {}) => {
         await recordAudit(db, request, {
           action: 'document.upload_rejected',
           entityType: 'section',
           entityId: section.id,
           before: null,
-          after: { courseId: access.course.id, fileName, byteSize, code },
+          after: { courseId: access.course.id, fileName, byteSize, code, ...extra },
         });
         return new ApiProblem(code === 'PAYLOAD_TOO_LARGE' ? 413 : REJECTION_STATUS[code], code, message);
       };
@@ -231,23 +232,82 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
       const limitMb = Math.round(config.documents.maxUploadBytes / (1024 * 1024));
       const bytes = await readUploadedFile(part, () => reject('PAYLOAD_TOO_LARGE', `The file exceeds the ${limitMb} MB upload limit.`, null));
 
-      const scan = await scanner.scan(bytes, { fileName, format });
-      if (scan.status === 'infected') throw await reject('MALWARE_DETECTED', 'The file was rejected by the malware scanner.', bytes.length);
+      // AP-040E: the complete file is scanned before it is parsed or stored. Infected files are always refused; a file
+      // that could not be verified is refused in strict mode, and kept as `not_scanned` (never clean) otherwise.
+      const scanStarted = Date.now();
+      const result = await scanner.scan(bytes, { fileName, format });
+      const scan = decideScan(result, config.malwareScanning.enforcement);
+      // Diagnostics only: ids, outcome and timing; never the file's name, content or storage key.
+      const scanLog = {
+        courseId: access.course.id,
+        sectionId: section.id,
+        malwareScan: {
+          status: result.status,
+          scanner: result.scanner,
+          reason: 'reason' in result ? result.reason : undefined,
+          signature: scan.action === 'reject_infected' ? scan.signature : undefined,
+          byteSize: bytes.length,
+          durationMs: Date.now() - scanStarted,
+        },
+      };
+      if (scan.action === 'reject_infected') {
+        request.log.warn(scanLog, 'Upload refused: the malware scanner detected a threat');
+        throw await reject('MALWARE_DETECTED', 'The file was rejected by the malware scanner.', bytes.length, { malwareScan: { scanner: scan.scanner, signature: scan.signature } });
+      }
+      if (scan.action === 'refuse_unverified') {
+        request.log.error(scanLog, 'Upload refused: the file could not be scanned for malware (strict enforcement)');
+        throw await reject('MALWARE_SCAN_UNAVAILABLE', 'The file could not be checked for malware right now, so it was not accepted. Try again later.', bytes.length, {
+          malwareScan: { scanner: scan.scanner, status: scan.status, reason: scan.reason },
+        });
+      }
+      if (result.status !== 'clean' && result.status !== 'not_scanned') request.log.warn(scanLog, 'Upload accepted without a malware verdict (compatibility enforcement): recorded as not_scanned');
       const extraction = await extractInWorker(bytes, format, config.documents.extractionTimeoutMs);
       if (!extraction.ok) throw await reject(extraction.code, extraction.message, bytes.length);
       const summary = await provider.summarize({ segments: extraction.segments, revision: 1 });
       const digest = sha256(bytes);
 
-      // Store the original only after it passed validation; remove it again if the database write fails.
-      let storageKey: string;
+      // Store the original only after it passed validation. AP-040R2: its key is journaled, with a lease, before the file
+      // is written, so a file left by a crash or a failed clean-up is never untraceable: storage recovery removes it once
+      // the lease has run out (documents/storage-recovery.ts). Storage keys are never logged or returned.
+      const journal = openStorageJournal(db, 'document_upload', user.id);
+      const storageKey = await journal.reserve();
+      /** Removes the file (a missing one is fine), then forgets its entry; an entry whose file could not be removed stays. */
+      const discard = async (reason: string) => {
+        const removed = await Promise.resolve()
+          .then(() => storage.remove(storageKey))
+          .then(
+            () => true,
+            (error: unknown) => {
+              request.log.error(
+                { courseId: access.course.id, sectionId: section.id, errorCode: errorCode(error), reason },
+                'Upload clean-up could not remove the file; it stays journaled for storage recovery',
+              );
+              return false;
+            },
+          );
+        if (removed) await journal.release([storageKey]).catch(() => undefined);
+      };
       try {
-        storageKey = await storage.put(bytes);
+        if ((await storage.put(bytes, storageKey)) !== storageKey) throw new Error('The file was not stored under its journaled key');
       } catch (error) {
         request.log.error({ courseId: access.course.id, sectionId: section.id, errorCode: errorCode(error) }, 'Upload failed: the file could not be stored');
+        // A failed write may have left part of the file.
+        await discard('write_failed');
         throw storageUnavailable();
       }
       try {
         const detail = await db.transaction(async (tx) => {
+          // First take back the journal entry, in the same commit that makes the file referenced. If storage recovery took
+          // it (the lease ran out), the file may be gone: refuse instead of creating a document without its file.
+          try {
+            await journal.settle(tx, [storageKey]);
+          } catch (error) {
+            if (error instanceof StorageJournalError) {
+              request.log.error({ courseId: access.course.id, sectionId: section.id }, 'Upload failed: its stored file was reclaimed by storage recovery before the commit');
+              throw storageUnavailable();
+            }
+            throw error;
+          }
           // Lock the section so concurrent additions get distinct positions.
           const [locked] = await tx.select({ id: sections.id }).from(sections).where(eq(sections.id, section.id)).for('update');
           if (!locked) throw notFound('Section');
@@ -278,7 +338,8 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
               segments: extraction.segments,
               characterCount: extraction.characterCount,
               truncated: extraction.truncated,
-              malwareScanStatus: scan.status === 'clean' ? 'clean' : 'not_scanned',
+              // Only the policy's decision: `clean` exclusively for a verified clean scan.
+              malwareScanStatus: scan.status,
               malwareScanner: scan.scanner,
               uploadedByUserId: user.id,
             })
@@ -337,7 +398,7 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
         });
         return reply.code(201).send(detail);
       } catch (error) {
-        await storage.remove(storageKey).catch(() => undefined);
+        await discard('transaction_failed');
         throw error;
       }
     },

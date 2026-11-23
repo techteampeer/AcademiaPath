@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AcademiaPath API
-  version: 0.32.0
+  version: 0.36.0
   description: |
     Backend API contract for the AcademiaPath learning management system.
 
@@ -62,8 +62,9 @@ info:
     private local storage under a server-generated name (never a public URL). Each upload becomes a
     `file` activity with a deterministic, extractive mock summary (`mode: mock`, "Mock AI summary —
     local demonstration"): every point is an original sentence with its page, slide or paragraph as
-    evidence. No language model, OCR or external service is used, and no malware scanner is
-    connected yet (uploads are recorded as `not_scanned`). Documents use the content review
+    evidence. No language model, OCR or external service is used. Malware scanning with a local ClamAV
+    daemon is available but off by default (AP-040E), so uploads are recorded as `not_scanned` unless a
+    scanner is configured. Documents use the content review
     workflow: approval freezes the document and the reviewed summary revision; refreshing the summary
     creates a new revision that students do not see until it is approved again.
 
@@ -2383,6 +2384,13 @@ paths:
         When the storage directory is missing (or, with `DOCUMENT_STORAGE_MOUNT_CHECK=enforce`, storage is not ready;
         see `GET /api/v1/system/storage`), or the file cannot be stored, the upload is refused with
         `503 DOCUMENT_STORAGE_UNAVAILABLE` and nothing is created.
+
+        Malware scanning (AP-040E): the complete file is scanned before it is parsed or stored. A detected threat is
+        refused with `422 MALWARE_DETECTED`. No scanner is configured by default, and documents are then recorded as
+        `not_scanned`. With a scanner, a file that could not be verified (scanner unavailable, timed out or failed) is
+        recorded as `not_scanned` in compatibility mode, or refused with `503 MALWARE_SCAN_UNAVAILABLE` in strict mode.
+        A document is `clean` only after a verified clean scan. Refusals are audited as `document.upload_rejected`;
+        nothing is stored.
       tags:
         - Documents
       security:
@@ -2425,7 +2433,20 @@ paths:
         "422":
           $ref: "#/components/responses/UnprocessableContent"
         "503":
-          $ref: "#/components/responses/StorageUnavailable"
+          description: |
+            Nothing was created. Document storage cannot be used right now (`DOCUMENT_STORAGE_UNAVAILABLE`), or, with
+            strict malware-scan enforcement, the file could not be verified by the scanner
+            (`MALWARE_SCAN_UNAVAILABLE`). The request can be retried later.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+              example:
+                type: about:blank
+                title: Service Unavailable
+                status: 503
+                detail: The file could not be checked for malware right now, so it was not accepted. Try again later.
+                code: MALWARE_SCAN_UNAVAILABLE
   /api/v1/courses/{id}/activities/{activityId}/document:
     get:
       operationId: getActivityDocument
@@ -3517,6 +3538,225 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "413":
           $ref: "#/components/responses/PayloadTooLarge"
+  /api/v1/course-imports/archive/preview:
+    post:
+      operationId: previewCourseArchiveImport
+      summary: Validate a portable course archive and preview its import (AP-038C2C)
+      description: |
+        Administrators only (like creating or importing a course). Send `multipart/form-data` with exactly one
+        `file` part: a `.zip` course archive exported by AcademiaPath (`GET /api/v1/courses/{id}/export/archive`),
+        at most 25 MB (larger: 413 `PAYLOAD_TOO_LARGE`; another extension: 415 `UNSUPPORTED_FILE_TYPE`). Any
+        other form field is ignored: the report is computed from the uploaded bytes only, never from metadata the
+        client sends.
+
+        This is a **dry run**: nothing is written to the database or to document storage, no course is created,
+        nothing is imported, nothing in the archive is executed and no address in it is fetched. The archive is not
+        kept.
+
+        The whole archive is validated in an isolated worker (30 seconds, 256 MB heap, no network) that shares the
+        SCORM and Common Cartridge inspection pool (at most two package workers per API instance). Checks: archive
+        safety (valid ZIP, every entry's real size and CRC-32, path traversal, absolute, invalid, duplicate and
+        colliding names, links and special files, encryption, unsupported compression, ZIP bombs, entry and size
+        limits: 45 MB decompressed in total); the layout (`academiapath-archive.json`, `course.json`,
+        `assets/asset-N.pdf|docx|pptx`, nothing else); the manifest (format `academiapath.course-archive`, version
+        1); `course.json` (size and SHA-256 from the manifest, then the full course package validation of
+        `POST /api/v1/course-imports/preview`); every document file (declared, present once, size and SHA-256,
+        file signature of its format).
+
+        An archive that fails any check is still answered with `200` and a report whose `status` is `invalid`,
+        with `preview` null; `issues` lists every problem with a stable `code` (`CourseArchiveIssueCode`). Issue
+        messages are fixed English text; `path` is the entry name in the archive, as data. A worker that fails or
+        reaches its limits gives `ARCHIVE_VALIDATION_FAILED` or `ARCHIVE_VALIDATION_LIMIT`.
+
+        Limits per API instance (not across instances): two previews at a time, including uploads waiting for a
+        worker (503 `ARCHIVE_PREVIEW_BUSY` with `Retry-After`), and 10 previews per administrator per 10 minutes
+        (429 `RATE_LIMITED`). Authentication, CSRF, Origin and the administrator check happen before the upload is
+        read.
+      tags: [Courses]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CourseArchiveUpload"
+            encoding:
+              file:
+                contentType: application/zip, application/x-zip-compressed, application/octet-stream
+      responses:
+        "200":
+          description: The validation report and import preview. Nothing was stored, imported or created.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseArchivePreviewReport"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          description: This instance is already checking two archives (`ARCHIVE_PREVIEW_BUSY`, with `Retry-After`). Nothing was read; retry later.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+  /api/v1/course-imports/archive/availability:
+    get:
+      operationId: getCourseArchiveImportAvailability
+      summary: Whether archive import is enabled on this server (AP-038C2F)
+      description: |
+        Administrators only. `enabled` reflects `ARCHIVE_IMPORT_ENABLED` (off by default and refused in production), so
+        the interface offers an import action only when `POST /api/v1/course-imports/archive` would accept one. It changes
+        nothing; the confirmation endpoint enforces the setting on its own.
+      tags: [Courses]
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The current setting.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseArchiveImportAvailability"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/course-imports/archive:
+    post:
+      operationId: importCourseArchive
+      summary: Import a portable course archive as a new draft course (AP-038C2E, feature-gated)
+      description: |
+        **Feature-gated, off by default.** Answers 403 `ARCHIVE_IMPORT_DISABLED` unless the API runs with
+        `ARCHIVE_IMPORT_ENABLED=true`. That setting is refused in production for now; it exists for local development
+        and tests until the production blockers in docs/course-package-format.md are resolved.
+
+        Administrators only. Authentication, CSRF, Origin and the administrator check happen before the upload is read.
+        Send `multipart/form-data`, with its parts in any order (the whole form is read before anything is decided):
+        - the form fields `programId`, `termId`, `code`, and optionally `title`, `versionPreference`,
+          `acknowledgeSkipped`, `assignmentDueAt`, with the constraints of `POST /api/v1/course-imports`;
+        - exactly one `file` part: a `.zip` exported by AcademiaPath, at most 25 MiB (26,214,400 bytes).
+
+        Any other field is ignored: no earlier preview or client-supplied data is trusted. An upload larger than the limit,
+        or cut off at it, gets 413 and is never imported.
+
+        **Validation.** The whole archive is validated again, with the same checks as
+        `POST /api/v1/course-imports/archive/preview`, in the isolated archive worker (30 s, 256 MB heap, no network,
+        shared pool). Each document's size and SHA-256 are checked again before use, then the document is scanned,
+        extracted in its worker and summarized. A document is never marked clean without a malware scanner. Nothing is
+        executed and no address in the archive is fetched.
+
+        **The new course.** It is always a **new draft course**, never an existing one. Content is draft, nothing is
+        published, and no people, enrollments, grades, submissions or attempts are created.
+
+        **Storage.** The files are stored and read back, then one database transaction creates the course and its
+        records. On a failure the stored files are removed again. A crash between those steps can leave unreferenced
+        files, which are never served; the storage audit lists them.
+
+        **Repeated or concurrent confirmations** cannot create a second course: the new course's `code` must be free in
+        the term (409 `COURSE_CODE_TAKEN`).
+
+        **Limits per API instance:** one import at a time (503 `ARCHIVE_IMPORT_BUSY` with `Retry-After`) and 5
+        imports per administrator per 10 minutes (429).
+      tags: [Courses]
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CourseArchiveImportRequest"
+            encoding:
+              file:
+                contentType: application/zip, application/x-zip-compressed, application/octet-stream
+      responses:
+        "201":
+          description: The new draft course and what was created. The archive is not kept.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseArchiveImportResult"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Not an administrator (`FORBIDDEN`), CSRF or Origin refused, or the feature is off (`ARCHIVE_IMPORT_DISABLED`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "409":
+          description: A course with this code already exists in the term (`COURSE_CODE_TAKEN`), including after a repeated confirmation. Nothing was created.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          description: |
+            Nothing was created. The cause is one of:
+            - `ARCHIVE_IMPORT_INVALID`: the archive failed validation; `detail` names the first issue code, and the
+              preview lists every issue;
+            - `ARCHIVE_IMPORT_DOCUMENT_REJECTED`: a document was rejected by the malware scanner or the document checks;
+            - `IMPORT_ACKNOWLEDGEMENT_REQUIRED`, `IMPORT_DUE_DATE_REQUIRED`;
+            - `PROGRAM_NOT_FOUND`, `PROGRAM_INACTIVE`, `TERM_NOT_FOUND`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          description: The import failed unexpectedly (`ARCHIVE_IMPORT_FAILED`); nothing was created. No internal detail is returned.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "503":
+          description: |
+            Nothing was created. Either another import is running on this instance (`ARCHIVE_IMPORT_BUSY`, with
+            `Retry-After`), or document storage failed (`ARCHIVE_IMPORT_STORAGE_FAILED`), or, with strict
+            malware-scan enforcement, a document could not be verified by the scanner
+            (`ARCHIVE_IMPORT_SCAN_UNAVAILABLE`). Retry later.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying (`ARCHIVE_IMPORT_BUSY`).
+              schema:
+                type: integer
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
   /api/v1/course-imports:
     post:
       operationId: importCourse
@@ -3746,6 +3986,73 @@ paths:
           $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/UnprocessableContent"
+  /api/v1/courses/{id}/export/archive:
+    get:
+      operationId: exportCourseArchive
+      summary: Export the course as a portable ZIP archive (AP-038C1D)
+      description: |
+        Same permission as `exportCourse`: `content.export` (design team, instructor) or the administrator role;
+        non-editing instructors and students get 403, and callers who cannot see the course get 404. Returns one
+        ZIP (`application/zip`, attachment `course-<code>.academiapath.zip`, `Cache-Control: no-store`,
+        `X-Content-Type-Options: nosniff`) with:
+
+        - `academiapath-archive.json`: manifest (`format` `academiapath.course-archive`, `formatVersion` 1) with
+          the byte size and SHA-256 of `course.json` and of every asset file, and the totals;
+        - `course.json`: exactly the `CoursePackage` that `exportCourse` returns for the same snapshot (still
+          `bundled: false`; the manifest describes the files);
+        - `assets/<asset key>.<format>`: each document file of this course's own activities. Paths are generated
+          by the server, never taken from uploaded file names.
+
+        Every file is checked against its recorded size and SHA-256. The archive is built completely before
+        anything is sent: a missing, changed or unreadable file, or a size above the limit, is an error response,
+        never a partial archive. At most 25 MB (provisional): larger courses get 422 `COURSE_ARCHIVE_TOO_LARGE`
+        (the JSON export stays available), and the package limits of `exportCourse` still apply
+        (`COURSE_EXPORT_TOO_LARGE`). Files are included as stored; they are not malware-scanned.
+
+        Limits per API instance (not across instances): two archives at a time (503 `COURSE_ARCHIVE_BUSY` with
+        `Retry-After`), and 10 requests per user per 10 minutes (429 `RATE_LIMITED`). Audited as
+        `course.archive_exported` with counts, sizes and the content hash only.
+      tags: [Courses]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: The course archive.
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          description: |
+            A document file of this course is missing (`COURSE_ARCHIVE_DOCUMENT_MISSING`) or failed its integrity
+            check (`COURSE_ARCHIVE_DOCUMENT_CORRUPT`); no archive is created. The response names no path or file.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "503":
+          description: |
+            Document storage could not be read (`DOCUMENT_STORAGE_UNAVAILABLE`), or this instance is already
+            preparing two archives (`COURSE_ARCHIVE_BUSY`, with `Retry-After`). Nothing is sent; retry later.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
   /api/v1/courses/{id}/certificate-policy:
     get:
       operationId: getCertificatePolicy
@@ -7007,6 +7314,7 @@ components:
             - DOCUMENT_MALFORMED
             - DOCUMENT_LIMITS_EXCEEDED
             - MALWARE_DETECTED
+            - MALWARE_SCAN_UNAVAILABLE
             - EMAIL_TAKEN
             - EMAIL_LOCKED
             - LAST_ADMINISTRATOR
@@ -9153,7 +9461,10 @@ components:
           $ref: "#/components/schemas/DocumentExtraction"
         malwareScan:
           type: object
-          description: "No malware scanning service is connected yet, so uploads report `not_scanned` (scanner `none`)."
+          description: |
+            `clean` only after a scanner verified the complete file. `not_scanned` when no scanner is configured
+            (scanner `none`, the default) or, in compatibility mode, when the scan failed (scanner such as
+            `clamd:timeout`). Infected files are never stored.
           required: [status, scanner]
           additionalProperties: false
           properties:
@@ -12547,6 +12858,316 @@ components:
             $ref: "#/components/schemas/CourseImportSkipped"
         contentHash:
           type: string
+    CourseArchiveImportAvailability:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+          description: Whether `POST /api/v1/course-imports/archive` accepts imports on this server.
+    CourseArchiveImportRequest:
+      type: object
+      description: The form fields and the file, in any order. Values are strings.
+      required: [programId, termId, code, file]
+      properties:
+        programId:
+          type: string
+          format: uuid
+        termId:
+          type: string
+          format: uuid
+        code:
+          type: string
+          minLength: 1
+          maxLength: 32
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          description: The new course's code; it must be free in the term.
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Defaults to the archived course's title.
+        versionPreference:
+          type: string
+          enum: [approved, working]
+          default: approved
+        acknowledgeSkipped:
+          type: string
+          enum: ["true", "false"]
+          default: "false"
+          description: Required ("true") when some activities cannot be imported (see the preview's `skipped`).
+        assignmentDueAt:
+          type: string
+          format: date-time
+          description: Required when the course has assignments.
+        file:
+          type: string
+          contentMediaType: application/zip
+          description: One AcademiaPath course archive as a .zip file (at most 25 MiB).
+    CourseArchiveImportResult:
+      type: object
+      required: [course, created, skipped, contentHash]
+      additionalProperties: false
+      properties:
+        course:
+          type: object
+          required: [id, code, title, status, programId, termId]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            code:
+              type: string
+            title:
+              type: string
+            status:
+              type: string
+              enum: [draft]
+            programId:
+              type: string
+              format: uuid
+            termId:
+              type: string
+              format: uuid
+        created:
+          type: object
+          required: [units, folders, prerequisites, activities, questions, documents]
+          additionalProperties: false
+          properties:
+            units:
+              type: integer
+            folders:
+              type: integer
+            prerequisites:
+              type: integer
+            activities:
+              type: integer
+            questions:
+              type: integer
+            documents:
+              type: integer
+              description: Document activities created, each with its own stored copy of the file.
+        skipped:
+          type: array
+          items:
+            $ref: "#/components/schemas/CourseImportSkipped"
+        contentHash:
+          type: [string, "null"]
+    CourseArchiveUpload:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          contentMediaType: application/zip
+          description: One AcademiaPath course archive as a .zip file (at most 25 MB).
+    CourseArchiveIssueCode:
+      type: string
+      description: |
+        Stable issue codes of the course archive validation. Archive safety: `ARCHIVE_*`, `PATH_*`, `ENTRY_*`.
+        Layout and manifest: `UNEXPECTED_ENTRY`, `MANIFEST_*`, `FORMAT_UNSUPPORTED`, `VERSION_UNSUPPORTED`.
+        `course.json` and document files: `PACKAGE_MISSING`, `PACKAGE_TOO_LARGE`, `PACKAGE_INTEGRITY`,
+        `PACKAGE_INVALID`, `PACKAGE_MISMATCH`, `ASSET_*`, `UNDECLARED_ASSET`. Warnings: `ACTIVITY_NOT_IMPORTABLE`
+        (only the title would be kept) and the export's own warnings (`PACKAGE_ASSET_MISSING`,
+        `PACKAGE_INVALID_REFERENCE`, `PACKAGE_UNSUPPORTED_ACTIVITY_TYPE`, any other: `PACKAGE_WARNING`). The
+        isolated validation failed or reached its time or memory limit: `ARCHIVE_VALIDATION_FAILED`,
+        `ARCHIVE_VALIDATION_LIMIT`.
+      enum:
+        - ARCHIVE_INVALID
+        - ARCHIVE_TOO_MANY_ENTRIES
+        - ARCHIVE_TOO_LARGE
+        - PATH_TRAVERSAL
+        - PATH_ABSOLUTE
+        - PATH_INVALID
+        - PATH_DUPLICATE
+        - PATH_COLLISION
+        - ENTRY_ENCRYPTED
+        - ENTRY_SYMLINK
+        - ENTRY_SPECIAL_FILE
+        - ENTRY_COMPRESSION_UNSUPPORTED
+        - ENTRY_TOO_LARGE
+        - ENTRY_EXPANSION_RATIO
+        - ENTRY_CORRUPT
+        - UNEXPECTED_ENTRY
+        - MANIFEST_MISSING
+        - MANIFEST_TOO_LARGE
+        - MANIFEST_INVALID
+        - FORMAT_UNSUPPORTED
+        - VERSION_UNSUPPORTED
+        - PACKAGE_MISSING
+        - PACKAGE_TOO_LARGE
+        - PACKAGE_INTEGRITY
+        - PACKAGE_INVALID
+        - PACKAGE_MISMATCH
+        - ASSET_UNKNOWN
+        - ASSET_MISMATCH
+        - ASSET_NOT_DECLARED
+        - UNDECLARED_ASSET
+        - ASSET_MISSING
+        - ASSET_INTEGRITY
+        - ASSET_TYPE_MISMATCH
+        - ACTIVITY_NOT_IMPORTABLE
+        - PACKAGE_ASSET_MISSING
+        - PACKAGE_INVALID_REFERENCE
+        - PACKAGE_UNSUPPORTED_ACTIVITY_TYPE
+        - PACKAGE_WARNING
+        - ARCHIVE_VALIDATION_FAILED
+        - ARCHIVE_VALIDATION_LIMIT
+    CourseArchivePreviewReport:
+      type: object
+      description: |
+        Validation report of a portable course archive and, when it is usable, a preview of the new draft course an
+        import would create. An archive never updates an existing course.
+      required: [status, importMode, imported, archive, manifest, preview, issues, issueCount]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          description: "`invalid` when any issue is an error (then `preview` is null)."
+          enum: [valid, valid_with_warnings, invalid]
+        importMode:
+          type: string
+          enum: [new_draft_course]
+        imported:
+          type: boolean
+          const: false
+        archive:
+          type: object
+          required: [byteSize, entries, uncompressedBytes]
+          additionalProperties: false
+          properties:
+            byteSize:
+              type: integer
+            entries:
+              type: integer
+              description: Files in the ZIP (0 when it could not be read).
+            uncompressedBytes:
+              type: [integer, "null"]
+        manifest:
+          type: object
+          required: [format, formatVersion]
+          additionalProperties: false
+          properties:
+            format:
+              type: [string, "null"]
+            formatVersion:
+              type: [integer, "null"]
+        preview:
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [title, description, sourceCourseCode, exportedAt, counts, documents, documentsByFormat, documentBytes, skipped, requiresDueDate, packageWarnings]
+              additionalProperties: false
+              properties:
+                title:
+                  type: [string, "null"]
+                description:
+                  type: [string, "null"]
+                sourceCourseCode:
+                  type: [string, "null"]
+                  description: The code of the exported course (a new course needs its own code).
+                exportedAt:
+                  type: [string, "null"]
+                counts:
+                  type: object
+                  required: [units, folders, activities, activitiesByType, questions, importableActivities, skippedActivities, assignments]
+                  additionalProperties: false
+                  properties:
+                    units:
+                      type: integer
+                    folders:
+                      type: integer
+                    activities:
+                      type: integer
+                    activitiesByType:
+                      type: object
+                      additionalProperties:
+                        type: integer
+                    questions:
+                      type: integer
+                    importableActivities:
+                      type: integer
+                    skippedActivities:
+                      type: integer
+                    assignments:
+                      type: integer
+                documents:
+                  type: array
+                  description: Every document file in the archive, verified against the manifest and course.json.
+                  items:
+                    type: object
+                    required: [key, fileName, format, byteSize, sha256, activityKeys]
+                    additionalProperties: false
+                    properties:
+                      key:
+                        type: string
+                      fileName:
+                        type: string
+                      format:
+                        type: string
+                        enum: [pdf, docx, pptx]
+                      byteSize:
+                        type: integer
+                      sha256:
+                        type: string
+                      activityKeys:
+                        type: array
+                        items:
+                          type: string
+                documentsByFormat:
+                  type: object
+                  required: [pdf, docx, pptx]
+                  additionalProperties: false
+                  properties:
+                    pdf:
+                      type: integer
+                    docx:
+                      type: integer
+                    pptx:
+                      type: integer
+                documentBytes:
+                  type: integer
+                skipped:
+                  type: array
+                  description: Activities an import could not create (only their titles would be kept).
+                  items:
+                    $ref: "#/components/schemas/CourseImportSkipped"
+                requiresDueDate:
+                  type: boolean
+                  description: The course has assignments, so an import needs a due date for them.
+                packageWarnings:
+                  type: array
+                  items:
+                    type: object
+                    required: [code, target]
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      target:
+                        type: string
+        issues:
+          type: array
+          description: At most 200; `issueCount` counts all of them.
+          items:
+            type: object
+            required: [severity, code, message, path]
+            additionalProperties: false
+            properties:
+              severity:
+                type: string
+                enum: [error, warning]
+              code:
+                $ref: "#/components/schemas/CourseArchiveIssueCode"
+              message:
+                type: string
+              path:
+                type: [string, "null"]
+                description: The entry name in the archive (or a location in it), as data.
+        issueCount:
+          type: integer
     CoursePackageWarning:
       type: object
       required: [code, target, detail]

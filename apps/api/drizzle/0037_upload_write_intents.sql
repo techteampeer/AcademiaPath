@@ -1,0 +1,2 @@
+ALTER TABLE "document_storage_intents" DROP CONSTRAINT "document_storage_intents_operation_check";--> statement-breakpoint
+ALTER TABLE "document_storage_intents" ADD CONSTRAINT "document_storage_intents_operation_check" CHECK ("document_storage_intents"."operation" IN ('archive_import', 'document_upload'));
