@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { canInCourse, getCourseAccess } from '../auth/authorization.js';
 import { getAuth } from '../auth/hooks.js';
 import { ApiProblem } from '../http/errors.js';
+import { readUploadedFile } from '../http/uploads.js';
 import { inspectInWorker } from '../scorm/inspection.js';
 import { SCORM_LIMITS } from '../scorm/limits.js';
 import { courseIdParamsSchema } from './course-schemas.js';
@@ -53,15 +54,8 @@ export const scormRoutes: FastifyPluginAsync = async (app) => {
         part.file.resume();
         throw new ApiProblem(415, 'UNSUPPORTED_FILE_TYPE', 'A SCORM package must be a .zip file.');
       }
-      let bytes: Buffer;
-      try {
-        bytes = await part.toBuffer();
-      } catch (error) {
-        if ((error as { code?: string }).code === 'FST_REQ_FILE_TOO_LARGE') {
-          throw new ApiProblem(413, 'PAYLOAD_TOO_LARGE', `The package exceeds the ${SCORM_LIMITS.maxPackageBytes / (1024 * 1024)} MB inspection limit.`);
-        }
-        throw error;
-      }
+      // A package cut off at the limit is refused, never inspected as if it were complete (AP-SEC-02).
+      const bytes = await readUploadedFile(part, () => new ApiProblem(413, 'PAYLOAD_TOO_LARGE', `The package exceeds the ${SCORM_LIMITS.maxPackageBytes / (1024 * 1024)} MB inspection limit.`));
 
       const report = await inspectInWorker(bytes, { fileName: part.filename });
       // Diagnostics only: no file name, title or package content.

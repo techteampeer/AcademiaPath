@@ -10,7 +10,7 @@ const issue = {
   additionalProperties: false,
   properties: { path: { type: 'string' }, code: { type: 'string' }, message: { type: 'string' } },
 } as const;
-const skipped = {
+export const skippedActivitySchema = {
   type: 'object',
   required: ['key', 'unitKey', 'type', 'title', 'reason'],
   additionalProperties: false,
@@ -20,6 +20,22 @@ const skipped = {
     type: { type: 'string' },
     title: { type: 'string' },
     reason: { type: 'string', enum: ['DOCUMENT_NOT_BUNDLED', 'UNSUPPORTED_ACTIVITY_TYPE'] },
+  },
+} as const;
+
+export const importCountsSchema = {
+  type: 'object',
+  required: ['units', 'folders', 'activities', 'activitiesByType', 'questions', 'importableActivities', 'skippedActivities', 'assignments'],
+  additionalProperties: false,
+  properties: {
+    units: { type: 'integer' },
+    folders: { type: 'integer' },
+    activities: { type: 'integer' },
+    activitiesByType: { type: 'object', additionalProperties: { type: 'integer' } },
+    questions: { type: 'integer' },
+    importableActivities: { type: 'integer' },
+    skippedActivities: { type: 'integer' },
+    assignments: { type: 'integer' },
   },
 } as const;
 
@@ -58,21 +74,7 @@ export const importPreviewSchema = {
       additionalProperties: false,
       properties: { title: nullableString, description: nullableString, courseCode: nullableString, courseStatus: nullableString, exportedAt: nullableString },
     },
-    counts: {
-      type: 'object',
-      required: ['units', 'folders', 'activities', 'activitiesByType', 'questions', 'importableActivities', 'skippedActivities', 'assignments'],
-      additionalProperties: false,
-      properties: {
-        units: { type: 'integer' },
-        folders: { type: 'integer' },
-        activities: { type: 'integer' },
-        activitiesByType: { type: 'object', additionalProperties: { type: 'integer' } },
-        questions: { type: 'integer' },
-        importableActivities: { type: 'integer' },
-        skippedActivities: { type: 'integer' },
-        assignments: { type: 'integer' },
-      },
-    },
+    counts: importCountsSchema,
     documents: {
       type: 'array',
       items: {
@@ -90,7 +92,7 @@ export const importPreviewSchema = {
         },
       },
     },
-    skipped: { type: 'array', items: skipped },
+    skipped: { type: 'array', items: skippedActivitySchema },
     unsupportedFields: { type: 'array', items: { type: 'string' } },
     unsupportedFieldCount: { type: 'integer' },
     errors: { type: 'array', items: issue },
@@ -137,7 +139,7 @@ export const importResultSchema = {
       additionalProperties: false,
       properties: { units: { type: 'integer' }, folders: { type: 'integer' }, prerequisites: { type: 'integer' }, activities: { type: 'integer' }, questions: { type: 'integer' } },
     },
-    skipped: { type: 'array', items: skipped },
+    skipped: { type: 'array', items: skippedActivitySchema },
     contentHash: { type: 'string' },
   },
 } as const;

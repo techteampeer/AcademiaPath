@@ -12,8 +12,11 @@ import { authRoutes } from './routes/auth.js';
 import { courseRoutes } from './routes/courses.js';
 import { courseExportRoutes } from './routes/course-export.js';
 import { courseImportRoutes } from './routes/course-import.js';
+import { courseArchiveImportRoutes } from './routes/course-archive-import.js';
+import { courseArchiveConfirmRoutes } from './routes/course-archive-confirm.js';
 import { documentRoutes, type DocumentRouteOptions } from './routes/documents.js';
-import { noMalwareScanner } from './documents/scanner.js';
+import { ClamdScanner } from './documents/clamd.js';
+import { noMalwareScanner, type MalwareScanner } from './documents/scanner.js';
 import { isMountPoint as detectMountPoint } from './documents/mounts.js';
 import { checkStorageReadiness } from './documents/readiness.js';
 import { LocalDocumentStorage } from './documents/storage.js';
@@ -60,7 +63,7 @@ export type BuildAppOptions = {
   config: AppConfig;
   database: Database;
   logger?: false | { level: string; stream?: { write(message: string): void } };
-  /** Defaults: private local storage from config, no malware scanner connected, mock summary provider. */
+  /** Defaults: private local storage from config, the configured malware scanner (none by default), mock summary provider. */
   documents?: Partial<DocumentRouteOptions>;
   /** The API server clock (default: the system clock). Tests inject a controlled clock for timer boundaries. */
   clock?: () => Date;
@@ -99,6 +102,27 @@ export function buildApp({ config, database, logger = false, documents = {}, clo
   app.decorate('requireCsrf', hooks.requireCsrf);
   app.decorate('requireAdministrator', hooks.requireAdministrator);
   app.decorate('storageReadiness', () => checkStorageReadiness(config.documents.storageDir, config.documents.mountCheck, { isMountPoint, now: clock }));
+
+  // AP-040E: one scanner for document uploads and archive imports (none unless explicitly configured).
+  const scanning = config.malwareScanning;
+  const clamd =
+    scanning.scanner === 'clamd' && scanning.clamd
+      ? new ClamdScanner({ endpoint: scanning.clamd, timeoutMs: scanning.timeoutMs, maxBytes: scanning.maxBytes, maxConcurrent: scanning.maxConcurrent })
+      : null;
+  const malwareScanner: MalwareScanner = documents.scanner ?? clamd ?? noMalwareScanner;
+  // Says at startup what protects new documents; checking that clamd answers never delays or stops the API.
+  app.addHook('onReady', async () => {
+    const summary = { malwareScanning: { scanner: scanning.scanner, enforcement: scanning.enforcement } };
+    if (!clamd) {
+      app.log.info(summary, 'Malware scanning is not configured: new documents are recorded as not_scanned');
+      return;
+    }
+    void clamd.ping(5_000).then((reachable) => {
+      if (reachable) app.log.info(summary, 'Malware scanning: clamd is reachable');
+      else if (scanning.enforcement === 'strict') app.log.error(summary, 'Malware scanning: clamd is not reachable; new documents are refused until it is');
+      else app.log.warn(summary, 'Malware scanning: clamd is not reachable; new documents are recorded as not_scanned until it is');
+    });
+  });
 
   // AP-040B: check document storage once at startup and say what was found (never the directory's contents). Only
   // `enforce` waits for the check (at most STORAGE_STARTUP_CHECK_MS) and stops the API when storage is not ready.
@@ -171,10 +195,17 @@ export function buildApp({ config, database, logger = false, documents = {}, clo
   app.register(cartridgeRoutes, { prefix: API_PREFIX });
   app.register(courseExportRoutes, { prefix: API_PREFIX, storage: documentStorage });
   app.register(courseImportRoutes, { prefix: API_PREFIX });
+  app.register(courseArchiveImportRoutes, { prefix: API_PREFIX });
+  app.register(courseArchiveConfirmRoutes, {
+    prefix: API_PREFIX,
+    storage: documentStorage,
+    scanner: malwareScanner,
+    provider: documents.provider ?? mockSummaryProvider,
+  });
   app.register(documentRoutes, {
     prefix: API_PREFIX,
     storage: documentStorage,
-    scanner: documents.scanner ?? noMalwareScanner,
+    scanner: malwareScanner,
     provider: documents.provider ?? mockSummaryProvider,
   });
 
