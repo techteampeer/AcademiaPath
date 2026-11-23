@@ -240,6 +240,12 @@ DATABASE_URL=postgresql://postgres@127.0.0.1:5432/<local-db> DOCUMENT_STORAGE_DI
 - a failed removal keeps the entry, increments `attempts`, stores the error code (`EIO`, or `UNKNOWN`, never a message
   or path) and writes a `storage.write_recovery_failed` audit event; the next run retries it;
 - an entry that another recovery, or a committing import, holds is skipped (`skipped_concurrent`).
+- a removal the store does not reflect keeps the entry, flagged for review: if the file still shows afterwards, the run
+  records `STILL_PRESENT` (AP-OPS-01).
+
+Before planning or applying anything, the store must show at least one of the files that the most recent documents
+refer to. A store that shows none of them, such as an unmounted bucket or a wrong directory, is not trusted: the run
+does nothing and reports `storage_unverified` (AP-OPS-01).
 
 A crash during recovery rolls its transaction back: the entry stays, and the next run finds the file already gone.
 Running it again, or several at once, is safe. Audit events hold the journal entry ID, the import's operation ID,
@@ -258,7 +264,8 @@ bucket needs the same approvals as a production scan (section 3), plus delete ac
 not have: a reviewed production mode, an approved job or operator session, **Sagar's authorization** and
 **Claudio Obregón's** approval for its cost. Before that, verify Cloud Storage FUSE behaviour for recovery: a cached
 "file not found" answer must not make an existing object look already removed (check the object through the Cloud
-Storage API, or disable the negative stat cache for that job).
+Storage API, or disable the negative stat cache for that job). The production design is in
+`docs/production-storage-recovery.md`.
 
 ## Known unresolved risks (not fixed in AP-040B)
 
