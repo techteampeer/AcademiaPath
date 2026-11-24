@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
 import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -36,13 +37,13 @@ describe('document upload crash recovery (AP-040R2, PostgreSQL)', { skip: testSe
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let root: string;
   let storageDir: string;
-  let filePath: string;
   let local: LocalDocumentStorage;
   let session: { token: string; csrf: string };
   const ids = {} as Record<'course' | 'section', string>;
   const logs: string[] = [];
   const apps: App[] = [];
-  const file = makePdf([['Synthetic upload', 'A document for the crash recovery tests.']]);
+  /** Every upload here is a different file: an identical repeat would return the first document (AP-SEC-05A). */
+  const freshFile = () => makePdf([['Synthetic upload', `A document for the crash recovery tests (${randomBytes(6).toString('hex')}).`]]);
 
   const q = async <T extends Record<string, unknown>>(text: string, params: unknown[] = []) => (await database.pool.query<T>(text, params)).rows;
   const count = async (text: string, params: unknown[] = []) => Number((await q<{ n: string }>(text, params))[0]!.n);
@@ -75,7 +76,7 @@ describe('document upload crash recovery (AP-040R2, PostgreSQL)', { skip: testSe
     apps.push(instance);
     return instance;
   };
-  const upload = (app: App, data = file) => {
+  const upload = (app: App, data = freshFile()) => {
     const { payload, contentType } = multipartBody([{ name: 'file', filename: 'upload.pdf', data }]);
     return app.inject({
       method: 'POST',
@@ -110,6 +111,8 @@ describe('document upload crash recovery (AP-040R2, PostgreSQL)', { skip: testSe
   };
   /** One upload through the real route in a child process; `paused` resolves at CRASH_PAUSE, `kill` sends SIGKILL. */
   const child = (env: Record<string, string>) => {
+    const ownFile = join(root, `upload-${randomBytes(6).toString('hex')}.pdf`);
+    writeFileSync(ownFile, freshFile());
     const url = new URL(database.url);
     url.searchParams.set('application_name', CHILD_APP);
     const proc = spawn(process.execPath, ['--import', 'tsx', CHILD], {
@@ -119,7 +122,7 @@ describe('document upload crash recovery (AP-040R2, PostgreSQL)', { skip: testSe
         CRASH_MODE: 'upload',
         CRASH_DATABASE_URL: url.toString(),
         CRASH_STORAGE_DIR: storageDir,
-        CRASH_FILE: filePath,
+        CRASH_FILE: ownFile,
         CRASH_COURSE: ids.course,
         CRASH_SECTION: ids.section,
         CRASH_SESSION: session.token,
@@ -156,8 +159,6 @@ describe('document upload crash recovery (AP-040R2, PostgreSQL)', { skip: testSe
   before(async () => {
     root = await mkdtemp(join(tmpdir(), 'ap-upload-recovery-'));
     storageDir = join(root, 'store');
-    filePath = join(root, 'upload.pdf');
-    await writeFile(filePath, file);
     local = new LocalDocumentStorage(storageDir);
     database = await createTestDatabase();
     await seedDevUsers(database.db, PASSWORD);

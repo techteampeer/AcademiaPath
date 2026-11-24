@@ -29,14 +29,23 @@ export type MalwareScanResult =
  * an implementation that throws is a defect, and the upload or import then fails without storing anything.
  */
 export interface MalwareScanner {
-  scan(bytes: Uint8Array, file: { fileName: string; format: DocumentFormat }): Promise<MalwareScanResult>;
+  /** A short name for records when the caller stops waiting for a verdict (for example `clamd`). */
+  readonly name?: string;
+  /**
+   * AP-SEC-05A: `options.deadline` (epoch ms) and `options.signal` come from the upload's time budget. A scanner should
+   * give up at the deadline or when the signal aborts; the caller stops waiting then anyway and records no verdict.
+   */
+  scan(bytes: Uint8Array, file: { fileName: string; format: DocumentFormat }, options?: ScanOptions): Promise<MalwareScanResult>;
 }
+
+export type ScanOptions = { deadline?: number; signal?: AbortSignal };
 
 /**
  * Default: NO malware scanning service is connected. Uploads are recorded as `not_scanned`. This proof of concept is
  * not approved for untrusted production documents (see docs/malware-scanning.md).
  */
 export const noMalwareScanner: MalwareScanner = {
+  name: 'none',
   async scan() {
     return { status: 'not_scanned', scanner: 'none' };
   },

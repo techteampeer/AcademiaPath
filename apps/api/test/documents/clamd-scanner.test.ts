@@ -236,13 +236,13 @@ describe('malware scanning configuration (AP-040E)', () => {
   });
 
   it('accepts a local clamd: a Unix socket or a loopback address', () => {
-    assert.deepEqual(loadConfig({ ...base, MALWARE_SCANNER: 'clamd', CLAMD_SOCKET: '/run/clamav/clamd.sock' }).malwareScanning.clamd, { socketPath: '/run/clamav/clamd.sock' });
+    assert.deepEqual(loadConfig({ ...base, DOCUMENT_UPLOAD_TIMEOUT_SECONDS: '60', MALWARE_SCANNER: 'clamd', CLAMD_SOCKET: '/run/clamav/clamd.sock' }).malwareScanning.clamd, { socketPath: '/run/clamav/clamd.sock' });
     for (const [address, host] of [
       ['127.0.0.1:3310', '127.0.0.1'],
       ['localhost:3310', 'localhost'],
       ['[::1]:3310', '::1'],
     ]) {
-      assert.deepEqual(loadConfig({ ...base, MALWARE_SCANNER: 'clamd', CLAMD_ADDRESS: address, MALWARE_SCAN_ENFORCEMENT: 'strict' }).malwareScanning.clamd, { host, port: 3310 });
+      assert.deepEqual(loadConfig({ ...base, DOCUMENT_UPLOAD_TIMEOUT_SECONDS: '60', MALWARE_SCANNER: 'clamd', CLAMD_ADDRESS: address, MALWARE_SCAN_ENFORCEMENT: 'strict' }).malwareScanning.clamd, { host, port: 3310 });
     }
   });
 

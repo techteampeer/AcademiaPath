@@ -1,13 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
 import multipart from '@fastify/multipart';
-import { and, eq, max } from 'drizzle-orm';
+import { and, desc, eq, max, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { recordAudit } from '../audit.js';
 import { canInCourse, getCourseAccess, type CourseAccess, type CoursePermission } from '../auth/authorization.js';
 import { getAuth } from '../auth/hooks.js';
 import type { Database } from '../db/client.js';
 import { activities, courseDocuments, documentSummaries, sections } from '../db/schema/index.js';
-import { extractInWorker } from '../documents/extraction.js';
+import { ExtractionAborted, extractInWorker } from '../documents/extraction.js';
 import {
   DOCUMENT_MEDIA_TYPES,
   formatFromFileName,
@@ -18,9 +18,10 @@ import {
 import { buildStudyBrief } from '../documents/brief.js';
 import { readDocumentConfig, type DocumentConfig } from '../documents/model.js';
 import { acceptsUploads } from '../documents/readiness.js';
-import { decideScan, type MalwareScanner } from '../documents/scanner.js';
+import { decideScan, type MalwareScanner, type MalwareScanResult, type ScanOptions } from '../documents/scanner.js';
 import type { DocumentStorage } from '../documents/storage.js';
 import { openStorageJournal, StorageJournalError } from '../documents/storage-journal.js';
+import { UploadBudget } from '../documents/upload-budget.js';
 import type { DocumentSummaryProvider } from '../documents/summary.js';
 import { ApiProblem } from '../http/errors.js';
 import { readUploadedFile } from '../http/uploads.js';
@@ -34,7 +35,47 @@ type DocumentRow = typeof courseDocuments.$inferSelect;
 type SummaryRow = typeof documentSummaries.$inferSelect;
 type Executor = Pick<Database, 'select' | 'insert' | 'update'>;
 
-export type DocumentRouteOptions = { storage: DocumentStorage; scanner: MalwareScanner; provider: DocumentSummaryProvider };
+export type DocumentRouteOptions = {
+  storage: DocumentStorage;
+  scanner: MalwareScanner;
+  provider: DocumentSummaryProvider;
+  /** Validation and extraction (default: the isolated worker). Tests wrap it to control its timing. */
+  extract?: typeof extractInWorker;
+};
+
+/** A repeated upload matched a document committed meanwhile (inside the upload's transaction). */
+class UploadReplay extends Error {
+  constructor(readonly found: { activity: typeof activities.$inferSelect; document: DocumentRow; summary: SummaryRow | null }) {
+    super('The same upload was committed meanwhile');
+  }
+}
+
+/**
+ * AP-SEC-05A: waits for a scan, but never past `deadline` nor after `signal` aborts. A scanner that does not stop in
+ * time is not waited for, and the result is then a timeout: never a verdict.
+ */
+function scanWithin(scanner: MalwareScanner, bytes: Uint8Array, file: Parameters<MalwareScanner['scan']>[1], options: Required<ScanOptions>): Promise<MalwareScanResult> {
+  return new Promise((resolve, reject) => {
+    const stop = () => {
+      clearTimeout(timer);
+      resolve({ status: 'timeout', scanner: scanner.name ?? 'scanner', reason: 'deadline' });
+    };
+    const timer = setTimeout(stop, Math.max(0, options.deadline - Date.now()));
+    options.signal.addEventListener('abort', stop, { once: true });
+    scanner.scan(bytes, file, options).then(
+      (result) => {
+        clearTimeout(timer);
+        options.signal.removeEventListener('abort', stop);
+        resolve(result);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        options.signal.removeEventListener('abort', stop);
+        reject(error);
+      },
+    );
+  });
+}
 
 const notFound = (what: string) => new ApiProblem(404, 'NOT_FOUND', `${what} not found.`);
 const forbidden = () => new ApiProblem(403, 'FORBIDDEN', 'You do not have permission to perform this action.');
@@ -108,7 +149,7 @@ function titleFrom(field: unknown, fileName: string): string {
  * activities and use the existing content review endpoints (submit, approve, return), so students only
  * ever see an approved document together with the approved summary revision.
  */
-export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (app, { storage, scanner, provider }) => {
+export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (app, { storage, scanner, provider, extract = extractInWorker }) => {
   const { db, config } = app;
   const authenticated = { preValidation: [app.requireAuth] };
   // Guards run before the body is read, so unauthenticated or forged uploads are rejected first.
@@ -153,6 +194,34 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
   }
 
   /**
+   * AP-SEC-05A: the document this user created from the same file (same SHA-256, name and title) in the same section
+   * within `uploadReplayWindowMs`, if its activity still shows it. A repeated upload returns it instead of a duplicate.
+   */
+  async function findReplay(executor: Executor, criteria: { sectionId: string; userId: string; digest: string; fileName: string; title: string }) {
+    const [match] = await executor
+      .select({ activity: activities, document: courseDocuments })
+      .from(courseDocuments)
+      .innerJoin(activities, eq(activities.id, courseDocuments.activityId))
+      .where(
+        and(
+          eq(activities.sectionId, criteria.sectionId),
+          eq(activities.type, 'file'),
+          eq(activities.title, criteria.title),
+          eq(courseDocuments.uploadedByUserId, criteria.userId),
+          eq(courseDocuments.sha256, criteria.digest),
+          eq(courseDocuments.fileName, criteria.fileName),
+          sql`${courseDocuments.createdAt} > now() - make_interval(secs => ${config.documents.uploadReplayWindowMs / 1000})`,
+        ),
+      )
+      .orderBy(desc(courseDocuments.createdAt))
+      .limit(1);
+    if (!match) return null;
+    const pointer = readDocumentConfig(match.activity.config);
+    if (!pointer || pointer.documentId !== match.document.id) return null;
+    return { activity: match.activity, document: match.document, summary: await loadSummary(executor, match.document.id, pointer.summaryId) };
+  }
+
+  /**
    * The document version a caller may read: staff the working copy, students only the approved copy of approved,
    * visible documents in open sections (else 404 or 403 SECTION_LOCKED, as for any content).
    */
@@ -181,7 +250,7 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
 
   app.post<{ Params: SectionParams }>(
     '/courses/:id/sections/:sectionId/documents',
-    { ...authenticatedWrite, schema: { params: courseSectionParamsSchema, response: { 201: documentDetailSchema } } },
+    { ...authenticatedWrite, schema: { params: courseSectionParamsSchema, response: { 200: documentDetailSchema, 201: documentDetailSchema } } },
     async (request, reply) => {
       const access = await courseAccess(request, request.params.id);
       requirePermission(access, 'content.edit');
@@ -231,11 +300,51 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
       // stored: no document, activity, stored file or upload audit is ever created from incomplete bytes (AP-SEC-02).
       const limitMb = Math.round(config.documents.maxUploadBytes / (1024 * 1024));
       const bytes = await readUploadedFile(part, () => reject('PAYLOAD_TOO_LARGE', `The file exceeds the ${limitMb} MB upload limit.`, null));
+      const digest = sha256(bytes);
+
+      // AP-SEC-05A: from here, the upload has `uploadTimeoutMs` to answer, below the web proxy's own timeout. Waiting
+      // stages are capped by the budget and stop when the client disconnects; nothing is stored once either happened.
+      const budget = new UploadBudget(config.documents.uploadTimeoutMs, config.documents.uploadReserveMs, reply.raw);
+      const replayCriteria = { sectionId: section.id, userId: user.id, digest, fileName, title };
+      const replayed = async (found: UploadReplay['found'], stage: 'before_processing' | 'before_commit') => {
+        request.log.info({ courseId: access.course.id, sectionId: section.id, documentId: found.document.id, stage }, 'Upload repeated a document just created from the same file: the existing document was returned');
+        await recordAudit(db, request, {
+          action: 'document.upload_replayed',
+          entityType: 'document',
+          entityId: found.document.id,
+          before: null,
+          after: { courseId: access.course.id, sectionId: section.id, activityId: found.activity.id, fileName, byteSize: bytes.length, sha256: digest, stage },
+        });
+        return reply.code(200).send(toDetail(access.course.id, found.activity.id, found.document, found.summary, null));
+      };
+      /** Before storing: a client that went away, or an exhausted budget, ends the upload with nothing stored. */
+      const checkpoint = async (stage: string) => {
+        const state = budget.state();
+        if (state === 'ok') return;
+        if (state === 'client_gone') {
+          request.log.warn({ courseId: access.course.id, sectionId: section.id, stage }, 'Upload abandoned: the client disconnected before the document was stored; nothing was stored');
+          await recordAudit(db, request, {
+            action: 'document.upload_abandoned',
+            entityType: 'section',
+            entityId: section.id,
+            before: null,
+            after: { courseId: access.course.id, fileName, byteSize: bytes.length, stage },
+          });
+          throw new ApiProblem(499, 'UPLOAD_CANCELLED', 'The upload was cancelled before the document was stored; nothing was saved.');
+        }
+        request.log.error({ courseId: access.course.id, sectionId: section.id, stage, uploadTimeoutMs: config.documents.uploadTimeoutMs }, 'Upload refused: processing did not finish within the upload time budget; nothing was stored');
+        throw await reject('UPLOAD_TIMEOUT', 'Processing the file took too long, so it was not uploaded. Try again later.', bytes.length, { stage });
+      };
+
+      // A retry of an upload that was stored although its response never arrived (a timeout, a lost connection) gets
+      // that document back, without being processed or stored again.
+      const earlier = await findReplay(db, replayCriteria);
+      if (earlier) return replayed(earlier, 'before_processing');
 
       // AP-040E: the complete file is scanned before it is parsed or stored. Infected files are always refused; a file
       // that could not be verified is refused in strict mode, and kept as `not_scanned` (never clean) otherwise.
       const scanStarted = Date.now();
-      const result = await scanner.scan(bytes, { fileName, format });
+      const result = await scanWithin(scanner, bytes, { fileName, format }, { deadline: budget.stageDeadline(config.malwareScanning.timeoutMs), signal: budget.signal });
       const scan = decideScan(result, config.malwareScanning.enforcement);
       // Diagnostics only: ids, outcome and timing; never the file's name, content or storage key.
       const scanLog = {
@@ -260,11 +369,23 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
           malwareScan: { scanner: scan.scanner, status: scan.status, reason: scan.reason },
         });
       }
+      await checkpoint('scan');
       if (result.status !== 'clean' && result.status !== 'not_scanned') request.log.warn(scanLog, 'Upload accepted without a malware verdict (compatibility enforcement): recorded as not_scanned');
-      const extraction = await extractInWorker(bytes, format, config.documents.extractionTimeoutMs);
+      let extraction: Awaited<ReturnType<typeof extractInWorker>>;
+      try {
+        extraction = await extract(bytes, format, budget.stageTimeout(config.documents.extractionTimeoutMs), budget.signal);
+      } catch (error) {
+        if (error instanceof ExtractionAborted) await checkpoint('extraction');
+        throw error;
+      }
+      // An extraction cut short by the budget is reported as the budget's timeout, not as a problem with the file.
+      await checkpoint('extraction');
       if (!extraction.ok) throw await reject(extraction.code, extraction.message, bytes.length);
       const summary = await provider.summarize({ segments: extraction.segments, revision: 1 });
-      const digest = sha256(bytes);
+
+      // The point of no return: storing starts only now, and then completes even if the client disconnects.
+      await checkpoint('before_storage');
+      budget.commit();
 
       // Store the original only after it passed validation. AP-040R2: its key is journaled, with a lease, before the file
       // is written, so a file left by a crash or a failed clean-up is never untraceable: storage recovery removes it once
@@ -311,6 +432,10 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
           // Lock the section so concurrent additions get distinct positions.
           const [locked] = await tx.select({ id: sections.id }).from(sections).where(eq(sections.id, section.id)).for('update');
           if (!locked) throw notFound('Section');
+          // AP-SEC-05A: under the section lock, the same upload committed meanwhile (a retry that overlapped the first
+          // attempt) is returned instead of being created twice.
+          const meanwhile = await findReplay(tx, replayCriteria);
+          if (meanwhile) throw new UploadReplay(meanwhile);
           const [{ last } = { last: null }] = await tx
             .select({ last: max(activities.position) })
             .from(activities)
@@ -396,9 +521,13 @@ export const documentRoutes: FastifyPluginAsync<DocumentRouteOptions> = async (a
           });
           return toDetail(access.course.id, activity.id, document, summaryRow, null);
         });
+        if (budget.clientGone) {
+          request.log.warn({ courseId: access.course.id, sectionId: section.id, documentId: detail.document.id }, 'Upload stored, but the client disconnected before the response: a retry of the same file returns this document');
+        }
         return reply.code(201).send(detail);
       } catch (error) {
-        await discard('transaction_failed');
+        await discard(error instanceof UploadReplay ? 'replayed' : 'transaction_failed');
+        if (error instanceof UploadReplay) return replayed(error.found, 'before_commit');
         throw error;
       }
     },

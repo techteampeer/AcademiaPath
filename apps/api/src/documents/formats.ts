@@ -37,7 +37,9 @@ export type RejectionCode =
   | 'DOCUMENT_LIMITS_EXCEEDED'
   | 'MALWARE_DETECTED'
   /** AP-040E strict enforcement: the file could not be verified clean (scanner unavailable, timed out or failed). */
-  | 'MALWARE_SCAN_UNAVAILABLE';
+  | 'MALWARE_SCAN_UNAVAILABLE'
+  /** AP-SEC-05A: processing did not finish within the upload's time budget; nothing was stored. */
+  | 'UPLOAD_TIMEOUT';
 
 export const REJECTION_STATUS: Record<RejectionCode, number> = {
   UNSUPPORTED_FILE_TYPE: 415,
@@ -47,6 +49,7 @@ export const REJECTION_STATUS: Record<RejectionCode, number> = {
   DOCUMENT_LIMITS_EXCEEDED: 422,
   MALWARE_DETECTED: 422,
   MALWARE_SCAN_UNAVAILABLE: 503,
+  UPLOAD_TIMEOUT: 503,
 };
 
 /** A file that is refused, with a client-safe explanation. */
