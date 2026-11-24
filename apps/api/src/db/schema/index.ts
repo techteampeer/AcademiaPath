@@ -15,3 +15,4 @@ export * from './communications.js';
 export * from './messaging.js';
 export * from './groups.js';
 export * from './forums.js';
+export * from './storage-recovery.js';

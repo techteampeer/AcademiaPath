@@ -503,4 +503,45 @@ describe('storage crash recovery (AP-040R, PostgreSQL)', { skip: testServerUrl ?
     await recover();
     await assertClean('dry run');
   });
+
+  it('AP-OPS-01: a removal the store does not reflect keeps the entry, flagged for review', async () => {
+    const keys = await abandonedWrites(1);
+    const events = (await recoveryEvents()).length;
+    // A store that reports the removal as done but still shows the file (a stale or inconsistent view).
+    const unreflected: RecoveryStorage = { exists: (key) => local.exists(key), remove: async () => undefined };
+    const report = await recover(unreflected);
+    assert.deepEqual(actions(report), ['failed']);
+    assert.equal(report.entries[0]!.errorCode, 'STILL_PRESENT');
+    assert.deepEqual(report.incompleteReasons, ['failures']);
+    assert.ok((await files()).includes(keys[0]!), 'the file is still there');
+    assert.deepEqual(
+      (await intents()).map((row) => [row.storage_key, row.attempts, row.last_error]),
+      [[keys[0], 1, 'STILL_PRESENT']],
+      'and still journaled, never forgotten',
+    );
+    const [event] = (await recoveryEvents()).slice(events);
+    assert.deepEqual([event!.action, event!.metadata.after.errorCode], ['storage.write_recovery_failed', 'STILL_PRESENT']);
+    assert.deepEqual(actions(await recover()), ['file_removed'], 'a store that reflects the removal finishes it');
+    await assertClean('unreflected removal');
+  });
+
+  it('AP-OPS-01: a store that shows none of the documents’ files is not trusted: nothing is planned, removed or forgotten', async () => {
+    assert.ok(Number((await q<{ n: string }>('SELECT count(*) AS n FROM course_documents'))[0]!.n) > 0, 'documents refer to stored files');
+    const keys = await abandonedWrites(2);
+    const events = (await recoveryEvents()).length;
+    const journal = await intents();
+    // An empty directory, as an unmounted bucket looks; or a store that answers "missing" for everything.
+    for (const elsewhere of [new LocalDocumentStorage(join(root, 'not-the-bucket')), { exists: async () => false, remove: async () => undefined } satisfies RecoveryStorage]) {
+      for (const report of [await plan(elsewhere), await recover(elsewhere)]) {
+        assert.equal(report.status, 'incomplete');
+        assert.deepEqual(report.incompleteReasons, ['storage_unverified']);
+        assert.deepEqual(report.entries, [], `${report.mode}: nothing planned or done`);
+      }
+    }
+    assert.deepEqual(await intents(), journal, 'every entry kept as it was');
+    assert.deepEqual((await files()).filter((name) => keys.includes(name)).sort(), [...keys].sort(), 'every file kept');
+    assert.equal((await recoveryEvents()).length, events, 'no audit event');
+    assert.deepEqual(actions(await recover()), ['file_removed', 'file_removed'], 'the real store is trusted');
+    await assertClean('unverified store');
+  });
 });

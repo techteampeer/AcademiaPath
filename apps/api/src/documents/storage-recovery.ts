@@ -1,4 +1,4 @@
-import { and, asc, eq, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, lte, sql } from 'drizzle-orm';
 import { recordAuditAs } from '../audit.js';
 import type { Database } from '../db/client.js';
 import { courseDocuments, documentStorageIntents } from '../db/schema/index.js';
@@ -16,6 +16,12 @@ import type { DocumentStorage } from './storage.js';
  * - otherwise the file is removed (one already missing is fine) and then the entry is deleted, in the same commit as an
  *   audit event. A crash in between leaves the entry, and the next run finds the file already missing.
  * - a removal that fails keeps the entry, counts the attempt and records the error code, with a failure audit event.
+ *   So does a removal the store does not reflect (the file still shows afterwards: `STILL_PRESENT`), so that a file
+ *   that may still exist is never forgotten (AP-OPS-01).
+ *
+ * Before anything is planned or done, the store must show at least one of the files that documents refer to. A store
+ * that shows none of them (an unmounted bucket, a wrong directory or bucket) would make every journaled file look
+ * already removed; such a run changes nothing and reports `storage_unverified` (AP-OPS-01).
  *
  * Nothing else is ever removed: files that were never journaled (written before the journal existed) are only reported
  * by the read-only storage audit. Audit events and stored errors hold no storage keys, file
@@ -50,7 +56,7 @@ export type RecoveryReport = {
   startedAt: string;
   finishedAt: string;
   status: 'complete' | 'incomplete';
-  incompleteReasons: Array<'interrupted' | 'failures' | 'database_error' | 'limit_reached'>;
+  incompleteReasons: Array<'interrupted' | 'failures' | 'database_error' | 'limit_reached' | 'storage_unverified'>;
   counts: Record<'journaled' | 'active' | 'abandoned', number> & Partial<Record<ProposedAction | RecoveryOutcome, number>>;
   entries: RecoveryEntry[];
 };
@@ -62,7 +68,7 @@ export type RecoveryOptions = {
 };
 
 type Deps = { db: Database; storage: RecoveryStorage };
-type Listed = typeof documentStorageIntents.$inferSelect & { expired: boolean; referenced: boolean };
+export type Listed = typeof documentStorageIntents.$inferSelect & { expired: boolean; referenced: boolean };
 
 const SAFE_CODE = /^[A-Z][A-Z0-9_]{0,39}$/;
 /** An error's code (`EIO`, `ENOSPC`…) when it has a plain one, else UNKNOWN: messages can hold paths. */
@@ -119,7 +125,7 @@ function add(report: RecoveryReport, entry: RecoveryEntry) {
 }
 
 /** The journal, oldest first, with the lease judged by the database clock (one clock for every writer and recoverer). */
-async function listJournal(db: Pick<Database, 'select'>, limit: number): Promise<Listed[]> {
+export async function listJournal(db: Pick<Database, 'select'>, limit: number): Promise<Listed[]> {
   const t = documentStorageIntents;
   return db
     .select({
@@ -142,6 +148,17 @@ async function listJournal(db: Pick<Database, 'select'>, limit: number): Promise
     .limit(limit + 1);
 }
 
+/**
+ * Whether the store can be trusted to say "missing" (AP-OPS-01): it must show at least one of the files that the most
+ * recent documents refer to. With no documents yet there is nothing to check against.
+ */
+async function storageWitness(db: Pick<Database, 'select'>, storage: RecoveryStorage): Promise<'verified' | 'no_documents' | 'unverified'> {
+  const sample = await db.select({ storageKey: courseDocuments.storageKey }).from(courseDocuments).orderBy(desc(courseDocuments.createdAt)).limit(3);
+  if (!sample.length) return 'no_documents';
+  for (const { storageKey } of sample) if (await storage.exists(storageKey)) return 'verified';
+  return 'unverified';
+}
+
 /** Dry run: what recovery would do now. Reads only (a READ ONLY transaction); never touches a file or a row. */
 export async function planStorageRecovery(deps: Deps, options: RecoveryOptions = {}): Promise<RecoveryReport> {
   const report = newReport('dry_run');
@@ -149,6 +166,7 @@ export async function planStorageRecovery(deps: Deps, options: RecoveryOptions =
   try {
     await deps.db.transaction(
       async (tx) => {
+        if ((await storageWitness(tx, deps.storage)) === 'unverified') return incomplete(report, 'storage_unverified');
         const rows = await listJournal(tx, limit);
         if (rows.length > limit) incomplete(report, 'limit_reached');
         for (const row of rows.slice(0, limit)) {
@@ -186,6 +204,10 @@ export async function recoverAbandonedStorageWrites(deps: Deps, options: Recover
   const t = documentStorageIntents;
   let rows: Listed[];
   try {
+    if ((await storageWitness(deps.db, deps.storage)) === 'unverified') {
+      incomplete(report, 'storage_unverified');
+      return finish(report);
+    }
     rows = await listJournal(deps.db, limit);
   } catch {
     incomplete(report, 'database_error');
@@ -225,6 +247,8 @@ export async function recoverAbandonedStorageWrites(deps: Deps, options: Recover
           existed = await deps.storage.exists(row.storageKey);
           // Removal is the authority: it succeeds for a missing file and fails for one it cannot remove.
           await deps.storage.remove(row.storageKey);
+          // ...and it must show: a file still present afterwards keeps its entry, flagged for review (AP-OPS-01).
+          if (await deps.storage.exists(row.storageKey)) throw Object.assign(new Error('The file is still present after its removal'), { code: 'STILL_PRESENT' });
         } catch (error) {
           const errorCode = errorCodeOf(error);
           await tx
