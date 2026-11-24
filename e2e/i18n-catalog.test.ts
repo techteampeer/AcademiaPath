@@ -65,6 +65,14 @@ describe('interface catalogs', () => {
     const missing = codes.filter((code) => !MESSAGES.es.errors.codes[code] || !MESSAGES.en.errors.codes[code]).sort();
     assert.deepEqual(missing, []);
   });
+
+  it('the upload time-budget refusals (AP-SEC-05A) have their own English and Spanish descriptions', () => {
+    assert.ok(Object.keys(REJECTION_STATUS).includes('UPLOAD_TIMEOUT'));
+    for (const code of ['UPLOAD_TIMEOUT', 'UPLOAD_CANCELLED']) {
+      const [en, es] = [MESSAGES.en.errors.codes[code], MESSAGES.es.errors.codes[code]];
+      assert.ok(en && es && en !== es, `${code}: English and Spanish descriptions`);
+    }
+  });
 });
 
 /**

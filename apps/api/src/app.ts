@@ -207,6 +207,7 @@ export function buildApp({ config, database, logger = false, documents = {}, clo
     storage: documentStorage,
     scanner: malwareScanner,
     provider: documents.provider ?? mockSummaryProvider,
+    ...(documents.extract ? { extract: documents.extract } : {}),
   });
 
   return app;

@@ -1193,6 +1193,16 @@ export interface paths {
          *     recorded as `not_scanned` in compatibility mode, or refused with `503 MALWARE_SCAN_UNAVAILABLE` in strict mode.
          *     A document is `clean` only after a verified clean scan. Refusals are audited as `document.upload_rejected`;
          *     nothing is stored.
+         *
+         *     Time budget and retries (AP-SEC-05A): once the file has arrived, the upload is answered within
+         *     `DOCUMENT_UPLOAD_TIMEOUT_SECONDS` (25 s by default), below the web proxy's timeout. Scanning and extraction are
+         *     capped by it; when it runs out before storing starts, the upload is refused with `503 UPLOAD_TIMEOUT` and nothing
+         *     is stored. A client that disconnects before storing starts ends the upload with nothing stored (audited as
+         *     `document.upload_abandoned`). Once storing has started, the upload completes even if the client has gone: a
+         *     disconnect never undoes a committed document. Repeating an upload of the same file, with the same name and
+         *     title, to the same section within 10 minutes of a successful one (for example after a timeout or a lost
+         *     response) creates nothing new: the existing document is returned with `200` (audited as
+         *     `document.upload_replayed`).
          */
         post: operations["uploadSectionDocument"];
         delete?: never;
@@ -9435,6 +9445,19 @@ export interface operations {
             };
         };
         responses: {
+            /**
+             * @description The same upload already succeeded within the last 10 minutes (same user, section, file content, file name
+             *     and title): that document is returned, and nothing new is created.
+             */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
             /** @description Document stored and extracted; summary revision 1 created. */
             201: {
                 headers: {
@@ -9453,9 +9476,10 @@ export interface operations {
             415: components["responses"]["UnsupportedMediaType"];
             422: components["responses"]["UnprocessableContent"];
             /**
-             * @description Nothing was created. Document storage cannot be used right now (`DOCUMENT_STORAGE_UNAVAILABLE`), or, with
+             * @description Nothing was created. Document storage cannot be used right now (`DOCUMENT_STORAGE_UNAVAILABLE`); with
              *     strict malware-scan enforcement, the file could not be verified by the scanner
-             *     (`MALWARE_SCAN_UNAVAILABLE`). The request can be retried later.
+             *     (`MALWARE_SCAN_UNAVAILABLE`); or processing did not finish within the upload time budget
+             *     (`UPLOAD_TIMEOUT`). The request can be retried later.
              */
             503: {
                 headers: {

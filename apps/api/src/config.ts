@@ -51,6 +51,22 @@ export type AppConfig = {
     /** Hard limit for validating and extracting one document (the worker is terminated after it). */
     extractionTimeoutMs: number;
     /**
+     * AP-SEC-05A: the time one document upload may take once its body has arrived (`DOCUMENT_UPLOAD_TIMEOUT_SECONDS`,
+     * default 25 s). The web app's proxy gives up on a silent API after `API_PROXY_TIMEOUT_SECONDS` (default 30 s;
+     * apps/web/next.config.ts), so this stays at least 5 s below it. Scanning, waiting for an extraction slot and
+     * extraction are capped by it; storing starts only while `uploadReserveMs` of it is left, so the API answers
+     * (success or a clean refusal) before the proxy times out. See routes/documents.ts.
+     */
+    uploadTimeoutMs: number;
+    /** Kept free in `uploadTimeoutMs` for storing the file and committing the document (4 s; not configurable). */
+    uploadReserveMs: number;
+    /**
+     * A repeated upload of the same file, with the same name and title, by the same user to the same section within this
+     * window (10 minutes; not configurable) returns the document already created instead of a duplicate: a retry after a
+     * timeout or a lost response. See routes/documents.ts.
+     */
+    uploadReplayWindowMs: number;
+    /**
      * AP-040B storage readiness (`DOCUMENT_STORAGE_MOUNT_CHECK`): `off` (default outside production), `report`
      * (default in production: checked and reported, never blocking) or `enforce` (the storage directory must be a
      * mount point; the API does not start otherwise). See documents/readiness.ts.
@@ -177,6 +193,30 @@ function parseMalwareScanning(env: NodeJS.ProcessEnv, maxUploadBytes: number): A
   };
 }
 
+/** Kept free for storing the file and committing the document once processing ends (AP-SEC-05A). */
+const UPLOAD_RESERVE_MS = 4_000;
+/** How long a repeated identical upload returns the document already created (AP-SEC-05A). */
+const UPLOAD_REPLAY_WINDOW_MS = 10 * 60_000;
+
+/**
+ * AP-SEC-05A: the upload budget must hold every stage that can run in it, one after the other: the scan (when a scanner
+ * is configured), extraction, and the time reserved for storing. Otherwise uploads could only end in timeouts; the API
+ * refuses to start instead. Raising it also needs the web proxy's API_PROXY_TIMEOUT_SECONDS raised (5 s above it).
+ */
+function parseUploadTimeout(env: NodeJS.ProcessEnv, extractionTimeoutMs: number, scanning: AppConfig['malwareScanning']): number {
+  const uploadTimeoutMs = readPositiveInt(env, 'DOCUMENT_UPLOAD_TIMEOUT_SECONDS', 25, 270) * 1000;
+  if (uploadTimeoutMs < 5_000) throw new Error('DOCUMENT_UPLOAD_TIMEOUT_SECONDS must be at least 5');
+  const scanMs = scanning.scanner === 'clamd' ? scanning.timeoutMs : 0;
+  const neededMs = scanMs + extractionTimeoutMs + UPLOAD_RESERVE_MS;
+  if (neededMs > uploadTimeoutMs) {
+    const parts = [scanMs ? `MALWARE_SCAN_TIMEOUT_SECONDS (${scanMs / 1000})` : null, `DOCUMENT_EXTRACTION_TIMEOUT_SECONDS (${extractionTimeoutMs / 1000})`, `${UPLOAD_RESERVE_MS / 1000} s for storing`].filter(Boolean);
+    throw new Error(
+      `DOCUMENT_UPLOAD_TIMEOUT_SECONDS (${uploadTimeoutMs / 1000}) must be at least ${parts.join(' + ')} = ${neededMs / 1000}; raise it together with the web proxy's API_PROXY_TIMEOUT_SECONDS (at least 5 s more)`,
+    );
+  }
+  return uploadTimeoutMs;
+}
+
 function parseStorageDir(raw: string | undefined, isProduction: boolean): string {
   const value = raw?.trim();
   if (!value && isProduction) throw new Error('DOCUMENT_STORAGE_DIR must be set in production');
@@ -278,6 +318,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const allowedOrigins = parseOrigins(originsRaw || DEFAULT_DEV_ORIGIN);
   const invitationDelivery = parseInvitationDelivery(env.ACCOUNT_INVITATION_DELIVERY, isProduction);
   const maxUploadBytes = readPositiveInt(env, 'DOCUMENT_MAX_UPLOAD_MB', 10, 100) * 1024 * 1024;
+  const extractionTimeoutMs = readPositiveInt(env, 'DOCUMENT_EXTRACTION_TIMEOUT_SECONDS', 20, 300) * 1000;
+  const malwareScanning = parseMalwareScanning(env, maxUploadBytes);
+  const uploadTimeoutMs = parseUploadTimeout(env, extractionTimeoutMs, malwareScanning);
 
   return {
     isProduction,
@@ -308,12 +351,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     documents: {
       storageDir: parseStorageDir(env.DOCUMENT_STORAGE_DIR, isProduction),
       maxUploadBytes,
-      extractionTimeoutMs: readPositiveInt(env, 'DOCUMENT_EXTRACTION_TIMEOUT_SECONDS', 20, 300) * 1000,
+      extractionTimeoutMs,
+      uploadTimeoutMs,
+      uploadReserveMs: UPLOAD_RESERVE_MS,
+      uploadReplayWindowMs: UPLOAD_REPLAY_WINDOW_MS,
       mountCheck: parseMountCheck(env.DOCUMENT_STORAGE_MOUNT_CHECK, isProduction),
       createStorageDir: !isProduction,
     },
     archiveImport: { enabled: parseArchiveImportEnabled(env.ARCHIVE_IMPORT_ENABLED, isProduction) },
-    malwareScanning: parseMalwareScanning(env, maxUploadBytes),
+    malwareScanning,
     institution: {
       timeZone: parseTimeZone(env.INSTITUTION_TIME_ZONE),
     },

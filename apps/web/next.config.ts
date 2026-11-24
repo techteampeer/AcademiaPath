@@ -30,6 +30,21 @@ function proxyBodyLimitBytes(): number {
 }
 
 /**
+ * AP-SEC-05A: how long the proxy waits for the API to send anything once a request was forwarded. Next.js applies it as
+ * an inactivity timeout on the connection to the API (`proxyTimeout || 30000` in its rewrite proxy, Next.js 16), then
+ * answers `500` and drops that connection. It is set explicitly from `API_PROXY_TIMEOUT_SECONDS` (default 30, the
+ * value Next.js used implicitly). The API answers document uploads within DOCUMENT_UPLOAD_TIMEOUT_SECONDS (default 25),
+ * which must stay at least 5 s below this; raise both together (see apps/api/src/config.ts).
+ */
+function proxyTimeoutMs(): number {
+  const raw = process.env.API_PROXY_TIMEOUT_SECONDS?.trim();
+  if (!raw) return 30_000;
+  const seconds = Number(raw);
+  if (!Number.isInteger(seconds) || seconds < 10 || seconds > 290) throw new Error('API_PROXY_TIMEOUT_SECONDS must be an integer between 10 and 290');
+  return seconds * 1000;
+}
+
+/**
  * Baseline browser protections for the web app's pages and assets: no MIME-type sniffing, only the origin
  * (never the full URL) as the referrer to other sites, and no framing by any site (clickjacking). The
  * Content-Security-Policy carries only `frame-ancestors`; it does not restrict scripts, styles or connections.
@@ -46,6 +61,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   experimental: {
     proxyClientMaxBodySize: proxyBodyLimitBytes(),
+    proxyTimeout: proxyTimeoutMs(),
   },
   async headers() {
     // Proxied API responses (/api/*) keep the headers the API sets, including the stricter

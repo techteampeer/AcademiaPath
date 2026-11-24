@@ -1,5 +1,5 @@
 import { createConnection } from 'node:net';
-import type { MalwareScanner, MalwareScanResult, ScanFailureReason } from './scanner.js';
+import type { MalwareScanner, MalwareScanResult, ScanFailureReason, ScanOptions } from './scanner.js';
 
 /**
  * AP-040E: malware scanning with a ClamAV daemon (clamd), over its documented socket protocol.
@@ -62,6 +62,7 @@ export function parseClamdReply(reply: string): MalwareScanResult {
 }
 
 export class ClamdScanner implements MalwareScanner {
+  readonly name = CLAMD_SCANNER_NAME;
   private active = 0;
   private readonly waiting: Array<() => void> = [];
   private readonly chunkBytes: number;
@@ -71,14 +72,16 @@ export class ClamdScanner implements MalwareScanner {
     this.chunkBytes = options.chunkBytes ?? 64 * 1024;
   }
 
-  async scan(bytes: Uint8Array): Promise<MalwareScanResult> {
+  /** AP-SEC-05A: the scan also ends at the caller's `deadline` (if earlier than its own) or when `signal` aborts. */
+  async scan(bytes: Uint8Array, _file?: unknown, options: ScanOptions = {}): Promise<MalwareScanResult> {
     if (bytes.length > this.options.maxBytes) return failure('error', 'file_too_large');
-    const deadline = Date.now() + this.options.timeoutMs;
-    if (!(await this.acquire(deadline))) return failure('timeout', 'deadline');
+    const deadline = Math.min(Date.now() + this.options.timeoutMs, options.deadline ?? Number.POSITIVE_INFINITY);
+    if (options.signal?.aborted) return failure('timeout', 'deadline');
+    if (!(await this.acquire(deadline, options.signal))) return failure('timeout', 'deadline');
     try {
       // A slot freed just at the deadline is of no use: do not open a connection that cannot finish.
-      if (Date.now() >= deadline) return failure('timeout', 'deadline');
-      return await this.instream(bytes, deadline);
+      if (Date.now() >= deadline || options.signal?.aborted) return failure('timeout', 'deadline');
+      return await this.instream(bytes, deadline, options.signal);
     } finally {
       this.release();
     }
@@ -90,24 +93,26 @@ export class ClamdScanner implements MalwareScanner {
     return reply.kind === 'reply' && reply.text === 'PONG';
   }
 
-  private acquire(deadline: number): Promise<boolean> {
+  private acquire(deadline: number, signal?: AbortSignal): Promise<boolean> {
     if (this.active < this.options.maxConcurrent) {
       this.active += 1;
       return Promise.resolve(true);
     }
     return new Promise((resolve) => {
+      const giveUp = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', giveUp);
+        const index = this.waiting.indexOf(grant);
+        if (index !== -1) this.waiting.splice(index, 1);
+        resolve(false);
+      };
       const grant = () => {
         clearTimeout(timer);
+        signal?.removeEventListener('abort', giveUp);
         resolve(true);
       };
-      const timer = setTimeout(
-        () => {
-          const index = this.waiting.indexOf(grant);
-          if (index !== -1) this.waiting.splice(index, 1);
-          resolve(false);
-        },
-        Math.max(0, deadline - Date.now()),
-      );
+      const timer = setTimeout(giveUp, Math.max(0, deadline - Date.now()));
+      signal?.addEventListener('abort', giveUp, { once: true });
       this.waiting.push(grant);
     });
   }
@@ -119,7 +124,7 @@ export class ClamdScanner implements MalwareScanner {
     else this.active -= 1;
   }
 
-  private async instream(bytes: Uint8Array, deadline: number): Promise<MalwareScanResult> {
+  private async instream(bytes: Uint8Array, deadline: number, signal?: AbortSignal): Promise<MalwareScanResult> {
     const chunks: Uint8Array[] = [COMMAND];
     for (let offset = 0; offset < bytes.length; offset += this.chunkBytes) {
       const chunk = bytes.subarray(offset, Math.min(offset + this.chunkBytes, bytes.length));
@@ -128,7 +133,7 @@ export class ClamdScanner implements MalwareScanner {
       chunks.push(header, chunk);
     }
     chunks.push(END_OF_STREAM);
-    const outcome = await this.exchange(chunks, deadline);
+    const outcome = await this.exchange(chunks, deadline, signal);
     switch (outcome.kind) {
       case 'reply':
         return parseClamdReply(outcome.text);
@@ -147,7 +152,11 @@ export class ClamdScanner implements MalwareScanner {
    * Sends `request` on a new connection (respecting backpressure) and waits for one NUL-terminated answer. The answer
    * may arrive before everything was sent (clamd answers at once when a stream exceeds its limit, then closes).
    */
-  private exchange(request: Uint8Array | Uint8Array[], deadline: number): Promise<{ kind: 'reply'; text: string } | { kind: 'unreachable' | 'timeout' | 'interrupted' | 'invalid' }> {
+  private exchange(
+    request: Uint8Array | Uint8Array[],
+    deadline: number,
+    signal?: AbortSignal,
+  ): Promise<{ kind: 'reply'; text: string } | { kind: 'unreachable' | 'timeout' | 'interrupted' | 'invalid' }> {
     const parts = Array.isArray(request) ? request : [request];
     return new Promise((resolve) => {
       const endpoint = this.options.endpoint;
@@ -159,10 +168,14 @@ export class ClamdScanner implements MalwareScanner {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
         socket.destroy();
         resolve(outcome);
       };
       const timer = setTimeout(() => finish({ kind: 'timeout' }), Math.max(0, deadline - Date.now()));
+      // The caller stopped waiting (its time budget ran out or its client went away): close the connection now.
+      const onAbort = () => finish({ kind: 'timeout' });
+      signal?.addEventListener('abort', onAbort, { once: true });
       const write = (data: Uint8Array) =>
         new Promise<boolean>((done) => {
           if (settled || socket.destroyed) return done(false);
