@@ -17,6 +17,7 @@ import { courseArchiveConfirmRoutes } from './routes/course-archive-confirm.js';
 import { documentRoutes, type DocumentRouteOptions } from './routes/documents.js';
 import { ClamdScanner } from './documents/clamd.js';
 import { noMalwareScanner, type MalwareScanner } from './documents/scanner.js';
+import { describeSignatures, type SignatureFreshness } from './documents/signature-freshness.js';
 import { isMountPoint as detectMountPoint } from './documents/mounts.js';
 import { checkStorageReadiness } from './documents/readiness.js';
 import { LocalDocumentStorage } from './documents/storage.js';
@@ -84,6 +85,31 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
   return Promise.race([promise, expired]).finally(() => clearTimeout(timer));
 }
 
+/** AP-SEC-05B: how often an unchanged aging, stale or unknown signature state is logged again (per API instance). */
+const SIGNATURE_LOG_REPEAT_MS = 60 * 60_000;
+
+/**
+ * AP-SEC-05B: logs the state of clamd's loaded signatures when it changes, and repeats a warning or error at most once
+ * an hour while it lasts (checks run at most about once a minute under load, so this keeps the log quiet). Only the
+ * state, age, database version and build time: never connection details or document data.
+ */
+function signatureLogger(app: { log: { info: LogFn; warn: LogFn; error: LogFn } }, enforcement: 'compatibility' | 'strict', clock: () => Date) {
+  let last: { key: string; at: number } | null = null;
+  return (freshness: SignatureFreshness) => {
+    const key = freshness.state === 'unknown' ? `unknown:${freshness.reason}` : freshness.state;
+    const now = clock().getTime();
+    if (last && last.key === key && (freshness.state === 'current' || (now - last.at >= 0 && now - last.at < SIGNATURE_LOG_REPEAT_MS))) return;
+    last = { key, at: now };
+    const details = { malwareScanning: { enforcement, signatures: describeSignatures(freshness) } };
+    const unverified = enforcement === 'strict' ? 'new documents are refused until they are updated' : 'new documents are recorded as not_scanned until they are updated';
+    if (freshness.state === 'current') app.log.info(details, 'Malware scanning: clamd signatures are current');
+    else if (freshness.state === 'aging') app.log.warn(details, 'Malware scanning: clamd signatures are aging; check that signature updates are running');
+    else if (freshness.state === 'stale') app.log.error(details, `Malware scanning: clamd signatures are stale; ${unverified}`);
+    else app.log.error(details, `Malware scanning: the age of clamd's signatures cannot be verified; ${unverified.replace('they are updated', 'it can')}`);
+  };
+}
+type LogFn = (details: object, message: string) => void;
+
 export function buildApp({ config, database, logger = false, documents = {}, clock = () => new Date(), isMountPoint = detectMountPoint }: BuildAppOptions) {
   const app = Fastify({
     logger: logger === false ? false : { ...logger, redact: { paths: LOG_REDACT_PATHS, censor: '[REDACTED]' } },
@@ -107,7 +133,14 @@ export function buildApp({ config, database, logger = false, documents = {}, clo
   const scanning = config.malwareScanning;
   const clamd =
     scanning.scanner === 'clamd' && scanning.clamd
-      ? new ClamdScanner({ endpoint: scanning.clamd, timeoutMs: scanning.timeoutMs, maxBytes: scanning.maxBytes, maxConcurrent: scanning.maxConcurrent })
+      ? new ClamdScanner({
+          endpoint: scanning.clamd,
+          timeoutMs: scanning.timeoutMs,
+          maxBytes: scanning.maxBytes,
+          maxConcurrent: scanning.maxConcurrent,
+          // AP-SEC-05B: a clean answer also needs fresh enough loaded signatures, judged by the API server's clock.
+          signatures: { policy: scanning.signatures, now: () => clock().getTime(), onCheck: signatureLogger(app, scanning.enforcement, clock) },
+        })
       : null;
   const malwareScanner: MalwareScanner = documents.scanner ?? clamd ?? noMalwareScanner;
   // Says at startup what protects new documents; checking that clamd answers never delays or stops the API.
@@ -121,6 +154,8 @@ export function buildApp({ config, database, logger = false, documents = {}, clo
       if (reachable) app.log.info(summary, 'Malware scanning: clamd is reachable');
       else if (scanning.enforcement === 'strict') app.log.error(summary, 'Malware scanning: clamd is not reachable; new documents are refused until it is');
       else app.log.warn(summary, 'Malware scanning: clamd is not reachable; new documents are recorded as not_scanned until it is');
+      // AP-SEC-05B: the age of the loaded signatures, logged by signatureLogger.
+      if (reachable) void clamd.checkSignatures(5_000);
     });
   });
 

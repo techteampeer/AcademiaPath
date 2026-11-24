@@ -24,7 +24,7 @@ describe('clamd adapter (AP-040E, synthetic daemon)', () => {
   let daemon: FakeClamd;
   let root: string;
   const scanner = (options: Partial<ClamdOptions> = {}) =>
-    new ClamdScanner({ endpoint: { host: '127.0.0.1', port: daemon.port }, timeoutMs: 2_000, maxBytes: 5 * 1024 * 1024, maxConcurrent: 2, ...options });
+    new ClamdScanner({ endpoint: { host: '127.0.0.1', port: daemon.port }, timeoutMs: 2_000, maxBytes: 5 * 1024 * 1024, maxConcurrent: 2, signatures: null, ...options });
   const clean = makePdf([['Synthetic handout', 'Nothing to see here.']]);
   const infected = makePdf([['Synthetic handout', `Test marker ${EICAR_MARKER_TEXT} inside.`]]);
 
@@ -161,7 +161,7 @@ describe('clamd adapter (AP-040E, synthetic daemon)', () => {
   it('works over a Unix socket, and answers PING', async () => {
     const local = await startFakeClamd({ socketPath: join(root, 'clamd.sock') });
     try {
-      const viaSocket = new ClamdScanner({ endpoint: { socketPath: join(root, 'clamd.sock') }, timeoutMs: 2_000, maxBytes: 1024 * 1024, maxConcurrent: 1 });
+      const viaSocket = new ClamdScanner({ endpoint: { socketPath: join(root, 'clamd.sock') }, timeoutMs: 2_000, maxBytes: 1024 * 1024, maxConcurrent: 1, signatures: null });
       assert.equal((await viaSocket.scan(clean)).status, 'clean');
       assert.equal((await viaSocket.scan(infected)).status, 'infected');
       assert.equal(await viaSocket.ping(), true);

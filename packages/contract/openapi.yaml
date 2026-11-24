@@ -2387,9 +2387,10 @@ paths:
 
         Malware scanning (AP-040E): the complete file is scanned before it is parsed or stored. A detected threat is
         refused with `422 MALWARE_DETECTED`. No scanner is configured by default, and documents are then recorded as
-        `not_scanned`. With a scanner, a file that could not be verified (scanner unavailable, timed out or failed) is
-        recorded as `not_scanned` in compatibility mode, or refused with `503 MALWARE_SCAN_UNAVAILABLE` in strict mode.
-        A document is `clean` only after a verified clean scan. Refusals are audited as `document.upload_rejected`;
+        `not_scanned`. With a scanner, a file that could not be verified (scanner unavailable, timed out or failed, or
+        its loaded signatures stale or of unknown age, AP-SEC-05B) is recorded as `not_scanned` in compatibility mode,
+        or refused with `503 MALWARE_SCAN_UNAVAILABLE` in strict mode. A document is `clean` only after a verified clean
+        scan with signatures less than 7 days old (by default). Refusals are audited as `document.upload_rejected`;
         nothing is stored.
 
         Time budget and retries (AP-SEC-05A): once the file has arrived, the upload is answered within
@@ -9484,9 +9485,10 @@ components:
         malwareScan:
           type: object
           description: |
-            `clean` only after a scanner verified the complete file. `not_scanned` when no scanner is configured
-            (scanner `none`, the default) or, in compatibility mode, when the scan failed (scanner such as
-            `clamd:timeout`). Infected files are never stored.
+            `clean` only after a scanner verified the complete file with fresh enough signatures. `not_scanned` when
+            no scanner is configured (scanner `none`, the default) or, in compatibility mode, when the scan failed or
+            its signatures were stale or of unknown age (scanner such as `clamd:timeout` or `clamd:signatures_stale`).
+            Infected files are never stored.
           required: [status, scanner]
           additionalProperties: false
           properties:

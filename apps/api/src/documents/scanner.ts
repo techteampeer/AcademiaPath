@@ -10,8 +10,21 @@ import type { DocumentFormat } from '../db/schema/index.js';
  * - `file_too_large`: the file is larger than the scanner accepts, so it was not (fully) scanned.
  * - `limits_exceeded`: the scanner stopped at one of its own scan limits (for example nesting depth), so the
  *   file was not fully scanned.
+ * - `signatures_stale` (AP-SEC-05B): the scanner found nothing, but its loaded signatures are older than the stale
+ *   limit, so that is not a verdict.
+ * - `signatures_unverified` (AP-SEC-05B): the scanner found nothing, but the age of its loaded signatures could not be
+ *   established (no answer, no date, an unknown answer or a date in the future), so that is not a verdict.
  */
-export type ScanFailureReason = 'connect_failed' | 'deadline' | 'interrupted' | 'invalid_response' | 'scanner_error' | 'file_too_large' | 'limits_exceeded';
+export type ScanFailureReason =
+  | 'connect_failed'
+  | 'deadline'
+  | 'interrupted'
+  | 'invalid_response'
+  | 'scanner_error'
+  | 'file_too_large'
+  | 'limits_exceeded'
+  | 'signatures_stale'
+  | 'signatures_unverified';
 
 /**
  * The outcome of one scan. Only `clean` means a scanning engine examined the whole file and found nothing;
@@ -65,6 +78,8 @@ export type ScanDecision =
   | { action: 'reject_infected'; scanner: string; signature: string | null }
   | { action: 'refuse_unverified'; scanner: string; status: string; reason: ScanFailureReason | 'not_scanned' };
 
+const SIGNATURE_REASONS: ReadonlySet<ScanFailureReason> = new Set(['signatures_stale', 'signatures_unverified']);
+
 /** The single place that turns a scan result into accept or refuse, for uploads and archive imports alike. */
 export function decideScan(result: MalwareScanResult, enforcement: ScanEnforcement): ScanDecision {
   switch (result.status) {
@@ -79,10 +94,11 @@ export function decideScan(result: MalwareScanResult, enforcement: ScanEnforceme
     case 'unavailable':
     case 'timeout':
     case 'error':
-      // Recorded as `<scanner>:<outcome>` (for example `clamd:timeout`) so staff can see that a scan was attempted.
+      // Recorded as `<scanner>:<outcome>` (for example `clamd:timeout`) so staff can see that a scan was attempted; a
+      // scan that found nothing with stale or unverifiable signatures says so (`clamd:signatures_stale`).
       return enforcement === 'strict'
         ? { action: 'refuse_unverified', scanner: result.scanner, status: result.status, reason: result.reason }
-        : { action: 'accept', status: 'not_scanned', scanner: `${result.scanner}:${result.status}` };
+        : { action: 'accept', status: 'not_scanned', scanner: `${result.scanner}:${SIGNATURE_REASONS.has(result.reason) ? result.reason : result.status}` };
     default: {
       // A result this code does not know is never a verdict.
       const unknown = result as { scanner?: unknown };
