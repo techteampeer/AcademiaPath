@@ -1,8 +1,9 @@
 /**
- * AP-040E: a synthetic ClamAV daemon for tests. It speaks clamd's socket protocol (`zINSTREAM`, `zPING`) on a loopback
- * port or a Unix socket, and can misbehave on purpose: hang, cut the connection, answer with garbage, errors or an
- * unterminated answer. It "detects" only the plain-text part of the EICAR antivirus test string (a harmless, standard
- * test marker), and records what it received so tests can prove the whole file was sent. No real malware is involved.
+ * AP-040E: a synthetic ClamAV daemon for tests. It speaks clamd's socket protocol (`zINSTREAM`, `zPING`, and since
+ * AP-SEC-05B `zVERSION`) on a loopback port or a Unix socket, and can misbehave on purpose: hang, cut the connection,
+ * answer with garbage, errors or an unterminated answer. It "detects" only the plain-text part of the EICAR antivirus
+ * test string (a harmless, standard test marker), and records what it received so tests can prove the whole file was
+ * sent. No real malware is involved.
  */
 import { createHash } from 'node:crypto';
 import { createServer, type Socket } from 'node:net';
@@ -27,6 +28,29 @@ export type FakeClamdBehaviour =
   /** Answer with exactly this text (a NUL terminator is added). */
   | { reply: string };
 
+/**
+ * AP-SEC-05B: what `zVERSION` answers. A function is called for each request (the default reports a daily database
+ * built an hour before the real current time, so tests that do not care about signatures see current ones); a string
+ * is answered as it is; `hang` never answers; `close` closes the connection without an answer.
+ */
+export type FakeClamdVersion = string | (() => string) | 'hang' | 'close';
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const pad = (value: number) => String(value).padStart(2, '0');
+
+/**
+ * clamd's VERSION answer for a daily database built at `builtAt`, as clamd 1.5.4 prints it in UTC (the C `ctime`
+ * format: the day of the month padded with a space), for example `ClamAV 1.5.4/27001/Tue Nov  3 05:07:09 2026`.
+ */
+export function clamdVersionReply(builtAt: Date | number, databaseVersion = 27001, engine = '1.5.4'): string {
+  const t = new Date(builtAt);
+  const date = `${WEEKDAYS[t.getUTCDay()]} ${MONTHS[t.getUTCMonth()]} ${String(t.getUTCDate()).padStart(2, ' ')} ${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}:${pad(t.getUTCSeconds())} ${t.getUTCFullYear()}`;
+  return `ClamAV ${engine}/${databaseVersion}/${date}`;
+}
+
+const currentVersion = () => clamdVersionReply(Date.now() - 60 * 60_000);
+
 export type FakeClamd = {
   port: number;
   socketPath: string | null;
@@ -42,6 +66,10 @@ export type FakeClamd = {
   maxActive: number;
   /** Every completed stream: its size and SHA-256. */
   streams: Array<{ bytes: number; sha256: string }>;
+  /** AP-SEC-05B: the `zVERSION` answer, how long to wait before it (ms), and how many were asked for. */
+  version: FakeClamdVersion;
+  versionDelayMs: number;
+  versionRequests: number;
   /** Connections closed by the client before an answer was sent. */
   abandoned: number;
   reset(): void;
@@ -61,8 +89,11 @@ export async function startFakeClamd(options: { socketPath?: string } = {}): Pro
     maxActive: 0,
     streams: [],
     abandoned: 0,
+    version: currentVersion,
+    versionDelayMs: 0,
+    versionRequests: 0,
     reset() {
-      Object.assign(fake, { behaviour: 'scan', delayMs: 0, connections: 0, scans: 0, active: 0, maxActive: 0, streams: [], abandoned: 0 });
+      Object.assign(fake, { behaviour: 'scan', delayMs: 0, connections: 0, scans: 0, active: 0, maxActive: 0, streams: [], abandoned: 0, version: currentVersion, versionDelayMs: 0, versionRequests: 0 });
     },
     close: () =>
       new Promise<void>((resolve) => {
@@ -119,6 +150,18 @@ export async function startFakeClamd(options: { socketPath?: string } = {}): Pro
         command = buffer.subarray(0, end).toString('latin1');
         buffer = buffer.subarray(end + 1);
         if (command === 'zPING') return answer('PONG\0');
+        if (command === 'zVERSION') {
+          fake.versionRequests += 1;
+          const version = fake.version;
+          const reply = () => {
+            if (socket.destroyed || version === 'hang') return;
+            if (version === 'close') return void socket.destroy();
+            answer(`${typeof version === 'function' ? version() : version}\0`);
+          };
+          if (fake.versionDelayMs) setTimeout(reply, fake.versionDelayMs);
+          else reply();
+          return;
+        }
         if (command !== 'zINSTREAM') return answer('UNKNOWN COMMAND\0');
         scanning = true;
         fake.scans += 1;

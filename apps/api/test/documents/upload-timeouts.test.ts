@@ -502,7 +502,7 @@ describe('waiting stages stop when the upload budget runs out (AP-SEC-05A, unit)
     const daemon = await startFakeClamd();
     try {
       daemon.behaviour = 'hang';
-      const scanner = new ClamdScanner({ endpoint: { host: '127.0.0.1', port: daemon.port }, timeoutMs: 30_000, maxBytes: 1_000_000, maxConcurrent: 1 });
+      const scanner = new ClamdScanner({ endpoint: { host: '127.0.0.1', port: daemon.port }, timeoutMs: 30_000, maxBytes: 1_000_000, maxConcurrent: 1, signatures: null });
       const bytes = Buffer.from('synthetic file');
       let started = Date.now();
       assert.deepEqual(await scanner.scan(bytes, undefined, { deadline: Date.now() + 300 }), { status: 'timeout', scanner: 'clamd', reason: 'deadline' });

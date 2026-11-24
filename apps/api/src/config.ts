@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { ClamdEndpoint } from './documents/clamd.js';
 import type { StorageMountCheck } from './documents/readiness.js';
 import type { ScanEnforcement } from './documents/scanner.js';
+import { validateSignaturePolicy, type SignaturePolicy } from './documents/signature-freshness.js';
 
 export type AppConfig = {
   isProduction: boolean;
@@ -86,6 +87,9 @@ export type AppConfig = {
    * `MALWARE_SCANNER=none` records documents as `not_scanned`, exactly as before. `clamd` scans every file with a local
    * ClamAV daemon (`CLAMD_SOCKET` or a loopback `CLAMD_ADDRESS`). `MALWARE_SCAN_ENFORCEMENT`: `compatibility` (default)
    * accepts files that could not be verified as `not_scanned`; `strict` refuses them. Infected files are always refused.
+   * AP-SEC-05B: `signatures` are the age limits of clamd's loaded signatures (`MALWARE_SIGNATURES_AGING_HOURS`, default
+   * 48, and `MALWARE_SIGNATURES_STALE_HOURS`, default 168): a clean answer with stale or unverifiable signatures is not
+   * a verdict.
    */
   malwareScanning: {
     scanner: 'none' | 'clamd';
@@ -94,6 +98,7 @@ export type AppConfig = {
     timeoutMs: number;
     maxBytes: number;
     maxConcurrent: number;
+    signatures: SignaturePolicy;
   };
   /**
    * The institution (AP-025). `timeZone` is the IANA zone used for calendar dates that have none of their
@@ -190,7 +195,22 @@ function parseMalwareScanning(env: NodeJS.ProcessEnv, maxUploadBytes: number): A
     timeoutMs: readPositiveInt(env, 'MALWARE_SCAN_TIMEOUT_SECONDS', 30, 300) * 1000,
     maxBytes,
     maxConcurrent: readPositiveInt(env, 'MALWARE_SCAN_CONCURRENCY', 2, 16),
+    signatures: parseSignaturePolicy(env, scanner),
   };
+}
+
+/**
+ * AP-SEC-05B: signatures younger than the aging limit are current; from it they are aging (used, with a warning); from
+ * the stale limit no file is verified clean with them. The aging limit must be below the stale limit, which is at most
+ * 14 days. Both are refused without a scanner, where they would do nothing.
+ */
+function parseSignaturePolicy(env: NodeJS.ProcessEnv, scanner: 'none' | 'clamd'): SignaturePolicy {
+  const names = ['MALWARE_SIGNATURES_AGING_HOURS', 'MALWARE_SIGNATURES_STALE_HOURS'] as const;
+  if (scanner !== 'clamd' && names.some((name) => env[name]?.trim())) throw new Error('MALWARE_SIGNATURES_AGING_HOURS and MALWARE_SIGNATURES_STALE_HOURS are used only with MALWARE_SCANNER=clamd');
+  const agingHours = readPositiveInt(env, names[0], 48, 335);
+  const staleHours = readPositiveInt(env, names[1], 168, 336);
+  if (agingHours >= staleHours) throw new Error('MALWARE_SIGNATURES_AGING_HOURS must be below MALWARE_SIGNATURES_STALE_HOURS');
+  return validateSignaturePolicy({ agingAfterMs: agingHours * 3_600_000, staleAfterMs: staleHours * 3_600_000 });
 }
 
 /** Kept free for storing the file and committing the document once processing ends (AP-SEC-05A). */
